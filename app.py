@@ -1,70 +1,7 @@
-<<<<<<< HEAD
-
-import streamlit as st
-import importlib
-
-# Title and Sidebar
-st.set_page_config(page_title="Smart Money Cockpit", layout="wide")
-st.sidebar.image("assets/cockpit_logo.png", use_container_width=True)
-st.sidebar.title("Smart Money Cockpit")
-
-# List of available modules
-module_titles = {
-    "trade_logger": "Trade Logger",
-    "daily_briefing": "Daily Briefing",
-    "etf_dashboard": "ETF Dashboard",
-    "pdf_generator": "PDF Report Generator",
-    "journal_logger": "Journal",
-    "strategy_builder": "Strategy Builder",
-    "health_tracker": "Health Tracker",
-    "pattern_profiler": "AI Pattern Profiler",
-    "guardrails": "Capital Guardrails",
-    "ai_journal": "Auto-Journal Generator",
-    "vagal_sync": "Vagal Sync",
-    "auto_hedger": "Auto Hedger",
-    "preferred_income_tracker": "Preferred Income Tracker",
-    "spy_contra_tracker": "SPY Contra Tracker",
-    "macro_micro_dashboard": "Macro+Micro Dashboard",
-    "smart_money_logic": "Smart Money Logic",
-    "training_tier": "Training Tier",
-    "boi_playbook": "BoJ Rate Playbook",
-    "bear_mode_tail_risk": "Bear Mode Tail Risk",
-    "tariff_aware_screener": "Tariff-Aware Screener"
-}
-
-# Sidebar module selector
-selected_module = st.sidebar.selectbox(
-    "Choose a module", list(module_titles.keys()), format_func=lambda x: module_titles[x])
-
-# Load and render selected module
-try:
-    module = importlib.import_module(f"modules.{selected_module}")
-    if hasattr(module, "render"):
-        module.render()
-    else:
-        st.warning(f"Module '{selected_module}' is missing a render() function.")
-except Exception as e:
-    st.error(f"Failed to load module '{selected_module}': {e}")
-
-# Optional: Show module status
-if st.sidebar.checkbox("Show module status"):
-    st.sidebar.markdown("### Loaded Modules")
-    for key, title in module_titles.items():
-        st.sidebar.markdown(f"- {title}")
-=======
-"""
-Smart Money Cockpit
-===================
-
-This Streamlit application serves as a hub for trading, health and research
-activities.  Modules can be selected from the sidebar, and their status
-indicators display the readiness of each feature.  The app is designed to be
-deployed locally or on Streamlit Cloud.
-"""
-
 import streamlit as st
 from pathlib import Path
 import pandas as pd
+import importlib
 
 from modules import (
     render_trade_logger,
@@ -86,13 +23,7 @@ from modules import (
 )
 from utils import google_sheets, ibkr
 
-
 def get_module_statuses() -> pd.DataFrame:
-    """Return a DataFrame indicating whether each module is ready.
-
-    For now, all modules are marked as ready.  You can extend this function to
-    perform health checks (e.g. Google Sheets availability, IBKR connectivity).
-    """
     modules = [
         "Trade Logger",
         "Smart Money Logic",
@@ -112,9 +43,7 @@ def get_module_statuses() -> pd.DataFrame:
         "SPY & Contra Tracker",
     ]
     statuses = []
-    # Check Google Sheets connectivity
     sheet_ok = google_sheets.get_sheet() is not None
-    # Check IBKR connectivity
     ib_ok = ibkr.connect() is not None
     for m in modules:
         if m == "Live PnL Tracker":
@@ -124,22 +53,19 @@ def get_module_statuses() -> pd.DataFrame:
         statuses.append({"Module": m, "Status": "Ready" if ready else "Offline"})
     return pd.DataFrame(statuses)
 
-
 def load_image(image_name: str):
     img_path = Path(__file__).resolve().parent / "assets" / image_name
     if img_path.exists():
         return open(img_path, "rb").read()
     return None
 
-
 def main() -> None:
     st.set_page_config(page_title="Smart Money Cockpit", layout="wide")
-    # Sidebar branding
     coin_img = load_image("coin.png")
     if coin_img:
         st.sidebar.image(coin_img, use_column_width=True)
     st.sidebar.title("Smart Money Cockpit")
-    # Module selection
+
     module_names = [
         "Trade Logger",
         "Smart Money Logic",
@@ -159,11 +85,11 @@ def main() -> None:
         "SPY & Contra Tracker",
     ]
     choice = st.sidebar.selectbox("Choose a module", module_names)
-    # Module status display
+
     if st.sidebar.checkbox("Show module status", value=False):
         status_df = get_module_statuses()
         st.sidebar.dataframe(status_df, height=300)
-    # Main content
+
     if choice == "Trade Logger":
         render_trade_logger()
     elif choice == "Smart Money Logic":
@@ -199,7 +125,5 @@ def main() -> None:
     else:
         st.write("Please select a module from the sidebar.")
 
-
 if __name__ == "__main__":
     main()
->>>>>>> 1d7947d895ee627f5b66a78bde632d8d795e9410
