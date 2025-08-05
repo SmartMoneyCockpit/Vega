@@ -40,3 +40,5 @@ def render() -> None:
         st.dataframe(df.reset_index(drop=True))
         st.success("Analysis complete.  You can extend this module with your own logic.")
         st.success("Analysis complete.  You can extend this module with your own logic.")
+
+# 🧠

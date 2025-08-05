@@ -51,3 +51,4 @@ if st.sidebar.checkbox("Show module status"):
     st.sidebar.markdown("### Loaded Modules")
     for key, title in module_titles.items():
         st.sidebar.markdown(f"- {title}")
+# 🧠

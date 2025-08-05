@@ -50,3 +50,5 @@ def render() -> None:
         else:
             st.info(f"{name}: {change_pct}% change – Normal")
             st.info(f"{name}: {change_pct}% change – Normal")
+
+# 🧠

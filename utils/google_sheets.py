@@ -115,3 +115,5 @@ def append_row(row: List, sheet_name: str = "COCKPIT", worksheet_name: str = "Sh
         df.loc[len(df)] = row
         df.to_csv(csv_path, index=False)
         df.to_csv(csv_path, index=False)
+
+# 🧠

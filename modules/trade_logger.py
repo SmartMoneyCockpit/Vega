@@ -97,3 +97,5 @@ def render() -> None:
         df = pd.read_csv(TRADES_CSV)
         st.dataframe(df.tail(10))
 # force
+
+# 🧠

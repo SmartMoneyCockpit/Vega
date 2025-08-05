@@ -64,3 +64,5 @@ def render() -> None:
         st.dataframe(df.head(20))
     else:
         st.info("No journal entries yet.")
+
+# 🧠

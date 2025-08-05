@@ -62,3 +62,5 @@ def render() -> None:
         filtered_df = filtered_df[filtered_df["USMCA"] == usmca_filter]
     st.dataframe(filtered_df.reset_index(drop=True))
     st.dataframe(filtered_df.reset_index(drop=True))
+
+# 🧠

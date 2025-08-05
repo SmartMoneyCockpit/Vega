@@ -82,3 +82,5 @@ def render() -> None:
             rp = relative_performance(ticker)
             st.info(f"Relative performance vs SPY over past year: {rp*100:.2f}%")
             st.info(f"Relative performance vs SPY over past year: {rp*100:.2f}%")
+
+# 🧠

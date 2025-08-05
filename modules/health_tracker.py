@@ -70,3 +70,5 @@ def render() -> None:
         st.markdown("### Recent Health Entries")
         df = pd.read_csv(HEALTH_CSV)
         st.dataframe(df.tail(10))
+
+# 🧠

@@ -105,3 +105,5 @@ def render() -> None:
         save_journal_entry(entry)
         st.success("Briefing saved to journal.")
         st.success("Briefing saved to journal.")
+
+# 🧠

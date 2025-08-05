@@ -52,3 +52,5 @@ def render() -> None:
         st.markdown("### Your Training Items")
         df = pd.read_csv(TRAINING_CSV)
         st.dataframe(df)
+
+# 🧠

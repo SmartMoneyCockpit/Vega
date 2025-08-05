@@ -14,3 +14,4 @@ from .tariff_aware_screener import render_tariff_aware_screener
 from .preferred_income_tracker import render_preferred_income_tracker
 from .live_pnl_tracker import render_live_pnl_tracker
 from .spy_contra_tracker import render_spy_contra_tracker
+# 🧠

@@ -50,3 +50,5 @@ def get_embed_widget(symbol: str, width: int = 700, height: int = 500, interval:
     <!-- TradingView Widget END -->
     """
     """
+
+# 🧠

@@ -119,3 +119,5 @@ def get_positions():
 def get_live_price(ticker: str) -> float:
     """Return 0.0 to avoid triggering real-time price checks."""
     return 0.0
+
+# 🧠

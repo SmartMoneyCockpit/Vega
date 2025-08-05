@@ -24,3 +24,5 @@ worksheet.clear()
 # Upload the new data (header + all rows)
 rows = [df.columns.tolist()] + df.values.tolist()
 worksheet.update(rows)
+
+# 🧠

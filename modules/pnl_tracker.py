@@ -22,3 +22,5 @@ if not df.empty:
             st.success(f"{ticker}: {qty} shares | Buy @ {avg_buy} → Sell @ {avg_sell} | 💰 PnL = ${pnl}")
         else:
             st.warning(f"{ticker} → Not enough data to calculate PnL.")
+
+# 🧠

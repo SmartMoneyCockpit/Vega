@@ -48,3 +48,5 @@ def render() -> None:
         else:
             st.success(f"{name} ({ticker}): Price ${price:.2f}, Yield {yield_pct:.2f}% – Above threshold")
             st.success(f"{name} ({ticker}): Price ${price:.2f}, Yield {yield_pct:.2f}% – Above threshold")
+
+# 🧠

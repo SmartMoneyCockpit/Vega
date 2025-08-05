@@ -35,3 +35,5 @@ def render() -> None:
     merged = positions_df.merge(price_df, left_on="symbol", right_index=True, how="left")
     merged["PnL"] = (merged["price"] - merged["avgCost"]) * merged["position"]
     st.dataframe(merged[["symbol", "position", "avgCost", "price", "PnL"]])
+
+# 🧠
