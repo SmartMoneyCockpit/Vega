@@ -68,3 +68,4 @@ def render() -> None:
         fig.update_layout(title=f"{selected_pair} – 1 Year Performance", xaxis_title="Date", yaxis_title="Exchange Rate")
         st.plotly_chart(fig, use_container_width=True)
         st.plotly_chart(fig, use_container_width=True)
+# force

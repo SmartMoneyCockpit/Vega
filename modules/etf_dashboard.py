@@ -66,3 +66,4 @@ def render() -> None:
         fig.update_layout(title=f"{selected} – 1 Year Price", xaxis_title="Date", yaxis_title="Price")
         st.plotly_chart(fig, use_container_width=True)
         st.plotly_chart(fig, use_container_width=True)
+# force
