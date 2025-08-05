@@ -1,0 +1,8 @@
+
+sheets:
+  trades: "COCKPIT"
+  trades_tab: "TradeLog"
+  health_tab: "HealthLog"
+email:
+  send_pdf: false
+  address: ""

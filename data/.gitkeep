@@ -1,0 +1,1 @@
+# Ensures that the data directory is tracked by git.  Runtime data will be saved here.
