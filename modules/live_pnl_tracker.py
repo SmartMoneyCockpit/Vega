@@ -11,11 +11,8 @@ connection to IBKR fails, the module will show an informative message.
 import streamlit as st
 import pandas as pd
 
-<<<<<<< HEAD
 from utils import ibkr
-=======
 from utils import google_sheets
->>>>>>> 1d7947d895ee627f5b66a78bde632d8d795e9410
 
 
 def render() -> None:

@@ -46,8 +46,5 @@ def render() -> None:
         if yield_pct < threshold:
             st.error(f"{name} ({ticker}): Price ${price:.2f}, Yield {yield_pct:.2f}% – Below threshold! ⚠️")
         else:
-<<<<<<< HEAD
             st.success(f"{name} ({ticker}): Price ${price:.2f}, Yield {yield_pct:.2f}% – Above threshold")
-=======
             st.success(f"{name} ({ticker}): Price ${price:.2f}, Yield {yield_pct:.2f}% – Above threshold")
->>>>>>> 1d7947d895ee627f5b66a78bde632d8d795e9410

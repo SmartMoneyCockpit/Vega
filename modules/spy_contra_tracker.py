@@ -80,8 +80,5 @@ def render() -> None:
         st.plotly_chart(fig, use_container_width=True)
         if selected != "SPY":
             rp = relative_performance(ticker)
-<<<<<<< HEAD
             st.info(f"Relative performance vs SPY over past year: {rp*100:.2f}%")
-=======
             st.info(f"Relative performance vs SPY over past year: {rp*100:.2f}%")
->>>>>>> 1d7947d895ee627f5b66a78bde632d8d795e9410

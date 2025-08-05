@@ -38,8 +38,5 @@ def render() -> None:
     if st.button("Run Analysis"):
         df = compute_relative_strength(tickers)
         st.dataframe(df.reset_index(drop=True))
-<<<<<<< HEAD
         st.success("Analysis complete.  You can extend this module with your own logic.")
-=======
         st.success("Analysis complete.  You can extend this module with your own logic.")
->>>>>>> 1d7947d895ee627f5b66a78bde632d8d795e9410

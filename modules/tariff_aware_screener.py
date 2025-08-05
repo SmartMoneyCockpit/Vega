@@ -60,8 +60,5 @@ def render() -> None:
     filtered_df = df[df["Tariff Grade"].isin(grade_filter)]
     if usmca_filter != "All":
         filtered_df = filtered_df[filtered_df["USMCA"] == usmca_filter]
-<<<<<<< HEAD
     st.dataframe(filtered_df.reset_index(drop=True))
-=======
     st.dataframe(filtered_df.reset_index(drop=True))
->>>>>>> 1d7947d895ee627f5b66a78bde632d8d795e9410

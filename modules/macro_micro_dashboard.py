@@ -66,8 +66,5 @@ def render() -> None:
     st.markdown("### Macro Indicators")
     st.table(macro_df)
     st.markdown("### Micro Watchlist")
-<<<<<<< HEAD
     st.table(micro_df)
-=======
     st.table(micro_df)
->>>>>>> 1d7947d895ee627f5b66a78bde632d8d795e9410

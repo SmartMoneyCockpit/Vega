@@ -1,5 +1,4 @@
 """
-<<<<<<< HEAD
 Utility functions for Interactive Brokers (IBKR) integration using ib_insync.
 
 The functions in this module attempt to connect to a running IB Gateway or Trader
@@ -94,7 +93,6 @@ def get_live_prices(tickers: List[str]) -> pd.DataFrame:
     df = pd.DataFrame.from_dict(prices, orient="index", columns=["price"])
     df.index.name = "ticker"
     return df
-=======
 IBKR Stub for Streamlit Cloud
 -----------------------------
 
@@ -121,4 +119,3 @@ def get_positions():
 def get_live_price(ticker: str) -> float:
     """Return 0.0 to avoid triggering real-time price checks."""
     return 0.0
->>>>>>> 1d7947d895ee627f5b66a78bde632d8d795e9410

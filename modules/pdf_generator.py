@@ -85,8 +85,5 @@ def render() -> None:
             data=pdf_bytes,
             file_name=f"{table}_report_{start_date}_{end_date}.pdf",
             mime="application/pdf",
-<<<<<<< HEAD
         )
-=======
         )
->>>>>>> 1d7947d895ee627f5b66a78bde632d8d795e9410

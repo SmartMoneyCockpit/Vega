@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 
 import streamlit as st
 import asyncio
@@ -34,7 +33,6 @@ def render():
             "notes": notes
         }
         st.success(f"Trade saved: {trade_data['side']} {trade_data['quantity']} {trade_data['ticker']} @ {trade_data['price']}")
-=======
 """
 Trade Logger Module
 -------------------
@@ -98,4 +96,3 @@ def render() -> None:
         st.markdown("### Recent Trades")
         df = pd.read_csv(TRADES_CSV)
         st.dataframe(df.tail(10))
->>>>>>> 1d7947d895ee627f5b66a78bde632d8d795e9410

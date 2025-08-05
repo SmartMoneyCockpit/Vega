@@ -48,8 +48,5 @@ def render() -> None:
         if alert_triggered:
             st.error(f"{name}: {change_pct}% change – Alert! 📢")
         else:
-<<<<<<< HEAD
             st.info(f"{name}: {change_pct}% change – Normal")
-=======
             st.info(f"{name}: {change_pct}% change – Normal")
->>>>>>> 1d7947d895ee627f5b66a78bde632d8d795e9410

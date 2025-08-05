@@ -113,8 +113,5 @@ def append_row(row: List, sheet_name: str = "COCKPIT", worksheet_name: str = "Sh
     else:
         df = pd.read_csv(csv_path)
         df.loc[len(df)] = row
-<<<<<<< HEAD
         df.to_csv(csv_path, index=False)
-=======
         df.to_csv(csv_path, index=False)
->>>>>>> 1d7947d895ee627f5b66a78bde632d8d795e9410

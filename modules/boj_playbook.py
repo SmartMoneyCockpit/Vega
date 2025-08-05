@@ -66,8 +66,5 @@ def render() -> None:
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=data.index, y=data["Close"], mode='lines', name=selected_pair))
         fig.update_layout(title=f"{selected_pair} – 1 Year Performance", xaxis_title="Date", yaxis_title="Exchange Rate")
-<<<<<<< HEAD
         st.plotly_chart(fig, use_container_width=True)
-=======
         st.plotly_chart(fig, use_container_width=True)
->>>>>>> 1d7947d895ee627f5b66a78bde632d8d795e9410

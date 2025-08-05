@@ -95,19 +95,13 @@ def render() -> None:
     st.markdown("#### Briefing Notes")
     notes = st.text_area("Add your own notes to the briefing", "")
     if st.button("Save Briefing to Journal"):
-<<<<<<< HEAD
         from journal_logger import save_journal_entry
-=======
         from .journal_logger import save_journal_entry
->>>>>>> 1d7947d895ee627f5b66a78bde632d8d795e9410
         entry = {
             "Date": today.strftime("%Y-%m-%d"),
             "Type": "Morning Briefing",
             "Content": f"Index Moves:\n{changes_df.to_string(index=False)}\n\nEvents:\n" + "\n".join(events) + ("\n\nNotes:\n" + notes if notes else "")
         }
         save_journal_entry(entry)
-<<<<<<< HEAD
         st.success("Briefing saved to journal.")
-=======
         st.success("Briefing saved to journal.")
->>>>>>> 1d7947d895ee627f5b66a78bde632d8d795e9410
