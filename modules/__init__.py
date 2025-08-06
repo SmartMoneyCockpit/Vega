@@ -1,4 +1,4 @@
-from .trade_logger import render_trade_logger
+from .trade_logger import render as render_trade_logger
 from .smart_money_logic import render_smart_money_logic
 from .health_tracker import render_health_tracker
 from .daily_briefing import render_daily_briefing
