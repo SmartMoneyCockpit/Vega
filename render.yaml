@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: Vega
+    env: python
+    buildCommand: ""
+    startCommand: streamlit run app.py
+    pythonVersion: 3.11
