@@ -5,7 +5,7 @@ This project provides a Streamlit dashboard for personal trading and wellness ma
 ## Features
 
 - Trade Logger – record trades, size, price, and notes; syncs to a Google Sheet (COCKPIT)
-- Smart Money Logic – framework for custom order flow and positioning logic
+- Smart Money Logic – framework for a custom order flow and positioning logic
 - Health Tracker – daily logs of sleep, exercise, HR, and vagal recovery suggestions
 - Morning Briefing Generator – macro summary with upcoming events
 - Journal Logger – unified journal for trades, health, and strategy
