@@ -1,10 +1,30 @@
-.env
-*.env
+# Ignore Python cache and artifacts
 __pycache__/
 *.pyc
-.cache/
+*.pyo
+*.pyd
+*.pdb
+*.egg-info/
+build/
+dist/
+
+# Environment & credentials
+.env
+*.env
+.env.*
+.envrc
+*.json
+
+# Streamlit local settings
 .streamlit/
-data/*.log
-data/*.tmp
-# if you add a Render Disk, keep CSVs tracked; otherwise uncomment next line to ignore local data
-# data/
+
+# Local data (will live on Render persistent disk)
+data/
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+*.tmp
