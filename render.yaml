@@ -1,8 +1,15 @@
+
 services:
   - type: web
-    name: Vega
+    name: vega-cockpit-mvp
     env: python
-    plan: starter
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "streamlit run app.py"
-    runtime: python-3.11
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run app.py --server.port $PORT --server.address 0.0.0.0
+    envVars:
+      - key: GOOGLE_SHEET_ID
+        value: 1Nv77XYP99hXiAf0X2R37IC6OEZdiE7M5krtgPBUNAhE
+      - key: GOOGLE_SHEET_MAIN_TAB
+        value: COCKPIT
+    # Secret file must be added manually in Render UI after creation
+    # Name it 'credentials.json' and paste your service account JSON content.

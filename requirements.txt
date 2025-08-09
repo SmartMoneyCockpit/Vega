@@ -1,7 +1,5 @@
-streamlit
-requests
-pandas
-numpy
-python-dateutil
-gspread
-google-auth
+
+streamlit==1.36.0
+gspread==6.1.2
+google-auth==2.33.0
+pandas==2.2.2
