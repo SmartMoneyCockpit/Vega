@@ -1,3 +1,4 @@
+
 import os
 import time
 import streamlit as st
@@ -7,18 +8,15 @@ from sheets_client import get_sheet, append_row, read_range
 st.set_page_config(page_title="Vega Cockpit — MVP", layout="wide")
 
 SHEET_ID = os.getenv("GOOGLE_SHEET_ID", "")
-WATCHLIST_TAB = os.getenv("GOOGLE_SHEET_WATCHLIST_TAB", os.getenv("GOOGLE_SHEET_MAIN_TAB", "Watch List"))
-LOG_TAB = os.getenv("GOOGLE_SHEET_LOG_TAB", os.getenv("GOOGLE_SHEET_MAIN_TAB", "TradeLog"))
+SHEET_MAIN_TAB = os.getenv("GOOGLE_SHEET_MAIN_TAB", "COCKPIT")
 
-st.title("Vega Cockpit — Day-1 MVP")
+st.title("Vega Cockpit — Day‑1 MVP")
 
 with st.sidebar:
     st.toggle("Auto-refresh (every 60s)", value=False, key="auto_refresh")
     st.caption("Env check")
     if SHEET_ID:
         st.code(f"SHEET_ID={SHEET_ID[:6]}…{SHEET_ID[-4:]}")
-        st.code(f"WATCHLIST_TAB={WATCHLIST_TAB}")
-        st.code(f"LOG_TAB={LOG_TAB}")
     else:
         st.error("Missing GOOGLE_SHEET_ID")
 
@@ -29,13 +27,17 @@ tab1, tab2, tab3, tab4 = st.tabs(["Morning Report", "Watchlist", "Journal/Health
 
 with tab1:
     st.subheader("Morning Report (MVP)")
-    st.markdown("- Session: North America\n- Macro & tickers: sheet-driven (next pass)")
+    st.markdown(
+        "- Session: North America\n"
+        "- Macro calendar: **from sheet (next pass)**\n"
+        "- ETFs/Stocks: **from sheet (next pass)**"
+    )
 
 with tab2:
     st.subheader("Watchlist (Sheet-driven)")
-    st.caption(f"Reads {WATCHLIST_TAB}!A2:D50 → columns: Ticker | Strategy | Entry | Stop")
+    st.caption("Reads A2:D50 from the main tab: Ticker | Strategy | Entry | Stop")
     try:
-        values = read_range(SHEET_ID, f"{WATCHLIST_TAB}!A2:D50") or []
+        values = read_range(SHEET_ID, f"{SHEET_MAIN_TAB}!A2:D50") or []
         if not values:
             st.info("No rows found in A2:D50. Add some tickers to your sheet.")
         else:
@@ -63,19 +65,19 @@ with tab3:
         with col2:
             status = st.selectbox("Status", ["Open", "Closed", "Info"], index=0)
         notes = st.text_area("Notes", placeholder="What changed, why it matters, next action…")
-        submitted = st.form_submit_button(f"Append Row to '{LOG_TAB}'")
+        submitted = st.form_submit_button("Append Row")
         if submitted:
             try:
                 ts = time.strftime("%Y-%m-%d %H:%M:%S")
-                append_row(SHEET_ID, LOG_TAB, [ts, kind, symbol, status, notes])
-                st.success(f"Row appended to {LOG_TAB}.")
+                append_row(SHEET_ID, SHEET_MAIN_TAB, [ts, kind, symbol, status, notes])
+                st.success("Row appended to Google Sheet.")
             except Exception as e:
                 st.error(f"Append failed: {e}")
 
 with tab4:
-    st.subheader(f"Recent Log Rows from '{LOG_TAB}' (last 10)")
+    st.subheader("Recent Log Rows (last 10)")
     try:
-        values = read_range(SHEET_ID, f"{LOG_TAB}!A1:E200") or []
+        values = read_range(SHEET_ID, f"{SHEET_MAIN_TAB}!A1:E200") or []
         header = values[0] if values else []
         body = values[1:][-10:] if len(values) > 1 else []
         if header and body:

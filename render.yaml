@@ -1,3 +1,4 @@
+
 services:
   - type: web
     name: vega-cockpit-mvp
@@ -8,7 +9,7 @@ services:
     envVars:
       - key: GOOGLE_SHEET_ID
         value: 1Nv77XYP99hXiAf0X2R37IC6OEZdiE7M5krtgPBUNAhE
-      - key: GOOGLE_SHEET_WATCHLIST_TAB
-        value: Watch List
-      - key: GOOGLE_SHEET_LOG_TAB
-        value: TradeLog
+      - key: GOOGLE_SHEET_MAIN_TAB
+        value: COCKPIT
+    # Secret file must be added manually in Render UI after creation
+    # Name it 'credentials.json' and paste your service account JSON content.
