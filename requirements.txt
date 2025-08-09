@@ -1,1 +1,5 @@
-streamlit==1.36.0\ngspread==6.1.2\ngoogle-auth==2.33.0\npandas==2.2.2\nrequests==2.32.3\n
+streamlit==1.36.0
+gspread==6.1.2
+google-auth==2.33.0
+pandas==2.2.2
+requests==2.32.3
