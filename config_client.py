@@ -11,12 +11,9 @@ CONFIG_GID = os.getenv("CONFIG_GID")
 HEADERS    = ["Key", "Value", "UpdatedAt"]
 
 def _gc():
-    try:
-        return gspread.service_account_from_dict(json.loads(os.environ["GCP_SERVICE_ACCOUNT_JSON"]))
-    except KeyError:
-        raise RuntimeError("Missing GCP_SERVICE_ACCOUNT_JSON")
-    except (json.JSONDecodeError, GoogleAuthError) as e:
-        raise RuntimeError(f"Service account auth failed: {e}")
+    try: return gspread.service_account_from_dict(json.loads(os.environ["GCP_SERVICE_ACCOUNT_JSON"]))
+    except KeyError: raise RuntimeError("Missing GCP_SERVICE_ACCOUNT_JSON")
+    except (json.JSONDecodeError, GoogleAuthError) as e: raise RuntimeError(f"Service account auth failed: {e}")
 
 def _open():
     if not SHEET_ID: raise RuntimeError("Missing GOOGLE_SHEET_ID")
@@ -28,37 +25,30 @@ def _get_config_ws():
         ws = sh.get_worksheet_by_id(int(CONFIG_GID))
         if ws is None: raise RuntimeError(f"Config gid {CONFIG_GID} not found")
         return ws
-    try:
-        return sh.worksheet(CONFIG_TAB)
+    try: return sh.worksheet(CONFIG_TAB)
     except WorksheetNotFound:
         ws = sh.add_worksheet(title=CONFIG_TAB, rows=50, cols=3)
-        ws.update("A1", [HEADERS])
-        return ws
+        ws.update("A1", [HEADERS]); return ws
 
 def _ensure_headers(ws):
     row = ws.get("A1:C1") or []
     cur = [c.strip() for c in (row[0] if row else [])]
-    if cur != HEADERS:
-        ws.update("A1", [HEADERS])
+    if cur != HEADERS: ws.update("A1", [HEADERS])
 
 def get_config_dict() -> Dict[str, str]:
     ws = _get_config_ws(); _ensure_headers(ws)
-    vals = ws.get("A2:C200") or []
-    out = {}
+    vals = ws.get("A2:C200") or []; out = {}
     for r in vals:
-        if len(r) >= 2 and r[0].strip():
-            out[r[0].strip()] = r[1].strip() if len(r) > 1 else ""
+        if len(r) >= 2 and (r[0] or "").strip():
+            out[r[0].strip()] = (r[1].strip() if len(r)>1 else "")
     return out
 
 def set_config_value(key: str, value: str):
     ws = _get_config_ws(); _ensure_headers(ws)
-    vals = ws.get("A2:C200") or []
-    now = time.strftime("%Y-%m-%d %H:%M:%S UTC")
+    vals = ws.get("A2:C200") or []; now = time.strftime("%Y-%m-%d %H:%M:%S UTC")
     row_idx = None
     for i, r in enumerate(vals, start=2):
         if (r[0].strip() if len(r) else "") == key:
             row_idx = i; break
-    if row_idx:
-        ws.update(f"A{row_idx}:C{row_idx}", [[key, value, now]])
-    else:
-        ws.append_row([key, value, now], value_input_option="USER_ENTERED")
+    if row_idx: ws.update(f"A{row_idx}:C{row_idx}", [[key, value, now]])
+    else: ws.append_row([key, value, now], value_input_option="USER_ENTERED")
