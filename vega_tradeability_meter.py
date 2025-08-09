@@ -1,4 +1,4 @@
-# vega_tradeability_meter.py — Polygon LIVE (15m / 1h / Daily) + Journal + Sheets sync
+# vega_tradeability_meter.py — Polygon LIVE (15m / 1h / Daily) + Journal + Sheets sync + Test button
 import os
 import io
 import requests
@@ -8,9 +8,14 @@ from datetime import datetime, timedelta, timezone
 from dateutil.relativedelta import relativedelta
 import streamlit as st
 
+# Accept either env var name so you don't have to change Render
 POLY_KEY = os.getenv("POLYGON_API_KEY") or os.getenv("POLYGON_KEY")
+
+# Google Sheets config
 SHEETS_SPREADSHEET_ID = os.getenv("SHEETS_SPREADSHEET_ID")
 SHEETS_WORKSHEET = os.getenv("SHEETS_WORKSHEET_NAME", "tradeability_log")
+
+# ----------- Data Fetchers -----------
 
 def _poly_range_url(ticker: str, mult: int, span: str, start_dt, end_dt) -> str:
     return (
@@ -39,6 +44,8 @@ def fetch_polygon(ticker: str, timeframe: str) -> pd.DataFrame:
     df["date"] = pd.to_datetime(df["t"], unit="ms", utc=True)
     df.rename(columns={"o":"open","h":"high","l":"low","c":"close","v":"volume"}, inplace=True)
     return df.set_index("date")[["open","high","low","close","volume"]].sort_index()
+
+# ----------- Indicators / Scoring -----------
 
 def atr(df: pd.DataFrame, n: int = 14) -> pd.Series:
     h, l, c = df["high"], df["low"], df["close"]
@@ -82,6 +89,8 @@ def score_tradeability(df: pd.DataFrame) -> dict:
         "last_date": df.index[-1].astimezone(timezone.utc).isoformat(),
     }
 
+# ----------- Journal -----------
+
 LOG_DIR = "data"
 LOG_FILE = os.path.join(LOG_DIR, "tradeability_log.csv")
 
@@ -107,10 +116,12 @@ def try_sheets_append(record: dict):
         return "sheets_not_configured"
     try:
         import sheets_sync  # local helper
-        sheets_sync.append_row(SHEETS_SPREADSHEET_ID, os.getenv("SHEETS_WORKSHEET_NAME", "tradeability_log"), record)
+        sheets_sync.append_row(SHEETS_SPREADSHEET_ID, SHEETS_WORKSHEET, record)
         return "ok"
     except Exception as e:
         return f"error: {e}"
+
+# ----------- UI -----------
 
 def run():
     st.header("Vega – Tradeability Meter")
@@ -124,6 +135,30 @@ def run():
             timeframe = st.selectbox("Timeframe", ["15m", "1h", "Daily"], index=2)
         with col3:
             as_of = st.date_input("As of (optional)", None)
+
+    # Quick test button for Google Sheets sync
+    with st.expander("Google Sheets • connection test"):
+        st.write("Click to push a test row to your Google Sheet (uses SHEETS_SPREADSHEET_ID / SHEETS_WORKSHEET_NAME).")
+        if st.button("Send test row to Google Sheet"):
+            test_rec = {
+                "ts_utc": datetime.now(timezone.utc).isoformat(),
+                "ticker": "TEST",
+                "timeframe": "TEST",
+                "last_close": 0.0,
+                "trend_score": 0,
+                "liquidity_score": 0,
+                "vol_regime": "n/a",
+                "atr_pct": 0.0,
+                "quality": "n/a",
+                "note": "Connectivity check from Vega",
+            }
+            status = try_sheets_append(test_rec)
+            if status == "ok":
+                st.success("Test row sent to Google Sheets ✅")
+            elif status == "sheets_not_configured":
+                st.warning("Sheets not configured. Set SHEETS_SPREADSHEET_ID and upload your service account key.")
+            else:
+                st.error(f"Sheets error: {status}")
 
     st.divider()
 
