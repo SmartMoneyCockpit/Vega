@@ -1,5 +1,4 @@
-# app.py — Vega cockpit entry point
-import os
+# app.py — Vega cockpit entry point (session_state-safe nav)
 import importlib
 import streamlit as st
 
@@ -11,17 +10,17 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ---- Sidebar / Nav
+# ---- Sidebar / Nav (robust against stale session state)
+NAV_OPTIONS = ["Tradeability Meter", "Auto-Hedging Engine", "Macro Dashboard"]
+
+# Initialize nav state safely
+if "nav" not in st.session_state or st.session_state.get("nav") not in NAV_OPTIONS:
+    st.session_state["nav"] = NAV_OPTIONS[0]
+
+default_index = NAV_OPTIONS.index(st.session_state.get("nav", NAV_OPTIONS[0]))
+
 st.sidebar.title("Vega Cockpit")
-page = st.sidebar.radio(
-    "Modules",
-    [
-        "Tradeability Meter",
-        "Auto-Hedging Engine",
-        "Macro Dashboard",
-    ],
-    index=0,
-)
+page = st.sidebar.radio("Modules", NAV_OPTIONS, index=default_index, key="nav")
 
 # ---- Lazy import per page (avoids import-time Streamlit calls)
 if page == "Tradeability Meter":
