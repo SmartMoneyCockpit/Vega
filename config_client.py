@@ -1,12 +1,14 @@
-# config_client.py — tiny settings store in Google Sheets (Config tab)
-import os, gspread, json, time
-from typing import Dict, Optional
-from gspread.exceptions import APIError
+# config_client.py — settings store in Google Sheets (Config tab)
+import os, json, time
+from typing import Dict
+import gspread
+from gspread.exceptions import WorksheetNotFound
 from google.auth.exceptions import GoogleAuthError
 
 SHEET_ID   = os.getenv("GOOGLE_SHEET_ID") or os.getenv("SHEET_ID") or ""
 CONFIG_TAB = os.getenv("GOOGLE_SHEET_CONFIG_TAB", "Config")
-CONFIG_GID = os.getenv("CONFIG_GID")  # optional gid for Config tab
+CONFIG_GID = os.getenv("CONFIG_GID")
+HEADERS    = ["Key", "Value", "UpdatedAt"]
 
 def _gc():
     try:
@@ -26,13 +28,12 @@ def _get_config_ws():
         ws = sh.get_worksheet_by_id(int(CONFIG_GID))
         if ws is None: raise RuntimeError(f"Config gid {CONFIG_GID} not found")
         return ws
-    # Create if missing
     try:
         return sh.worksheet(CONFIG_TAB)
-    except gspread.WorksheetNotFound:
-        return sh.add_worksheet(title=CONFIG_TAB, rows=50, cols=3)
-
-HEADERS = ["Key", "Value", "UpdatedAt"]
+    except WorksheetNotFound:
+        ws = sh.add_worksheet(title=CONFIG_TAB, rows=50, cols=3)
+        ws.update("A1", [HEADERS])
+        return ws
 
 def _ensure_headers(ws):
     row = ws.get("A1:C1") or []
@@ -53,7 +54,6 @@ def set_config_value(key: str, value: str):
     ws = _get_config_ws(); _ensure_headers(ws)
     vals = ws.get("A2:C200") or []
     now = time.strftime("%Y-%m-%d %H:%M:%S UTC")
-    # find existing
     row_idx = None
     for i, r in enumerate(vals, start=2):
         if (r[0].strip() if len(r) else "") == key:
