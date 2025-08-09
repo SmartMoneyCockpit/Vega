@@ -3,3 +3,5 @@ requests
 pandas
 numpy
 python-dateutil
+gspread
+google-auth
