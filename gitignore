@@ -1,0 +1,10 @@
+.env
+*.env
+__pycache__/
+*.pyc
+.cache/
+.streamlit/
+data/*.log
+data/*.tmp
+# if you add a Render Disk, keep CSVs tracked; otherwise uncomment next line to ignore local data
+# data/
