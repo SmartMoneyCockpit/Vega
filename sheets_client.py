@@ -1,45 +1,85 @@
-
+# sheets_client.py — private Google Sheets helpers (service account)
+import os, json, time
 from typing import List, Optional
 import gspread
-from google.oauth2.service_account import Credentials
+from google.auth.exceptions import GoogleAuthError
 from gspread.exceptions import APIError
 
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
+SHEET_ID = os.environ.get("GOOGLE_SHEET_ID") or os.environ.get("SHEET_ID") or ""
+LOG_TAB  = os.environ.get("GOOGLE_SHEET_LOG_TAB", os.environ.get("GOOGLE_SHEET_MAIN_TAB", "TradeLog"))
+WATCH_TAB= os.environ.get("GOOGLE_SHEET_WATCHLIST_TAB", os.environ.get("GOOGLE_SHEET_MAIN_TAB", "Watch List"))
 
-def _client():
-    creds = Credentials.from_service_account_file("credentials.json", scopes=SCOPES)
-    return gspread.authorize(creds)
+# Optional gid envs (faster & exact). If present, we use them.
+LOG_GID   = os.environ.get("LOG_GID")    # e.g., "2033714676"
+WATCH_GID = os.environ.get("WATCH_GID")  # optional
 
-def get_sheet(sheet_id: str, worksheet_title: Optional[str] = None):
-    gc = _client()
-    sh = gc.open_by_key(sheet_id)
-    if worksheet_title:
-        return sh.worksheet(worksheet_title)
-    return sh.sheet1
+# ---- Core auth ----
+def _gc():
+    try:
+        raw = os.environ["GCP_SERVICE_ACCOUNT_JSON"]
+        creds = json.loads(raw)
+        return gspread.service_account_from_dict(creds)
+    except KeyError:
+        raise RuntimeError("Missing GCP_SERVICE_ACCOUNT_JSON env")
+    except (json.JSONDecodeError, GoogleAuthError) as e:
+        raise RuntimeError(f"Service account auth failed: {e}")
 
-def read_range(sheet_id: str, a1_range: str):
-    gc = _client()
-    sh = gc.open_by_key(sheet_id)
+def _open():
+    if not SHEET_ID:
+        raise RuntimeError("Missing GOOGLE_SHEET_ID")
+    return _gc().open_by_key(SHEET_ID)
+
+# ---- Worksheet getters (by gid preferred, else by name) ----
+def _get_ws_by_gid_or_name(sh: gspread.Spreadsheet, gid: Optional[str], name: str):
+    if gid:
+        ws = sh.get_worksheet_by_id(int(gid))
+        if ws is None:
+            raise RuntimeError(f"Worksheet gid {gid} not found (tab='{name}').")
+        return ws
+    return sh.worksheet(name)
+
+def get_sheet(sheet_id: str, tab_name: str):
+    """Back-compat signature used in app.py. Ignores passed sheet_id for simplicity."""
+    sh = _open()
+    # If called for LOG_TAB or WATCH_TAB, use gid if available
+    if tab_name == LOG_TAB and LOG_GID:
+        return _get_ws_by_gid_or_name(sh, LOG_GID, LOG_TAB)
+    if tab_name == WATCH_TAB and WATCH_GID:
+        return _get_ws_by_gid_or_name(sh, WATCH_GID, WATCH_TAB)
+    return sh.worksheet(tab_name)
+
+# ---- Read range (A1 notation) ----
+def read_range(sheet_id: str, a1_range: str) -> List[List[str]]:
+    """Returns list-of-lists (may be empty)."""
+    sh = _open()
+    # If range includes a sheet name, gspread handles it. Otherwise, default to first sheet.
     try:
         return sh.values_get(a1_range).get("values", [])
-    except Exception:
-        try:
-            if "!" in a1_range:
-                ws_name, rng = a1_range.split("!", 1)
-                ws = sh.worksheet(ws_name)
-                return ws.get(rng) or []
-            else:
-                ws = sh.worksheet(a1_range)
-                return ws.get_all_values()
-        except Exception:
-            return []
-
-def append_row(sheet_id: str, worksheet_title: str, row: List[str]):
-    try:
-        ws = get_sheet(sheet_id, worksheet_title)
-        ws.append_row(row)
     except APIError:
-        gc = _client()
-        sh = gc.open_by_key(sheet_id)
-        ws = sh.worksheet(worksheet_title)
-        ws.append_row(row)
+        # Fallback: try via active worksheet when range lacks sheet name
+        ws = sh.sheet1
+        return ws.get(a1_range) or []
+
+# ---- Append row ----
+def append_row(sheet_id: str, tab_name: str, row_values: List[str], retries: int = 2, delay_sec: float = 0.4):
+    """Append a row to the given tab (name). Retries lightly on transient API errors."""
+    sh = _open()
+    ws = None
+    # Prefer gid for known tabs
+    if tab_name == LOG_TAB and LOG_GID:
+        ws = _get_ws_by_gid_or_name(sh, LOG_GID, LOG_TAB)
+    elif tab_name == WATCH_TAB and WATCH_GID:
+        ws = _get_ws_by_gid_or_name(sh, WATCH_GID, WATCH_TAB)
+    else:
+        ws = sh.worksheet(tab_name)
+
+    attempt = 0
+    while True:
+        try:
+            ws.append_row(row_values, value_input_option="USER_ENTERED")
+            return True
+        except APIError as e:
+            attempt += 1
+            if attempt > retries:
+                raise RuntimeError(f"Append failed after retries: {e}")
+            time.sleep(delay_sec)
