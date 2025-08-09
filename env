@@ -1,11 +1,18 @@
-GITHUB_TOKEN=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
+# ─── GitHub Access Token ───────────────────────────────
+GITHUB_TOKEN=ghp_ENdQDgGiWkKfPZ8wmCgfBstclqM0I1tpPY
 
-IBKR_USERNAME=DaresB1974
-IBKR_PASSWORD=mitchell7305!
-IBKR_ACCOUNT=U17333509
+# ─── IBKR Configuration ───────────────────────────────
+IBKR_USERNAME=Dares81974
+IBKR_PASSWORD=mitchell17305!
+IBKR_ACCOUNT=U17353389
 IBKR_HOST=127.0.0.1
 IBKR_PORT=7496
 IB_GATEWAY_AUTORUN=true
 
-TV_COOKIE=cookiePrivacyPreferenceBannerProduction=notApplicable; _ga=GA1.1.1636607670.1751137011; cookiesSettings={"analytics":true,"advertising":true}; g_state={"i_l":0}; device_t=...; sessionid=8acimjsa4c4er98e561lh1y7myfsfy1l; sessionid_sign=...; tv_ecuid=...
+# ─── TradingView Authentication (cookie method) ───────
+TV_COOKIE=cookiePrivacyPreferenceBannerProduction=notApplicable; _ga=GA1.1.1636067670.1751137013; cookiesSettings={"analytics":true,"advertising":true}; g_state={"i_l":0}; device_t=...; sessionid=...; sessionid_sign=...; tv_ecuids=...
 TV_AUTH_METHOD=cookie
+
+# ─── Google Sheets Integration ────────────────────────
+GOOGLE_SHEET_ID=1Nv77XYP99hXiAf0X2R37IC6OEZdiE7M5krtgPBUNAhE
+GOOGLE_SHEET_MAIN_TAB=COCKPIT
