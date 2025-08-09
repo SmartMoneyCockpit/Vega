@@ -1,30 +1,37 @@
-# app.py — entry point for Vega Cockpit
+# app.py — Vega cockpit entry point
 import os
 import importlib
 import streamlit as st
 
-# ✅ First Streamlit command in the app
+# ✅ First Streamlit call
 st.set_page_config(
-    page_title="Vega – Tradeability Meter",
+    page_title="Vega – Cockpit",
     page_icon="🪙",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
 )
 
-# Optional: Sidebar logo (safe even if file is missing)
-logo_path = "assets/vega_cockpit_logo.png"
-if os.path.exists(logo_path):
-    st.sidebar.image(logo_path, use_column_width=True)
-
-# Navigation (you can add more pages later)
+# ---- Sidebar / Nav
 st.sidebar.title("Vega Cockpit")
 page = st.sidebar.radio(
     "Modules",
-    ["Tradeability Meter"],  # Add more here when needed
-    index=0
+    [
+        "Tradeability Meter",
+        "Auto-Hedging Engine",
+        "Macro Dashboard",
+    ],
+    index=0,
 )
 
-# Load selected module
+# ---- Lazy import per page (avoids import-time Streamlit calls)
 if page == "Tradeability Meter":
-    trade_meter = importlib.import_module("vega_tradeability_meter")
-    trade_meter.run()
+    mod = importlib.import_module("vega_tradeability_meter")
+    mod.run()
+
+elif page == "Auto-Hedging Engine":
+    mod = importlib.import_module("auto_hedging_engine")
+    mod.run()
+
+elif page == "Macro Dashboard":
+    mod = importlib.import_module("macro_dashboard")
+    mod.run()
