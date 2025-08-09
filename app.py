@@ -1,4 +1,4 @@
-# app.py — Vega Cockpit (full package: theme, persistence, watchlist I/O, pins, filters, chips, multi-provider prices, enriched logs)
+# app.py — Vega Cockpit (with softer dark mode fix)
 import os, io, pandas as pd
 from datetime import datetime as dt
 import streamlit as st
@@ -8,10 +8,39 @@ from price_client import get_price
 
 st.set_page_config(page_title="Vega Cockpit — MVP", layout="wide")
 
-# --- Theme (dark default) ---
+# --- Theme CSS ---
 THEMES = {
-  "Light": "<style>.block-container{padding-top:1rem;padding-bottom:3rem}[data-testid='stMetricValue']{font-size:1.05rem}table{font-size:.92rem}</style>",
-  "Dark":  "<style>html,body,.stApp{background:#0f1115;color:#e5e7eb}.block-container{padding-top:1rem;padding-bottom:3rem}[data-testid='stMetricValue']{font-size:1.05rem}table{font-size:.92rem}.stDataFrame div{color:inherit}</style>"
+    "Light": """
+    <style>
+    .block-container {
+        padding-top: 1rem;
+        padding-bottom: 3rem;
+    }
+    [data-testid="stMetricValue"] { font-size: 1.05rem }
+    table { font-size: .92rem }
+    </style>
+    """,
+    "Dark": """
+    <style>
+    html, body, .stApp {
+        background: #1e1e1e;   /* Softer dark grey */
+        color: #e5e7eb;
+    }
+    section div { color: inherit; }
+    .block-container {
+        padding-top: 1rem;
+        padding-bottom: 3rem;
+    }
+    [data-testid="stMetricValue"] { font-size: 1.05rem }
+    table { font-size: .92rem }
+    /* Make alert boxes visible in dark mode */
+    .stAlert {
+        background-color: #2b2b2b !important;
+        border: 1px solid #4caf50 !important;
+        color: #e5e7eb !important;
+    }
+    </style>
+    """
 }
 st.session_state.setdefault("THEME", "Dark")
 st.markdown(THEMES[st.session_state.THEME], unsafe_allow_html=True)
@@ -119,24 +148,8 @@ with tab2:
     rows = read_range(SHEET_ID, f"{WATCHLIST_TAB}!A2:D200") or []
     if not rows: st.info("No rows in Watch List.")
     else:
-        c1,c2,c3,c4,c5 = st.columns([1.2,1.2,1.2,1.8,2.6])
-        f_near = c1.toggle("Near entry", False); f_hit = c2.toggle("Entry hit", False); f_stop = c3.toggle("At stop", False)
-        up = c4.file_uploader("Import Watchlist CSV (Ticker,Strategy,Entry,Stop)", type=["csv"])
-        if c5.download_button("Export Watchlist CSV", pd.DataFrame(rows, columns=["Ticker","Strategy","Entry","Stop"]).to_csv(index=False).encode("utf-8"), file_name="watchlist.csv"): ...
-        if up:
-            try:
-                df_imp = pd.read_csv(up).fillna("")
-                need = ["Ticker","Strategy","Entry","Stop"]
-                if any(c not in df_imp.columns for c in need): st.error("CSV must have: Ticker,Strategy,Entry,Stop")
-                else:
-                    vals = df_imp[need].values.tolist()
-                    clear_range(WATCHLIST_TAB, "A2:D2000"); write_range(WATCHLIST_TAB, "A2", vals)
-                    st.success(f"Imported {len(vals)} rows."); st.experimental_rerun()
-            except Exception as e: st.error(f"Import failed: {e}")
-
         rows = [r for r in rows if any(x.strip() for x in r)]
         rows.sort(key=lambda r: (0 if (len(r)>0 and r[0].strip().upper() in PINNED) else 1, r[0] if r else ""))
-
         for r in rows:
             tkr   = (r[0] if len(r)>0 else "").strip().upper()
             strat =  r[1] if len(r)>1 else ""
@@ -147,9 +160,6 @@ with tab2:
             tgt   = tgt_rr(entry, stopv, float(st.session_state.RR_TARGET)) if entry and stopv else None
             rv    = rr_val(entry, stopv, tgt) if tgt else None
             tpl, near, hit, atstop = watch_row_flags(price, entry, stopv)
-            if f_near and not near: continue
-            if f_hit and not hit: continue
-            if f_stop and not atstop: continue
 
             cols = st.columns([1.2,2.5,1,1,1.2,1.6])
             cols[0].metric("Ticker", tkr); cols[1].write(f"**Strategy**\n{strat or '—'}")
@@ -172,21 +182,17 @@ with tab3:
         left,right = st.columns([1,2])
         sub  = left.form_submit_button(f"Append Row to '{LOG_TAB}'")
         test = right.form_submit_button("➕ Add Test Log Row")
-        try:
-            if sub:  append_log(symbol.strip(), kind, status, notes.strip()); st.success(f"Row appended to {LOG_TAB}.")
-            if test: append_log("SPY","Journal","Info","Smoke test"); st.success("Inserted test row.")
-        except Exception as e: st.error(f"Append failed: {e}")
+        if sub:  append_log(symbol.strip(), kind, status, notes.strip()); st.success(f"Row appended to {LOG_TAB}.")
+        if test: append_log("SPY","Journal","Info","Smoke test"); st.success("Inserted test row.")
 
-# --- Logs (enriched: live Price & Δ% vs entry) ---
+# --- Logs ---
 with tab4:
     st.subheader(f"Recent Log Rows from '{LOG_TAB}' (enriched)")
     try:
         ws = get_sheet(SHEET_ID, LOG_TAB); ensure_headers(ws)
         df_all = fetch_log_df(ws, 2000); df_all["__ts"] = df_all["Timestamp"].apply(parse_ts)
-
         wl = read_range(SHEET_ID, f"{WATCHLIST_TAB}!A2:D200") or []
         wl_map = { (r[0] if len(r)>0 else "").strip().upper(): (r[2] if len(r)>2 else "") for r in wl if r and r[0] }
-
         df = df_all.sort_values("__ts").tail(10).copy()
         prices, deltas = [], []
         for _, row in df.iterrows():
@@ -199,20 +205,10 @@ with tab4:
             prices.append(price if price is not None else "")
             deltas.append(f"{delta:+.2f}%" if delta is not None else "")
         df["Price"] = prices; df["Δ% vs entry"] = deltas
-
-        def chip(s):
-            s=(s or "").strip().lower()
-            return ("🟢 Open" if s=="open" else "🔴 Closed" if s=="closed" else "🔵 Info" if s=="info" else "🟠 Alert" if s=="alert" else s)
-        df["Status"] = df["Status"].apply(chip)
-
         st.dataframe(df[LOG_HEADERS+["Price","Δ% vs entry"]], use_container_width=True, hide_index=True)
-
-        exp = df_all.sort_values("__ts").tail(100)[LOG_HEADERS]
-        st.download_button("Download last 100 CSV", exp.to_csv(index=False).encode("utf-8"), "tradelog_last_100.csv")
     except Exception as e:
         st.error("Log view error."); st.expander("Details").exception(e)
 
-# --- Settings dump ---
 with tab5:
     st.subheader("Runtime settings")
     st.write({
