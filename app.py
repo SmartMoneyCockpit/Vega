@@ -1,12 +1,13 @@
-# app.py — Vega Cockpit MVP
+# app.py — Vega Cockpit MVP (enhanced batch)
 import os
 import time
 from datetime import datetime
+from datetime import datetime as dt
 import requests
 import streamlit as st
 import pandas as pd
 
-# These helpers come from your local client (private Sheets access)
+# Sheets client (private access via service account, already wired)
 from sheets_client import append_row, read_range, get_sheet
 
 # ---------- App config ----------
@@ -17,14 +18,22 @@ SHEET_ID = os.getenv("GOOGLE_SHEET_ID", "")
 WATCHLIST_TAB = os.getenv("GOOGLE_SHEET_WATCHLIST_TAB", os.getenv("GOOGLE_SHEET_MAIN_TAB", "Watch List"))
 LOG_TAB = os.getenv("GOOGLE_SHEET_LOG_TAB", os.getenv("GOOGLE_SHEET_MAIN_TAB", "TradeLog"))
 POLYGON_KEY = os.getenv("POLYGON_KEY", "")
-RR_TARGET = float(os.getenv("RR_TARGET", "2.0"))
-ALERT_PCT = float(os.getenv("ALERT_PCT", "1.5"))  # % distance to entry considered 'near'
-REFRESH_SECS = int(os.getenv("REFRESH_SECS", "60"))
+
+# Session-scoped tunables (UI adjustable; not persisted to env)
+if "RR_TARGET" not in st.session_state:
+    st.session_state.RR_TARGET = float(os.getenv("RR_TARGET", "2.0"))
+if "ALERT_PCT" not in st.session_state:
+    st.session_state.ALERT_PCT = float(os.getenv("ALERT_PCT", "1.5"))
+if "REFRESH_SECS" not in st.session_state:
+    st.session_state.REFRESH_SECS = int(os.getenv("REFRESH_SECS", "60"))
+
+RR_TARGET = st.session_state.RR_TARGET
+ALERT_PCT = st.session_state.ALERT_PCT
+REFRESH_SECS = st.session_state.REFRESH_SECS
 
 # ---------- Helpers ----------
-@st.cache_data(show_spinner=False, ttl=15)
-def quote(symbol: str, api_key: str):
-    """Last trade price from Polygon; returns None if unavailable."""
+def provider_quote_polygon(symbol: str, api_key: str):
+    """Polygon last trade. Return None on any issue (safe)."""
     if "." in symbol or not api_key:
         return None
     try:
@@ -33,12 +42,14 @@ def quote(symbol: str, api_key: str):
         if r.status_code != 200:
             return None
         data = r.json()
-        if isinstance(data, dict) and isinstance(data.get("results"), dict):
-            p = data["results"].get("p")
-            return float(p) if p is not None else None
+        p = (data or {}).get("results", {}).get("p")
+        return float(p) if p is not None else None
     except Exception:
-        pass
-    return None
+        return None
+
+def quote(symbol: str):
+    """Pluggable price source — today: Polygon."""
+    return provider_quote_polygon(symbol, POLYGON_KEY)
 
 def compute_rr(entry, stop, target):
     try:
@@ -69,6 +80,63 @@ def badge(text, color):
         unsafe_allow_html=True
     )
 
+LOG_HEADERS = ["Timestamp", "Type", "Symbol", "Status", "Notes"]
+
+def ensure_log_headers(ws):
+    """Ensure A1:E1 matches LOG_HEADERS. Offer one-click repair if not."""
+    try:
+        first = ws.get("A1:E1") or []
+        current = first[0] if first else []
+        if [c.strip() for c in current] != LOG_HEADERS:
+            st.warning("TradeLog headers differ from expected. Click to repair.")
+            if st.button("Repair TradeLog headers (A1:E1)"):
+                try:
+                    # Overwrite header row safely
+                    ws.update("A1", [LOG_HEADERS])
+                    st.success("Headers repaired.")
+                except Exception as e:
+                    st.error(f"Header repair failed: {e}")
+            return False
+        return True
+    except Exception as e:
+        st.error(f"Header check failed: {e}")
+        return False
+
+def get_log_df_last(ws, limit=10):
+    """Fetch A1:E, normalize rows to header length, return last N as DataFrame."""
+    values = ws.get("A1:E1000") or []
+    if not values:
+        return pd.DataFrame(columns=LOG_HEADERS)
+    header = values[0]
+    body = values[1:]
+    norm = []
+    for r in body:
+        if len(r) < len(header):
+            r = r + [""] * (len(header) - len(r))
+        elif len(r) > len(header):
+            r = r[:len(header)]
+        norm.append(r)
+    if not norm:
+        return pd.DataFrame(columns=header)
+    df = pd.DataFrame(norm, columns=header)
+    return df.tail(limit)
+
+def parse_ts(s: str):
+    # Accept "YYYY-MM-DD HH:MM:SS" optionally with " UTC"
+    try:
+        s = s.replace(" UTC", "")
+        return dt.strptime(s, "%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return None
+
+def append_log_row_safe(symbol="", kind="Journal", status="Open", notes=""):
+    ts = time.strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        append_row(SHEET_ID, LOG_TAB, [ts, kind, symbol, status, notes])
+        return True, None
+    except Exception as e:
+        return False, str(e)
+
 # ---------- Sidebar ----------
 with st.sidebar:
     auto = st.toggle(f"Auto-refresh (every {REFRESH_SECS}s)", value=False, key="auto_refresh")
@@ -78,9 +146,14 @@ with st.sidebar:
         st.code(f"WATCHLIST_TAB={WATCHLIST_TAB}")
         st.code(f"LOG_TAB={LOG_TAB}")
         st.code(f"POLYGON_KEY={'set' if POLYGON_KEY else 'missing'}")
-        st.code(f"RR_TARGET={RR_TARGET}  ALERT_PCT={ALERT_PCT}%")
     else:
         st.error("Missing GOOGLE_SHEET_ID")
+
+    st.divider()
+    st.caption("Session tuning (not persisted)")
+    st.session_state.RR_TARGET = st.number_input("RR_TARGET", 0.5, 10.0, st.session_state.RR_TARGET, 0.1)
+    st.session_state.ALERT_PCT = st.number_input("ALERT_PCT (%)", 0.1, 10.0, st.session_state.ALERT_PCT, 0.1)
+    st.session_state.REFRESH_SECS = st.number_input("Auto-Refresh (s)", 5, 300, st.session_state.REFRESH_SECS, 5)
 
 if auto:
     st.experimental_rerun()
@@ -100,17 +173,28 @@ with tab1:
     st.subheader("Health checks")
     ok = True
     try:
-        _ = get_sheet(SHEET_ID, WATCHLIST_TAB)
+        ws_watch = get_sheet(SHEET_ID, WATCHLIST_TAB)
         st.success(f"✅ Connected to Watchlist tab: {WATCHLIST_TAB}")
     except Exception as e:
         ok = False
         st.error(f"❌ Watchlist access failed: {e}")
+        with st.expander("Details"):
+            st.exception(e)
     try:
-        _ = get_sheet(SHEET_ID, LOG_TAB)
+        ws_log = get_sheet(SHEET_ID, LOG_TAB)
         st.success(f"✅ Connected to Log tab: {LOG_TAB}")
+        # Show active gid if available
+        try:
+            gid = getattr(ws_log, "id", None)
+            if gid:
+                st.caption(f"Log gid: {gid}")
+        except Exception:
+            pass
     except Exception as e:
         ok = False
         st.error(f"❌ Log access failed: {e}")
+        with st.expander("Details"):
+            st.exception(e)
 
     st.write("—")
     st.write(f"Polygon key: {'✅ set' if POLYGON_KEY else '⚠️ missing'}")
@@ -135,8 +219,8 @@ with tab2:
             entry = row[2] if len(row) > 2 else ""
             stopv = row[3] if len(row) > 3 else ""
 
-            price  = quote(tkr, POLYGON_KEY)
-            target = target_from_rr(entry, stopv, RR_TARGET) if entry and stopv else None
+            price  = quote(tkr)
+            target = target_from_rr(entry, stopv, st.session_state.RR_TARGET) if entry and stopv else None
             rr     = compute_rr(entry, stopv, target) if target else None
 
             cols = st.columns([1.2, 2.5, 1, 1, 1.2, 1.6])
@@ -147,7 +231,9 @@ with tab2:
             cols[4].metric("Price", f"{price:.2f}" if price is not None else "—")
             cols[5].metric("R/R→Target", rr if rr is not None else "—")
 
-            # Signals
+            # Signals + quick actions
+            template_note = ""
+            flagged = False
             if price is not None:
                 try:
                     e_val = float(entry) if entry else None
@@ -155,89 +241,167 @@ with tab2:
                 except Exception:
                     e_val = s_val = None
 
-                flagged = False
                 if e_val is not None:
                     dist = distance_pct(e_val, price)  # % above/below entry
-                    if dist is not None and abs(dist) <= ALERT_PCT:
+                    if dist is not None and abs(dist) <= st.session_state.ALERT_PCT:
                         badge(f"{abs(dist)}% to entry", "#EAB308"); flagged = True
+                        template_note = "Near entry"
                     if price >= e_val:
                         badge("Entry hit", "#22C55E"); flagged = True
+                        template_note = "Entry hit"
                 if s_val is not None and price <= s_val:
                     badge("At/under stop", "#EF4444"); flagged = True
-                if not flagged:
-                    badge("Watching", "#3B82F6")
+                    template_note = "At/under stop"
+            if not flagged:
+                badge("Watching", "#3B82F6")
 
-            # Quick log (per-ticker)
-            with st.expander("Quick log"):
-                kind   = st.selectbox("Type",   ["Journal", "Health", "Note"], key=f"k_{tkr}")
-                status = st.selectbox("Status", ["Open", "Closed", "Info"],   key=f"s_{tkr}")
-                note   = st.text_input("Notes", value=f"{tkr}: {strat}")
+            # Quick log and quick actions
+            with st.expander("Quick log / actions"):
+                c1, c2, c3, c4 = st.columns(4)
+                with c1:
+                    if st.button("Open", key=f"open_{tkr}"):
+                        ok_, err = append_log_row_safe(symbol=tkr, kind="Trade", status="Open", notes=template_note or "Opened")
+                        st.success("Logged Open.") if ok_ else st.error(err or "Append failed")
+                with c2:
+                    if st.button("Closed", key=f"closed_{tkr}"):
+                        ok_, err = append_log_row_safe(symbol=tkr, kind="Trade", status="Closed", notes=template_note or "Closed")
+                        st.success("Logged Closed.") if ok_ else st.error(err or "Append failed")
+                with c3:
+                    if st.button("Entry hit", key=f"hit_{tkr}"):
+                        ok_, err = append_log_row_safe(symbol=tkr, kind="Trade", status="Info", notes="Entry hit")
+                        st.success("Logged Entry hit.") if ok_ else st.error(err or "Append failed")
+                with c4:
+                    if st.button("Near entry", key=f"near_{tkr}"):
+                        ok_, err = append_log_row_safe(symbol=tkr, kind="Trade", status="Info", notes="Near entry")
+                        st.success("Logged Near entry.") if ok_ else st.error(err or "Append failed")
+
+                kind   = st.selectbox("Type",   ["Journal", "Health", "Trade", "Note"], key=f"k_{tkr}")
+                status = st.selectbox("Status", ["Open", "Closed", "Info", "Alert"],   key=f"s_{tkr}")
+                note   = st.text_input("Notes", value=f"{template_note or (tkr + ': ' + (strat or ''))}")
                 if st.button(f"Append to {LOG_TAB}", key=f"btn_{tkr}"):
-                    ts = time.strftime("%Y-%m-%d %H:%M:%S")
-                    try:
-                        # Writes 5 fields → matches logs header
-                        append_row(SHEET_ID, LOG_TAB, [ts, kind, tkr, status, note])
-                        st.success("Logged.")
-                    except Exception as e:
-                        st.error(f"Append failed: {e}")
+                    ok_, err = append_log_row_safe(symbol=tkr, kind=kind, status=status, notes=note)
+                    st.success("Logged.") if ok_ else st.error(err or "Append failed")
             st.divider()
 
-# ---------- Journal / Health Log (free-form) ----------
+# ---------- Journal / Health Log ----------
 with tab3:
     st.subheader("Quick Log → Google Sheet")
     with st.form("quicklog"):
         col1, col2 = st.columns(2)
         with col1:
-            kind   = st.selectbox("Type",   ["Journal", "Health", "Note"], index=0)
+            kind   = st.selectbox("Type",   ["Journal", "Health", "Trade", "Note"], index=0)
             symbol = st.text_input("Symbol (optional)")
         with col2:
-            status = st.selectbox("Status", ["Open", "Closed", "Info"], index=0)
-        notes = st.text_area("Notes", placeholder="What changed, why it matters, next action…")
-        submitted = st.form_submit_button(f"Append Row to '{LOG_TAB}'")
-        if submitted:
-            try:
-                ts = time.strftime("%Y-%m-%d %H:%M:%S")
-                # Same 5 fields → consistent with Logs view
-                append_row(SHEET_ID, LOG_TAB, [ts, kind, symbol, status, notes])
-                st.success(f"Row appended to {LOG_TAB}.")
-            except Exception as e:
-                st.error(f"Append failed: {e}")
+            status = st.selectbox("Status", ["Open", "Closed", "Info", "Alert"], index=0)
+        notes = st.text_area("Notes", placeholder="What changed, why it matters, next action…", height=140)
 
-# ---------- Logs (normalized so Pandas never errors) ----------
+        left, right = st.columns([1, 2])
+        with left:
+            submitted = st.form_submit_button(f"Append Row to '{LOG_TAB}'")
+        with right:
+            if st.form_submit_button("➕ Add Test Log Row"):
+                ok_, err = append_log_row_safe(symbol="SPY", kind="Journal", status="Info", notes="Smoke test")
+                st.success("Inserted a test row.") if ok_ else st.error(err or "Append failed")
+
+        if submitted:
+            ok_, err = append_log_row_safe(symbol=symbol.strip(), kind=kind, status=status, notes=notes.strip())
+            st.success(f"Row appended to {LOG_TAB}.") if ok_ else st.error(err or "Append failed")
+
+# ---------- Logs (filters, search, export, header guard) ----------
 with tab4:
-    st.subheader(f"Recent Log Rows from '{LOG_TAB}' (last 10)")
+    st.subheader(f"Recent Log Rows from '{LOG_TAB}' (filterable)")
+
     try:
         ws = get_sheet(SHEET_ID, LOG_TAB)
-        values = ws.get("A1:E200") or []  # expecting 5 columns: A..E
-        header = values[0] if values else []
-        body   = values[1:] if len(values) > 1 else []
 
-        # Normalize each row to header length (pad/trim)
-        normalized = []
-        for r in body:
-            if len(r) < len(header):
-                r = r + [""] * (len(header) - len(r))
-            elif len(r) > len(header):
-                r = r[:len(header)]
-            normalized.append(r)
+        # Header guard + optional repair
+        ensure_log_headers(ws)
 
-        if header and normalized:
-            df = pd.DataFrame(normalized[-10:], columns=header)
-            st.dataframe(df, use_container_width=True, hide_index=True)
+        # Base DataFrame (up to 1000 rows, normalized)
+        df_all = get_log_df_last(ws, limit=1000)
+
+        # Parse timestamps for filtering
+        if "Timestamp" in df_all.columns:
+            df_all["__ts"] = df_all["Timestamp"].apply(parse_ts)
         else:
-            st.info("No log rows yet.")
+            df_all["__ts"] = None
+
+        # Controls: date range, type, status, symbol, search
+        c1, c2, c3, c4, c5 = st.columns([1.4, 1.4, 1.2, 1.2, 2.8])
+        with c1:
+            date_from = st.date_input("From", value=None)
+        with c2:
+            date_to = st.date_input("To", value=None)
+        with c3:
+            type_filter = st.multiselect("Type", sorted([x for x in df_all["Type"].dropna().unique() if x]), default=[])
+        with c4:
+            status_filter = st.multiselect("Status", sorted([x for x in df_all["Status"].dropna().unique() if x]), default=[])
+        with c5:
+            sym_filter = st.text_input("Symbol filter", value="").strip().upper()
+        search = st.text_input("Search text", value="").strip()
+
+        df = df_all.copy()
+
+        # Date range filter
+        if date_from:
+            df = df[(df["__ts"].notna()) & (df["__ts"] >= dt.combine(date_from, dt.min.time()))]
+        if date_to:
+            df = df[(df["__ts"].notna()) & (df["__ts"] <= dt.combine(date_to, dt.max.time()))]
+
+        # Type / Status filters
+        if type_filter:
+            df = df[df["Type"].isin(type_filter)]
+        if status_filter:
+            df = df[df["Status"].isin(status_filter)]
+
+        # Symbol filter
+        if sym_filter:
+            df = df[df["Symbol"].fillna("").str.upper().str.contains(sym_filter)]
+
+        # Text search across columns
+        if search:
+            mask = (
+                df["Notes"].fillna("").str.contains(search, case=False, na=False) |
+                df["Symbol"].fillna("").str.contains(search, case=False, na=False) |
+                df["Type"].fillna("").str.contains(search, case=False, na=False) |
+                df["Status"].fillna("").str.contains(search, case=False, na=False)
+            )
+            df = df[mask]
+
+        # Final display (last 10 by timestamp desc if available)
+        if df.empty:
+            st.info("No matching rows.")
+        else:
+            if df["__ts"].notna().any():
+                df = df.sort_values("__ts").tail(10)
+            else:
+                df = df.tail(10)
+            view = df[LOG_HEADERS]
+            st.dataframe(view, use_container_width=True, hide_index=True)
+
+        # Export last 100 (post-filter) to CSV
+        exp_df = df_all.copy()
+        if exp_df["__ts"].notna().any():
+            exp_df = exp_df.sort_values("__ts").tail(100)
+        else:
+            exp_df = exp_df.tail(100)
+        exp_csv = exp_df[LOG_HEADERS].to_csv(index=False).encode("utf-8")
+        st.download_button("Download last 100 as CSV", exp_csv, file_name="tradelog_last_100.csv")
+
     except Exception as e:
         st.error(f"Log view error: {e}")
+        with st.expander("Details"):
+            st.exception(e)
 
-# ---------- Settings (for visibility) ----------
+# ---------- Settings ----------
 with tab5:
     st.subheader("Runtime settings")
     st.write({
         "GOOGLE_SHEET_ID": (SHEET_ID[:6] + "…" + SHEET_ID[-4:]) if SHEET_ID else "",
         "WATCHLIST_TAB": WATCHLIST_TAB,
         "LOG_TAB": LOG_TAB,
-        "RR_TARGET": RR_TARGET,
-        "ALERT_PCT": ALERT_PCT,
-        "REFRESH_SECS": REFRESH_SECS,
+        "RR_TARGET (session)": st.session_state.RR_TARGET,
+        "ALERT_PCT (session)": st.session_state.ALERT_PCT,
+        "REFRESH_SECS (session)": st.session_state.REFRESH_SECS,
         "POLYGON_KEY_SET": bool(POLYGON_KEY),
     })
