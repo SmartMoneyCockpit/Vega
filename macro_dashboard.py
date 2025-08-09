@@ -3,7 +3,6 @@ import os
 import io
 import pandas as pd
 import streamlit as st
-from datetime import datetime
 
 DATA_DIR = "data"
 CAL_FILE = os.path.join(DATA_DIR, "macro_calendar.csv")

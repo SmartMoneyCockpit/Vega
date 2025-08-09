@@ -8,14 +8,9 @@ from datetime import datetime, timedelta, timezone
 from dateutil.relativedelta import relativedelta
 import streamlit as st
 
-# Accept either env var name so you don't have to change Render
 POLY_KEY = os.getenv("POLYGON_API_KEY") or os.getenv("POLYGON_KEY")
-
-# Google Sheets config
 SHEETS_SPREADSHEET_ID = os.getenv("SHEETS_SPREADSHEET_ID")
 SHEETS_WORKSHEET = os.getenv("SHEETS_WORKSHEET_NAME", "tradeability_log")
-
-# ----------- Data Fetchers -----------
 
 def _poly_range_url(ticker: str, mult: int, span: str, start_dt, end_dt) -> str:
     return (
@@ -44,8 +39,6 @@ def fetch_polygon(ticker: str, timeframe: str) -> pd.DataFrame:
     df["date"] = pd.to_datetime(df["t"], unit="ms", utc=True)
     df.rename(columns={"o":"open","h":"high","l":"low","c":"close","v":"volume"}, inplace=True)
     return df.set_index("date")[["open","high","low","close","volume"]].sort_index()
-
-# ----------- Indicators / Scoring -----------
 
 def atr(df: pd.DataFrame, n: int = 14) -> pd.Series:
     h, l, c = df["high"], df["low"], df["close"]
@@ -89,8 +82,6 @@ def score_tradeability(df: pd.DataFrame) -> dict:
         "last_date": df.index[-1].astimezone(timezone.utc).isoformat(),
     }
 
-# ----------- Journal -----------
-
 LOG_DIR = "data"
 LOG_FILE = os.path.join(LOG_DIR, "tradeability_log.csv")
 
@@ -115,13 +106,11 @@ def try_sheets_append(record: dict):
     if not SHEETS_SPREADSHEET_ID:
         return "sheets_not_configured"
     try:
-        import sheets_sync  # local helper
+        import sheets_sync
         sheets_sync.append_row(SHEETS_SPREADSHEET_ID, SHEETS_WORKSHEET, record)
         return "ok"
     except Exception as e:
         return f"error: {e}"
-
-# ----------- UI -----------
 
 def run():
     st.header("Vega – Tradeability Meter")
@@ -136,9 +125,8 @@ def run():
         with col3:
             as_of = st.date_input("As of (optional)", None)
 
-    # Quick test button for Google Sheets sync
+    # Sheets quick test
     with st.expander("Google Sheets • connection test"):
-        st.write("Click to push a test row to your Google Sheet (uses SHEETS_SPREADSHEET_ID / SHEETS_WORKSHEET_NAME).")
         if st.button("Send test row to Google Sheet"):
             test_rec = {
                 "ts_utc": datetime.now(timezone.utc).isoformat(),
@@ -153,12 +141,7 @@ def run():
                 "note": "Connectivity check from Vega",
             }
             status = try_sheets_append(test_rec)
-            if status == "ok":
-                st.success("Test row sent to Google Sheets ✅")
-            elif status == "sheets_not_configured":
-                st.warning("Sheets not configured. Set SHEETS_SPREADSHEET_ID and upload your service account key.")
-            else:
-                st.error(f"Sheets error: {status}")
+            st.success("Test row sent ✅") if status == "ok" else st.error(status)
 
     st.divider()
 
@@ -192,12 +175,7 @@ def run():
             "quality": metrics["quality"],
         }
         append_journal(rec)
-
-        sync_status = try_sheets_append(rec)
-        if sync_status == "ok":
-            st.caption("☁️ Journal synced to Google Sheets.")
-        elif sync_status.startswith("error"):
-            st.caption(f"⚠️ Sheets sync error: {sync_status}")
+        _ = try_sheets_append(rec)
 
         with st.expander("Journal (latest scans)"):
             jdf = load_journal(500)

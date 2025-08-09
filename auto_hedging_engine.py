@@ -21,21 +21,15 @@ def fetch_polygon(ticker: str, tf: str):
         raise RuntimeError("Missing Polygon API key (set POLYGON_API_KEY or POLYGON_KEY in Render).")
     ticker = ticker.upper().strip()
     now = datetime.now(timezone.utc)
-
     if tf == "1h":
-        mult, span = 1, "hour"
-        start = now - timedelta(days=60)
+        mult, span = 1, "hour"; start = now - timedelta(days=60)
     else:
-        mult, span = 1, "day"
-        start = now - relativedelta(months=9)
-
+        mult, span = 1, "day"; start = now - relativedelta(months=9)
     url = _poly_url(ticker, mult, span, start, now)
-    r = requests.get(url, timeout=20)
-    r.raise_for_status()
+    r = requests.get(url, timeout=20); r.raise_for_status()
     data = r.json().get("results", [])
     if not data:
         raise RuntimeError(f"No data for {ticker} ({tf}).")
-
     df = pd.DataFrame(data)
     df["date"] = pd.to_datetime(df["t"], unit="ms", utc=True)
     df.rename(columns={"o":"open","h":"high","l":"low","c":"close","v":"volume"}, inplace=True)
@@ -88,11 +82,9 @@ def trigger_price(last, sma20, atr_pct, inverse_multiple):
     idx_trigger = max(last - drop, sma20)
     return round(idx_trigger, 2)
 
-MAP = {
-    "SPY": {"inverse":"SPXU", "multiple": -3},
-    "QQQ": {"inverse":"SQQQ", "multiple": -3},
-    "IWM": {"inverse":"RWM",  "multiple": -1},
-}
+MAP = {"SPY":{"inverse":"SPXU","multiple":-3},
+       "QQQ":{"inverse":"SQQQ","multiple":-3},
+       "IWM":{"inverse":"RWM","multiple":-1},}
 
 def run():
     st.header("Auto-Hedging Engine")
@@ -123,20 +115,9 @@ def run():
                     st.info(f"Index alert: Enter hedge if **{sym}** closes < **{trig}** (≈ half ATR% below price/20SMA).")
                 else:
                     st.info("Trigger pending (need more data for SMA/ATR).")
-                results[sym] = dict(
-                    index=sym,
-                    inverse=inv,
-                    last=bits["last"],
-                    regime=bits["regime"],
-                    trend_bear=bits["trend_bear"],
-                    atr_pct=bits["atr_pct"],
-                    vol_pct=bits["vol_pct"],
-                    severity=sev,
-                    hedge_size_pct=int(size*100),
-                    index_trigger=trig,
-                    ts=bits["last_ts"],
-                    timeframe=tf,
-                )
+                results[sym] = dict(index=sym,inverse=inv,last=bits["last"],regime=bits["regime"],
+                                    trend_bear=bits["trend_bear"],atr_pct=bits["atr_pct"],vol_pct=bits["vol_pct"],
+                                    severity=sev,hedge_size_pct=int(size*100),index_trigger=trig,ts=bits["last_ts"],timeframe=tf)
             except Exception as e:
                 st.error(f"{sym}: {e}")
     st.divider()
