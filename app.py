@@ -1,66 +1,112 @@
-# app.py — Vega Cockpit (compact)
-import os, time, requests, pandas as pd
+# app.py — Vega Cockpit (compact + persistence + backup/import + styling)
+import os, time, io, requests, pandas as pd
 from datetime import datetime as dt
 import streamlit as st
 from sheets_client import append_row, read_range, get_sheet
+from config_client import get_config_dict, set_config_value
 
 st.set_page_config(page_title="Vega Cockpit — MVP", layout="wide")
 
-# --- Env / session ---
+# --- Inline CSS: dark-friendly & compact spacing ---
+st.markdown("""
+<style>
+body, .stApp { font-family: ui-sans-serif, system-ui, -apple-system; }
+.block-container { padding-top: 1rem; padding-bottom: 3rem; }
+[data-testid="stMetricValue"] { font-size: 1.1rem; }
+[data-testid="stMetricDelta"] { font-size: 0.9rem; }
+table { font-size: 0.92rem; }
+</style>
+""", unsafe_allow_html=True)
+
+# --- Env ---
 SHEET_ID = os.getenv("GOOGLE_SHEET_ID", "")
 WATCHLIST_TAB = os.getenv("GOOGLE_SHEET_WATCHLIST_TAB", os.getenv("GOOGLE_SHEET_MAIN_TAB", "Watch List"))
 LOG_TAB = os.getenv("GOOGLE_SHEET_LOG_TAB", os.getenv("GOOGLE_SHEET_MAIN_TAB", "TradeLog"))
 POLYGON_KEY = os.getenv("POLYGON_KEY", "")
-for k, v in dict(RR_TARGET=float(os.getenv("RR_TARGET", "2.0")),
-                 ALERT_PCT=float(os.getenv("ALERT_PCT", "1.5")),
-                 REFRESH_SECS=int(os.getenv("REFRESH_SECS", "60"))).items():
+
+# --- Persistent settings (from sheet) with session defaults ---
+_cfg = {}
+try:
+    _cfg = get_config_dict()
+except Exception as e:
+    st.sidebar.warning(f"Config read failed (using env defaults): {e}")
+
+def _cfg_float(key, default):
+    try: return float(_cfg.get(key, os.getenv(key, default)))
+    except: return float(default)
+
+def _cfg_int(key, default):
+    try: return int(float(_cfg.get(key, os.getenv(key, default))))
+    except: return int(default)
+
+for k, v in dict(
+    RR_TARGET=_cfg_float("RR_TARGET", "2.0"),
+    ALERT_PCT=_cfg_float("ALERT_PCT", "1.5"),
+    REFRESH_SECS=_cfg_int("REFRESH_SECS", "60"),
+).items():
     st.session_state.setdefault(k, v)
 
 LOG_HEADERS = ["Timestamp", "Type", "Symbol", "Status", "Notes"]
 
 # --- Small helpers ---
 def badge(text, color): st.markdown(f"<span style='background:{color};color:#fff;padding:2px 8px;border-radius:12px;font-size:12px'>{text}</span>", unsafe_allow_html=True)
-def parse_ts(s): 
-    try: return dt.strptime(s.replace(" UTC",""), "%Y-%m-%d %H:%M:%S")
-    except: return None
-def quote(symbol):
-    if "." in symbol or not POLYGON_KEY: return None
+
+@st.cache_data(show_spinner=False, ttl=15)
+def quote(symbol, key):
+    if "." in symbol or not key: return None
     try:
-        r = requests.get(f"https://api.polygon.io/v2/last/trade/{symbol.upper()}?apiKey={POLYGON_KEY}", timeout=6)
+        r = requests.get(f"https://api.polygon.io/v2/last/trade/{symbol.upper()}?apiKey={key}", timeout=6)
         p = (r.json() or {}).get("results",{}).get("p") if r.status_code==200 else None
         return float(p) if p is not None else None
     except: return None
+
 def target_from_rr(entry, stop, rr):
     try: e, s = float(entry), float(stop); return round(e + rr*(e-s), 2)
     except: return None
+
 def compute_rr(entry, stop, target):
     try: e,s,t = float(entry),float(stop),float(target); r=abs(e-s); return round(abs(t-e)/r,2) if r>0 else None
     except: return None
+
 def append_log(symbol="", kind="Journal", status="Open", notes=""):
-    ts = dt.utcnow().strftime("%Y-%m-%d %H:%M:%S"); append_row(SHEET_ID, LOG_TAB, [ts, kind, symbol, status, notes])
+    ts = dt.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    append_row(SHEET_ID, LOG_TAB, [ts, kind, symbol, status, notes])
 
 def ensure_headers(ws):
     cur = [c.strip() for c in ((ws.get("A1:E1") or [[]])[0])]
     if cur != LOG_HEADERS: ws.update("A1", [LOG_HEADERS])
 
 def fetch_log_df(ws, limit=1000):
-    vals = ws.get("A1:E1000") or []
+    vals = ws.get("A1:E100000") or []
     if not vals: return pd.DataFrame(columns=LOG_HEADERS)
     hdr, rows = vals[0], vals[1:]
     norm = [(r + [""]*(len(hdr)-len(r)))[:len(hdr)] for r in rows]
     df = pd.DataFrame(norm, columns=hdr)
     return df.tail(limit)
 
+def parse_ts(s): 
+    try: return dt.strptime(s.replace(" UTC",""), "%Y-%m-%d %H:%M:%S")
+    except: return None
+
 # --- Sidebar ---
 with st.sidebar:
     auto = st.toggle(f"Auto-refresh (every {st.session_state.REFRESH_SECS}s)", False)
-    st.caption("Env check")
+    st.caption("Env / Config")
     st.code(f"SHEET_ID={SHEET_ID[:6]}…{SHEET_ID[-4:]}" if SHEET_ID else "Missing GOOGLE_SHEET_ID")
     st.code(f"WATCHLIST_TAB={WATCHLIST_TAB}"); st.code(f"LOG_TAB={LOG_TAB}")
     st.code(f"POLYGON_KEY={'set' if POLYGON_KEY else 'missing'}")
-    st.divider(); st.caption("Session tuning")
-    for k, lbl, a,b,step in [("RR_TARGET","RR_TARGET",0.5,10.0,0.1), ("ALERT_PCT","ALERT_PCT (%)",0.1,10.0,0.1), ("REFRESH_SECS","Auto-Refresh (s)",5,300,5)]:
-        st.session_state[k] = st.number_input(lbl, a,b, st.session_state[k], step)
+    st.divider(); st.caption("Session tuning (persist to Config)")
+    rrt = st.number_input("RR_TARGET", 0.5, 10.0, st.session_state.RR_TARGET, 0.1)
+    alp = st.number_input("ALERT_PCT (%)", 0.1, 10.0, st.session_state.ALERT_PCT, 0.1)
+    ars = st.number_input("Auto-Refresh (s)", 5, 300, st.session_state.REFRESH_SECS, 5)
+    if st.button("Save to Config"):
+        try:
+            set_config_value("RR_TARGET", str(rrt)); set_config_value("ALERT_PCT", str(alp)); set_config_value("REFRESH_SECS", str(ars))
+            st.session_state.RR_TARGET, st.session_state.ALERT_PCT, st.session_state.REFRESH_SECS = rrt, alp, ars
+            st.success("Saved to Config ✅")
+        except Exception as e:
+            st.error(f"Save failed: {e}")
+
 if auto: st.experimental_rerun()
 
 st.title("Vega Cockpit — Day-1 MVP")
@@ -87,7 +133,7 @@ def render_watch_row(row):
     tkr = (row[0] if len(row)>0 else "").strip().upper()
     if not tkr: return
     strat = row[1] if len(row)>1 else ""; entry = row[2] if len(row)>2 else ""; stopv = row[3] if len(row)>3 else ""
-    price = quote(tkr); tgt = target_from_rr(entry, stopv, st.session_state.RR_TARGET) if entry and stopv else None
+    price = quote(tkr, POLYGON_KEY); tgt = target_from_rr(entry, stopv, st.session_state.RR_TARGET) if entry and stopv else None
     rr = compute_rr(entry, stopv, tgt) if tgt else None
     c = st.columns([1.2,2.5,1,1,1.2,1.6])
     c[0].metric("Ticker",tkr); c[1].write(f"**Strategy**\n{strat or '—'}")
@@ -100,8 +146,8 @@ def render_watch_row(row):
     except: e_val=s_val=None
     if price is not None:
         if e_val is not None:
-            dist = (lambda a,b: round(100*(a-b)/a,2)) (e_val, price)
-            if dist is not None and abs(dist) <= st.session_state.ALERT_PCT: badge(f"{abs(dist)}% to entry","#EAB308"); flagged=True; tpl="Near entry"
+            dist = round(100*(e_val-price)/e_val,2)
+            if abs(dist) <= st.session_state.ALERT_PCT: badge(f"{abs(dist)}% to entry","#EAB308"); flagged=True; tpl="Near entry"
             if price >= e_val: badge("Entry hit","#22C55E"); flagged=True; tpl="Entry hit"
         if s_val is not None and price <= s_val: badge("At/under stop","#EF4444"); flagged=True; tpl="At/under stop"
     if not flagged: badge("Watching","#3B82F6")
@@ -151,12 +197,12 @@ with tab3:
             if test: append_log("SPY","Journal","Info","Smoke test"); st.success("Inserted test row.")
         except Exception as e: st.error(f"Append failed: {e}")
 
-# --- Logs (filters, search, export) ---
+# --- Logs (filters, search, export, backup/import) ---
 with tab4:
     st.subheader(f"Recent Log Rows from '{LOG_TAB}' (filterable)")
     try:
         ws = get_sheet(SHEET_ID, LOG_TAB); ensure_headers(ws)
-        df_all = fetch_log_df(ws, 1000)
+        df_all = fetch_log_df(ws, 5000)
         df_all["__ts"] = df_all["Timestamp"].apply(parse_ts) if "Timestamp" in df_all.columns else None
 
         c1,c2,c3,c4,c5 = st.columns([1.4,1.4,1.2,1.2,2.8])
@@ -184,8 +230,42 @@ with tab4:
             df = df.sort_values("__ts").tail(10) if df["__ts"].notna().any() else df.tail(10)
             st.dataframe(df[LOG_HEADERS], use_container_width=True, hide_index=True)
 
+        # Export last 100 & Full backup (CSV)
         exp = (df_all.sort_values("__ts").tail(100) if df_all["__ts"].notna().any() else df_all.tail(100))[LOG_HEADERS]
         st.download_button("Download last 100 as CSV", exp.to_csv(index=False).encode("utf-8"), "tradelog_last_100.csv")
+        full_csv = df_all[LOG_HEADERS].to_csv(index=False).encode("utf-8")
+        st.download_button("Download FULL log (CSV)", full_csv, "tradelog_full.csv")
+
+        # Backup to a new sheet tab (suffix date)
+        if st.button("Backup TradeLog to new tab"):
+            try:
+                sh = ws.spreadsheet
+                bname = f"{LOG_TAB}_Backup_{dt.utcnow():%Y%m%d}"
+                new_ws = sh.add_worksheet(title=bname, rows=len(df_all)+5, cols=5)
+                new_ws.update("A1", [LOG_HEADERS])
+                if not df_all.empty:
+                    new_ws.update("A2", df_all[LOG_HEADERS].values.tolist())
+                st.success(f"Backup created: {bname}")
+            except Exception as e:
+                st.error(f"Backup failed: {e}")
+
+        # Import (append) from CSV
+        up = st.file_uploader("Import CSV to append (Timestamp,Type,Symbol,Status,Notes)", type=["csv"])
+        if up:
+            try:
+                imp = pd.read_csv(up).fillna("")
+                missing_cols = [c for c in LOG_HEADERS if c not in imp.columns]
+                if missing_cols:
+                    st.error(f"CSV missing columns: {missing_cols}")
+                else:
+                    rows = imp[LOG_HEADERS].values.tolist()
+                    # chunk append to avoid API limits
+                    for i in range(0, len(rows), 200):
+                        ws.append_rows(rows[i:i+200], value_input_option="USER_ENTERED")
+                    st.success(f"Imported {len(rows)} rows.")
+            except Exception as e:
+                st.error(f"Import failed: {e}")
+
     except Exception as e:
         st.error(f"Log view error: {e}"); st.expander("Details").exception(e)
 
