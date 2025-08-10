@@ -1,4 +1,3 @@
-
 # sheets_client.py — safe, low-quota Google Sheets client (Render-ready)
 import os, json, time, random
 import gspread
@@ -6,7 +5,7 @@ from gspread.exceptions import APIError
 from google.oauth2.service_account import Credentials
 
 # ---------------- Env ----------------
-SHEET_ID = os.getenv("SHEET_ID", "").strip()
+SHEET_ID = (os.getenv("SHEET_ID") or os.getenv("GOOGLE_SHEET_ID") or "").strip()
 MIN_INTERVAL = float(os.getenv("SHEETS_MIN_INTERVAL", "1.2"))  # ~50 reads/min
 TTL_CONFIG   = float(os.getenv("TTL_CONFIG", "45"))            # seconds
 TTL_WATCH    = float(os.getenv("TTL_WATCH", "30"))
@@ -70,7 +69,7 @@ def _build_creds():
             "type": os.getenv("SA_TYPE"),
             "project_id": os.getenv("SA_PROJECT_ID"),
             "private_key_id": os.getenv("SA_PRIVATE_KEY_ID"),
-            "private_key": os.getenv("SA_PRIVATE_KEY").replace("\\n","\n"),
+            "private_key": os.getenv("SA_PRIVATE_KEY").replace("\\n","\\n"),
             "client_email": os.getenv("SA_CLIENT_EMAIL"),
             "client_id": os.getenv("SA_CLIENT_ID"),
             "auth_uri": os.getenv("SA_AUTH_URI"),
@@ -78,6 +77,8 @@ def _build_creds():
             "auth_provider_x509_cert_url": os.getenv("SA_AUTH_PROVIDER_X509_CERT_URL"),
             "client_x509_cert_url": os.getenv("SA_CLIENT_X509_CERT_URL"),
         }
+        # Fix private key escaped newlines
+        info["private_key"] = info["private_key"].replace("\\n", "\n")
         return Credentials.from_service_account_info(info, scopes=scopes)
 
     raise RuntimeError(
@@ -124,13 +125,13 @@ def read_config():
 
 def read_watchlist():
     """Returns rows from Watch List!A1:Z1000 (adjust TTL via TTL_WATCH)."""
-    # We can't read the tab name from Config until we can open the sheet, so we default here.
     tab = "Watch List"
     return get_cached("watch", TTL_WATCH, lambda: batch_get([f"{tab}!A1:Z1000"])[0])
 
-def append_trade_log(row_values):
-    """Append a single row to TradeLog (USER_ENTERED)."""
-    return _with_backoff(ws("TradeLog").append_row, row_values, value_input_option="USER_ENTERED")
+def append_trade_log(row_values, tab_name=None):
+    """Append a single row to TradeLog (or a provided tab) with USER_ENTERED semantics."""
+    target = tab_name or "TradeLog"
+    return _with_backoff(ws(target).append_row, row_values, value_input_option="USER_ENTERED")
 
 # ---------------- Compatibility shims (old API names) ----------------
 def get_sheet(tab_name: str):
@@ -150,3 +151,44 @@ def write_range(a1_range: str, values):
         tab_name, rng = None, a1_range
     target_ws = ws(tab_name) if tab_name else _client_spreadsheet().get_worksheet(0)
     return _with_backoff(target_ws.update, rng, values, value_input_option="USER_ENTERED")
+
+# ---------------- Bootstrap (create tabs, headers, config) ----------------
+def bootstrap_sheet(watch_tab=None, log_tab=None):
+    """
+    Idempotent setup for your Google Sheet.
+    - Creates Config, Watch List, TradeLog if missing
+    - Adds headers
+    - Seeds Config with basic keys
+    """
+    ss = _client_spreadsheet()
+    names = {w.title for w in ss.worksheets()}
+
+    # Resolve tab names
+    watch_tab = watch_tab or os.getenv("GOOGLE_SHEET_MAIN_TAB") or "Watch List"
+    log_tab   = log_tab   or os.getenv("GOOGLE_SHEET_LOG_TAB")  or "TradeLog"
+
+    # Create missing tabs
+    if "Config" not in names:
+        _with_backoff(ss.add_worksheet, title="Config", rows=200, cols=26)
+    if watch_tab not in names:
+        _with_backoff(ss.add_worksheet, title=watch_tab, rows=2000, cols=26)
+    if log_tab not in names:
+        _with_backoff(ss.add_worksheet, title=log_tab, rows=2000, cols=26)
+
+    # Headers + seed config
+    _with_backoff(ws(watch_tab).update, "A1:E1", [["Symbol","Side","Entry","Stop","Note"]])
+    _with_backoff(ws(log_tab).update, "A1:E1", [["Timestamp","Symbol","Side","Qty","Note"]])
+    _with_backoff(ws("Config").update, "A1:B6", [
+        ["WATCHLIST_TAB", watch_tab],
+        ["LOG_TAB",       log_tab],
+        ["ALERT_PCT",     os.getenv("ALERT_PCT", "1.5")],
+        ["RR_TARGET",     os.getenv("RR_TARGET", "2.0")],
+        ["REFRESH_SECS",  os.getenv("REFRESH_SECS", "60")],
+        ["SHEET_ID",      (os.getenv("SHEET_ID") or os.getenv("GOOGLE_SHEET_ID") or "").strip()],
+    ])
+    # Freeze headers (best effort)
+    try:
+        ws(watch_tab).freeze(rows=1)
+        ws(log_tab).freeze(rows=1)
+    except Exception:
+        pass
