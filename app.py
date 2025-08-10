@@ -1,151 +1,165 @@
-# app.py — Vega (Sheets-safe edition)
-# Uses sheets_client.py for all Google Sheets I/O (rate-limited + cached)
+# app.py — Vega Cockpit (Sheets-safe)
+# Works with the safe sheets_client.py (rate-limited + cached + batch_get)
 import os, time
 import streamlit as st
 
-# ---- Import the safe helpers (you pasted this file earlier) ----
 from sheets_client import (
-    read_config,       # returns Config!A1:Z as rows
-    read_watchlist,    # returns Watch List!A1:Z as rows
-    batch_get,         # batch ranges in a single API call
-    append_trade_log,  # appends to TradeLog sheet
+    read_config,      # rows from Config!A1:Z100 (cached in client)
+    batch_get,        # read multiple ranges in one API call
+    append_trade_log, # append one row to TradeLog (tab name optional)
+    bootstrap_sheet,  # setup/repair tabs & headers
 )
 
-# ------------- Streamlit page config -------------
+# ---------------- Page setup ----------------
 st.set_page_config(page_title="Vega Cockpit", layout="wide")
 
-# ------------- Small helpers -------------
+# Small status ribbon (what creds method is detected, and whether SHEET_ID exists)
+method = "none"
+if os.getenv("GCP_SERVICE_ACCOUNT_JSON"):
+    method = "GCP_SERVICE_ACCOUNT_JSON"
+elif os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+    method = f"FILE:{os.getenv('GOOGLE_APPLICATION_CREDENTIALS')}"
+sid_set = bool(os.getenv("SHEET_ID") or os.getenv("GOOGLE_SHEET_ID"))
+st.caption(f"Creds: {method} • SHEET_ID set: {sid_set}")
+
+# ---------------- Helpers ----------------
 def parse_kv_rows(rows):
     """
-    Accepts a list of rows from the Config sheet.
-    Supports either:
-      - single column like ["SHEET_ID=...", "WATCHLIST_TAB=Watch List", ...]
-      - or two columns like [["KEY","VALUE"], ["WATCHLIST_TAB","Watch List"], ...]
-    Returns dict.
+    Accepts:
+      - 1-col style:  ['KEY=VALUE', 'OTHER=...']
+      - 2-col style:  [['KEY','VALUE'], ['WATCHLIST_TAB','Watch List'], ...]
+    Returns a dict.
     """
     cfg = {}
-    for r in rows:
-        if not r: 
+    for r in rows or []:
+        if not r:
             continue
-        # Two-column style
-        if len(r) >= 2 and r[0] and "=" not in r[0]:
-            k = str(r[0]).strip()
-            v = str(r[1]).strip()
+        if len(r) >= 2 and r[0] and "=" not in str(r[0]):
+            k, v = str(r[0]).strip(), str(r[1]).strip()
             if k:
                 cfg[k] = v
         else:
-            # Single "KEY=VALUE" cell style
             cell = str(r[0]).strip()
             if "=" in cell:
                 k, v = cell.split("=", 1)
                 cfg[k.strip()] = v.strip()
     return cfg
 
-@st.cache_data(ttl=45, show_spinner=False)
-def load_config():
-    rows = read_config()  # 1 read, cached in sheets_client + here
-    return parse_kv_rows(rows)
-
-@st.cache_data(ttl=30, show_spinner=False)
-def load_watchlist():
-    return read_watchlist()  # 1 read, cached in sheets_client + here
-
-@st.cache_data(ttl=30, show_spinner=False)
-def load_core_ranges(cfg):
-    """Batch-load core tabs in one call. Adjust ranges to your data size."""
-    watch_tab = cfg.get("WATCHLIST_TAB", "Watch List")
-    log_tab   = cfg.get("LOG_TAB", "TradeLog")
-    ranges = [
-        "Config!A1:Z100",
-        f"{watch_tab}!A1:Z1000",
-        f"{log_tab}!A1:Z200",
-    ]
-    config_rows, watch_rows, log_rows = batch_get(ranges)  # 1 API call
-    return config_rows, watch_rows, log_rows
+def resolve_tabs(cfg: dict):
+    """Figure out which tab names to use (Config overrides, then env, then defaults)."""
+    watch = (
+        cfg.get("WATCHLIST_TAB")
+        or os.getenv("GOOGLE_SHEET_MAIN_TAB")
+        or "Watch List"
+    )
+    log = (
+        cfg.get("LOG_TAB")
+        or os.getenv("GOOGLE_SHEET_LOG_TAB")
+        or "TradeLog"
+    )
+    return watch, log
 
 def coerce_table(rows, header=True):
-    """Make a list-of-lists safe for dataframe display."""
+    """Pad uneven rows so Streamlit can render a stable table."""
     rows = rows or []
-    # pad short rows so Streamlit can infer table shape
     width = max((len(r) for r in rows if r), default=0)
-    fixed = [r + [""] * (width - len(r)) for r in rows]
+    fixed = [list(r) + [""] * (width - len(r)) for r in rows]
     if not header:
         return fixed, []
     hdr = fixed[0] if fixed else []
     body = fixed[1:] if len(fixed) > 1 else []
     return body, hdr
 
-# ------------- Sidebar: Controls -------------
-st.sidebar.header("Vega • Session Controls")
+# ---------------- Cached loaders ----------------
+@st.cache_data(ttl=45, show_spinner=False)
+def load_config_rows():
+    return read_config()
 
-# Theme toggle (cosmetic only)
+@st.cache_data(ttl=30, show_spinner=False)
+def load_core_ranges(watch_tab: str, log_tab: str):
+    # One API call for everything we need
+    ranges = [
+        "Config!A1:Z100",
+        f"{watch_tab}!A1:Z1000",
+        f"{log_tab}!A1:Z200",
+    ]
+    return batch_get(ranges)
+
+# ---------------- Sidebar ----------------
+st.sidebar.header("Vega • Session Controls")
 theme = st.sidebar.selectbox("Theme", ["Dark", "Light"], index=0)
 
-# Auto-refresh (safe defaults)
-auto_refresh_on = st.sidebar.toggle("Auto-refresh", value=False, help="Keep off or >=60s to stay under Sheets quota.")
-refresh_secs = st.sidebar.number_input("Auto-Refresh (s)", min_value=15, max_value=600, value=60, step=5)
+if st.sidebar.button("Setup / Repair Google Sheet"):
+    try:
+        bootstrap_sheet()
+        st.sidebar.success("Sheet verified/created. Reloading…")
+        st.cache_data.clear()
+        st.experimental_rerun()
+    except Exception as e:
+        st.sidebar.error(f"Bootstrap error: {e}")
 
-if auto_refresh_on:
-    # This only triggers a front-end re-render; backend reads are throttled & cached.
-    st.experimental_rerun  # for static analysers
-    st.autorefresh = st.experimental_rerun  # no-op binding to avoid lints
-    st_autorefresh = st.experimental_rerun  # alias
-    st.caption(f"Auto-refresh every {int(refresh_secs)}s (reads are rate-limited & cached).")
-    st.experimental_set_query_params(_=int(time.time()) // max(1, int(refresh_secs)))
+# Manual refresh keeps quota usage predictable and low
+if st.sidebar.button("Refresh now"):
+    st.cache_data.clear()
+    st.experimental_rerun()
 
-# ------------- Load data (minimal API usage) -------------
-with st.spinner("Loading config..."):
-    cfg = load_config()
+# ---------------- Load & display ----------------
+try:
+    with st.spinner("Loading config…"):
+        config_rows = load_config_rows()
+        cfg = parse_kv_rows(config_rows)
 
-watch_tab = cfg.get("WATCHLIST_TAB", "Watch List")
-log_tab   = cfg.get("LOG_TAB", "TradeLog")
+    watch_tab, log_tab = resolve_tabs(cfg)
 
-colA, colB = st.columns([2, 1])
-with colA:
-    st.subheader("Config (parsed)")
-    st.code("\n".join(f"{k}={v}" for k,v in sorted(cfg.items())), language="ini")
-
-# Batch-load the three core ranges in ONE call
-with st.spinner("Loading sheets (batched)…"):
-    config_rows, watch_rows, log_rows = load_core_ranges(cfg)
-
-# ------------- Display: Watchlist -------------
-st.markdown("### Watch List")
-watch_body, watch_hdr = coerce_table(watch_rows, header=True)
-if watch_body:
-    st.dataframe(data=watch_body, use_container_width=True, hide_index=True, column_config=None)
-else:
-    st.info(f"No data found in '{watch_tab}'. Check the tab name in Config.")
-
-# ------------- Display: Trade Log -------------
-st.markdown("### Trade Log (read-only)")
-log_body, log_hdr = coerce_table(log_rows, header=True)
-st.dataframe(data=log_body, use_container_width=True, hide_index=True)
-
-# ------------- Quick entry: append to Trade Log -------------
-st.markdown("---")
-st.subheader("Quick Trade Log Entry")
-with st.form("trade_log_form", clear_on_submit=True):
-    c1, c2, c3, c4 = st.columns([2,2,2,2])
-    with c1: sym = st.text_input("Symbol", placeholder="SPY")
-    with c2: side = st.selectbox("Side", ["BUY", "SELL"])
-    with c3: qty = st.number_input("Qty", min_value=1, value=1, step=1)
-    with c4: note = st.text_input("Note", placeholder="entry/exit, rationale, etc.")
-    submitted = st.form_submit_button("Append to TradeLog")
-    if submitted:
-        if not sym:
-            st.warning("Symbol required.")
+    colA, colB = st.columns([2, 1])
+    with colA:
+        st.subheader("Config (parsed)")
+        if cfg:
+            st.code("\\n".join(f"{k}={v}" for k, v in sorted(cfg.items())), language="ini")
         else:
-            # Append a simple row; adjust to match your columns
-            row = [time.strftime("%Y-%m-%d %H:%M:%S"), sym.upper(), side, qty, note]
-            try:
-                append_trade_log(row)
-                st.success(f"Logged {sym} x{qty} ({side})")
-                # Clear caches so the table shows your new row next render
-                load_core_ranges.clear()
-                load_watchlist.clear()
-            except Exception as e:
-                st.error(f"Write failed: {e}")
+            st.info("No config rows found in Config!A1:Z100")
 
-# ------------- Footer -------------
-st.caption("Sheets access is re-used, rate-limited, and cached to stay below the 60 reads/min/user quota.")
+    with st.spinner(f"Loading '{watch_tab}' and '{log_tab}' (batched)…"):
+        config_rows2, watch_rows, log_rows = load_core_ranges(watch_tab, log_tab)
+
+    # Watchlist
+    st.markdown(f"### {watch_tab}")
+    watch_body, _ = coerce_table(watch_rows, header=True)
+    if watch_body:
+        st.dataframe(watch_body, use_container_width=True, hide_index=True)
+    else:
+        st.info(f"No data found in '{watch_tab}'. Check the tab name in Config or env.")
+
+    # Trade Log
+    st.markdown(f"### {log_tab} (read-only)")
+    log_body, _ = coerce_table(log_rows, header=True)
+    st.dataframe(log_body, use_container_width=True, hide_index=True)
+
+    # Quick append to TradeLog
+    st.markdown("---")
+    st.subheader(f"Quick Entry → {log_tab}")
+    with st.form("trade_log_form", clear_on_submit=True):
+        c1, c2, c3, c4 = st.columns([2,2,2,2])
+        with c1: sym = st.text_input("Symbol", placeholder="SPY")
+        with c2: side = st.selectbox("Side", ["BUY", "SELL"])
+        with c3: qty  = st.number_input("Qty", min_value=1, value=1, step=1)
+        with c4: note = st.text_input("Note", placeholder="entry/exit, rationale, etc.")
+        submitted = st.form_submit_button("Append")
+        if submitted:
+            if not sym:
+                st.warning("Symbol required.")
+            else:
+                row = [time.strftime("%Y-%m-%d %H:%M:%S"), sym.upper(), side, qty, note]
+                try:
+                    append_trade_log(row, tab_name=log_tab)  # sheets_client handles throttling
+                    st.success(f"Logged {sym} x{qty} ({side})")
+                    st.cache_data.clear()
+                    st.experimental_rerun()
+                except Exception as e:
+                    st.error(f"Write failed: {e}")
+
+    st.caption("Reads are batched, cached, and rate-limited to stay below the 60 reads/min/user quota.")
+
+except Exception as e:
+    # Friendly top-level error with a tiny traceback hint
+    st.error(f"Startup error: {e}")
