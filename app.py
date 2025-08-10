@@ -1,8 +1,15 @@
-from sheets_client import read_config, batch_get, append_trade_log
-try:
-    from sheets_client import bootstrap_sheet
-except Exception:
-    bootstrap_sheet = None
+# app.py — Vega Cockpit (Sheets-safe)
+# Works with the safe sheets_client.py (rate-limited + cached + batch_get)
+
+import os, time
+import streamlit as st
+
+from sheets_client import (
+    read_config,      # rows from Config!A1:Z100 (cached in client)
+    batch_get,        # read multiple ranges in one API call
+    append_trade_log, # append one row to TradeLog (tab name optional)
+    bootstrap_sheet,  # setup/repair tabs & headers
+)
 
 # ---------------- Page setup ----------------
 st.set_page_config(page_title="Vega Cockpit", layout="wide")
@@ -80,11 +87,17 @@ def load_core_ranges(watch_tab: str, log_tab: str):
     return batch_get(ranges)
 
 # ---------------- Sidebar ----------------
-if bootstrap_sheet:
-    if st.sidebar.button("Setup / Repair Google Sheet"):
+st.sidebar.header("Vega • Session Controls")
+theme = st.sidebar.selectbox("Theme", ["Dark", "Light"], index=0)
+
+if st.sidebar.button("Setup / Repair Google Sheet"):
+    try:
         bootstrap_sheet()
         st.sidebar.success("Sheet verified/created. Reloading…")
-        st.cache_data.clear(); st.experimental_rerun()
+        st.cache_data.clear()
+        st.experimental_rerun()
+    except Exception as e:
+        st.sidebar.error(f"Bootstrap error: {e}")
 
 # Manual refresh keeps quota usage predictable and low
 if st.sidebar.button("Refresh now"):
@@ -103,12 +116,12 @@ try:
     with colA:
         st.subheader("Config (parsed)")
         if cfg:
-            st.code("\\n".join(f"{k}={v}" for k, v in sorted(cfg.items())), language="ini")
+            st.code("\n".join(f"{k}={v}" for k, v in sorted(cfg.items())), language="ini")
         else:
             st.info("No config rows found in Config!A1:Z100")
 
     with st.spinner(f"Loading '{watch_tab}' and '{log_tab}' (batched)…"):
-        config_rows2, watch_rows, log_rows = load_core_ranges(watch_tab, log_tab)
+        _config_rows2, watch_rows, log_rows = load_core_ranges(watch_tab, log_tab)
 
     # Watchlist
     st.markdown(f"### {watch_tab}")
@@ -149,5 +162,4 @@ try:
     st.caption("Reads are batched, cached, and rate-limited to stay below the 60 reads/min/user quota.")
 
 except Exception as e:
-    # Friendly top-level error with a tiny traceback hint
     st.error(f"Startup error: {e}")
