@@ -5,10 +5,10 @@ from gspread.exceptions import APIError
 from google.oauth2.service_account import Credentials
 
 # ---------------- Env ----------------
-SHEET_ID = (os.getenv("SHEET_ID") or os.getenv("GOOGLE_SHEET_ID") or "").strip()
-MIN_INTERVAL = float(os.getenv("SHEETS_MIN_INTERVAL", "1.2"))  # ~50 reads/min
-TTL_CONFIG   = float(os.getenv("TTL_CONFIG", "45"))            # seconds
-TTL_WATCH    = float(os.getenv("TTL_WATCH", "30"))
+SHEET_ID      = (os.getenv("SHEET_ID") or os.getenv("GOOGLE_SHEET_ID") or "").strip()
+MIN_INTERVAL  = float(os.getenv("SHEETS_MIN_INTERVAL", "1.2"))  # ~50 reads/min
+TTL_CONFIG    = float(os.getenv("TTL_CONFIG", "45"))            # seconds
+TTL_WATCH     = float(os.getenv("TTL_WATCH", "30"))
 
 # ---------------- Singletons / caches ----------------
 _client = None
@@ -69,7 +69,7 @@ def _build_creds():
             "type": os.getenv("SA_TYPE"),
             "project_id": os.getenv("SA_PROJECT_ID"),
             "private_key_id": os.getenv("SA_PRIVATE_KEY_ID"),
-            "private_key": os.getenv("SA_PRIVATE_KEY").replace("\\n","\\n"),
+            "private_key": os.getenv("SA_PRIVATE_KEY").replace("\\n", "\n"),
             "client_email": os.getenv("SA_CLIENT_EMAIL"),
             "client_id": os.getenv("SA_CLIENT_ID"),
             "auth_uri": os.getenv("SA_AUTH_URI"),
@@ -77,8 +77,6 @@ def _build_creds():
             "auth_provider_x509_cert_url": os.getenv("SA_AUTH_PROVIDER_X509_CERT_URL"),
             "client_x509_cert_url": os.getenv("SA_CLIENT_X509_CERT_URL"),
         }
-        # Fix private key escaped newlines
-        info["private_key"] = info["private_key"].replace("\\n", "\n")
         return Credentials.from_service_account_info(info, scopes=scopes)
 
     raise RuntimeError(
@@ -104,9 +102,35 @@ def ws(tab_name: str):
     return _ws[tab_name]
 
 def batch_get(ranges):
-    """Batch-read multiple A1 ranges in a single API call."""
+    """
+    Version-agnostic batch reader.
+    Uses Spreadsheet.batch_get if available; otherwise falls back to
+    Spreadsheet.values_batch_get; and finally to per-range reads.
+    Returns a list of 2D lists, one per range.
+    """
     ss = _client_spreadsheet()
-    return _with_backoff(ss.batch_get, ranges)
+
+    # Preferred (newer gspread)
+    if hasattr(ss, "batch_get"):
+        return _with_backoff(ss.batch_get, ranges)
+
+    # Fallback (older gspread): values_batch_get returns API shape
+    if hasattr(ss, "values_batch_get"):
+        def _do():
+            resp = ss.values_batch_get(ranges)  # one HTTP call
+            vrs = resp.get("valueRanges", [])
+            return [vr.get("values", []) for vr in vrs]
+        return _with_backoff(_do)
+
+    # Last resort: iterate (still throttled/backed off)
+    out = []
+    for a1 in ranges:
+        if "!" in a1:
+            tab, rng = a1.split("!", 1)
+            out.append(_with_backoff(ws(tab).get, rng))
+        else:
+            out.append(_with_backoff(_client_spreadsheet().get_worksheet(0).get, a1))
+    return out
 
 # ---------------- Tiny cache helper ----------------
 def get_cached(name: str, ttl: float, loader):
@@ -152,46 +176,6 @@ def write_range(a1_range: str, values):
     target_ws = ws(tab_name) if tab_name else _client_spreadsheet().get_worksheet(0)
     return _with_backoff(target_ws.update, rng, values, value_input_option="USER_ENTERED")
 
-# ---------------- Bootstrap (create tabs, headers, config) ----------------
-def bootstrap_sheet(watch_tab=None, log_tab=None):
-    """
-    Idempotent setup for your Google Sheet.
-    - Creates Config, Watch List, TradeLog if missing
-    - Adds headers
-    - Seeds Config with basic keys
-    """
-    ss = _client_spreadsheet()
-    names = {w.title for w in ss.worksheets()}
-
-    # Resolve tab names
-    watch_tab = watch_tab or os.getenv("GOOGLE_SHEET_MAIN_TAB") or "Watch List"
-    log_tab   = log_tab   or os.getenv("GOOGLE_SHEET_LOG_TAB")  or "TradeLog"
-
-    # Create missing tabs
-    if "Config" not in names:
-        _with_backoff(ss.add_worksheet, title="Config", rows=200, cols=26)
-    if watch_tab not in names:
-        _with_backoff(ss.add_worksheet, title=watch_tab, rows=2000, cols=26)
-    if log_tab not in names:
-        _with_backoff(ss.add_worksheet, title=log_tab, rows=2000, cols=26)
-
-    # Headers + seed config
-    _with_backoff(ws(watch_tab).update, "A1:E1", [["Symbol","Side","Entry","Stop","Note"]])
-    _with_backoff(ws(log_tab).update, "A1:E1", [["Timestamp","Symbol","Side","Qty","Note"]])
-    _with_backoff(ws("Config").update, "A1:B6", [
-        ["WATCHLIST_TAB", watch_tab],
-        ["LOG_TAB",       log_tab],
-        ["ALERT_PCT",     os.getenv("ALERT_PCT", "1.5")],
-        ["RR_TARGET",     os.getenv("RR_TARGET", "2.0")],
-        ["REFRESH_SECS",  os.getenv("REFRESH_SECS", "60")],
-        ["SHEET_ID",      (os.getenv("SHEET_ID") or os.getenv("GOOGLE_SHEET_ID") or "").strip()],
-    ])
-    # Freeze headers (best effort)
-    try:
-        ws(watch_tab).freeze(rows=1)
-        ws(log_tab).freeze(rows=1)
-    except Exception:
-        pass
 # ---------------- Bootstrap (create tabs, headers, config) ----------------
 def bootstrap_sheet(watch_tab=None, log_tab=None):
     """
