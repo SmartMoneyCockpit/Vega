@@ -192,3 +192,43 @@ def bootstrap_sheet(watch_tab=None, log_tab=None):
         ws(log_tab).freeze(rows=1)
     except Exception:
         pass
+# ---------------- Bootstrap (create tabs, headers, config) ----------------
+def bootstrap_sheet(watch_tab=None, log_tab=None):
+    """
+    Idempotent setup for your Google Sheet.
+    - Creates Config, Watch List, TradeLog if missing
+    - Adds headers
+    - Seeds Config with basic keys
+    """
+    ss = _client_spreadsheet()
+    names = {w.title for w in ss.worksheets()}
+
+    # Resolve tab names
+    watch_tab = watch_tab or os.getenv("GOOGLE_SHEET_MAIN_TAB") or "Watch List"
+    log_tab   = log_tab   or os.getenv("GOOGLE_SHEET_LOG_TAB")  or "TradeLog"
+
+    # Create missing tabs
+    if "Config" not in names:
+        _with_backoff(ss.add_worksheet, title="Config", rows=200, cols=26)
+    if watch_tab not in names:
+        _with_backoff(ss.add_worksheet, title=watch_tab, rows=2000, cols=26)
+    if log_tab not in names:
+        _with_backoff(ss.add_worksheet, title=log_tab, rows=2000, cols=26)
+
+    # Headers + seed config
+    _with_backoff(ws(watch_tab).update, "A1:E1", [["Symbol","Side","Entry","Stop","Note"]])
+    _with_backoff(ws(log_tab).update, "A1:E1", [["Timestamp","Symbol","Side","Qty","Note"]])
+    _with_backoff(ws("Config").update, "A1:B6", [
+        ["WATCHLIST_TAB", watch_tab],
+        ["LOG_TAB",       log_tab],
+        ["ALERT_PCT",     os.getenv("ALERT_PCT", "1.5")],
+        ["RR_TARGET",     os.getenv("RR_TARGET", "2.0")],
+        ["REFRESH_SECS",  os.getenv("REFRESH_SECS", "60")],
+        ["SHEET_ID",      (os.getenv("SHEET_ID") or os.getenv("GOOGLE_SHEET_ID") or "").strip()],
+    ])
+    # Freeze headers (best effort)
+    try:
+        ws(watch_tab).freeze(rows=1)
+        ws(log_tab).freeze(rows=1)
+    except Exception:
+        pass
