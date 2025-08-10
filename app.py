@@ -1,14 +1,8 @@
-# app.py — Vega Cockpit (Sheets-safe)
-# Works with the safe sheets_client.py (rate-limited + cached + batch_get)
-import os, time
-import streamlit as st
-
-from sheets_client import (
-    read_config,      # rows from Config!A1:Z100 (cached in client)
-    batch_get,        # read multiple ranges in one API call
-    append_trade_log, # append one row to TradeLog (tab name optional)
-    bootstrap_sheet,  # setup/repair tabs & headers
-)
+from sheets_client import read_config, batch_get, append_trade_log
+try:
+    from sheets_client import bootstrap_sheet
+except Exception:
+    bootstrap_sheet = None
 
 # ---------------- Page setup ----------------
 st.set_page_config(page_title="Vega Cockpit", layout="wide")
@@ -86,17 +80,11 @@ def load_core_ranges(watch_tab: str, log_tab: str):
     return batch_get(ranges)
 
 # ---------------- Sidebar ----------------
-st.sidebar.header("Vega • Session Controls")
-theme = st.sidebar.selectbox("Theme", ["Dark", "Light"], index=0)
-
-if st.sidebar.button("Setup / Repair Google Sheet"):
-    try:
+if bootstrap_sheet:
+    if st.sidebar.button("Setup / Repair Google Sheet"):
         bootstrap_sheet()
         st.sidebar.success("Sheet verified/created. Reloading…")
-        st.cache_data.clear()
-        st.experimental_rerun()
-    except Exception as e:
-        st.sidebar.error(f"Bootstrap error: {e}")
+        st.cache_data.clear(); st.experimental_rerun()
 
 # Manual refresh keeps quota usage predictable and low
 if st.sidebar.button("Refresh now"):
