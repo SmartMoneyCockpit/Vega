@@ -84,3 +84,33 @@ def read_watchlist():
 def append_trade_log(row_values):
     # one write (writes are not the issue, but still throttle for safety)
     return _with_backoff(ws("TradeLog").append_row, row_values, value_input_option="USER_ENTERED")
+
+# ---- Compatibility shims for older app.py code ----
+def get_sheet(tab_name: str):
+    """Return a cached gspread Worksheet (read-safe)."""
+    return ws(tab_name)
+
+def append_row(tab_name: str, row_values):
+    """Append one row to a tab (USER_ENTERED)."""
+    return _with_backoff(ws(tab_name).append_row, row_values, value_input_option="USER_ENTERED")
+
+def read_range(a1_range: str):
+    """Read a single A1 range like 'Config!A1:Z100' and return rows."""
+    return batch_get([a1_range])[0]
+
+def write_range(a1_range: str, values):
+    """
+    Write values to a range. a1_range can include the tab name (e.g., 'TradeLog!A1:D1').
+    'values' should be a list of lists shape-matching the target range.
+    """
+    # Split "Tab!A1:C3" -> ("Tab", "A1:C3")
+    if "!" in a1_range:
+        tab_name, rng = a1_range.split("!", 1)
+    else:
+        # If no tab specified, default to first worksheet
+        tab_name, rng = None, a1_range
+
+    target_ws = ws(tab_name) if tab_name else _client_spreadsheet().get_worksheet(0)
+    # value_input_option keeps numbers/strings like a user typed them
+    return _with_backoff(target_ws.update, rng, values, value_input_option="USER_ENTERED")
+
