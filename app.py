@@ -1,5 +1,4 @@
 
-
 # app.py — Vega Command Center v1+ (styled)
 # Adds: broker fee presets, earnings sync/alerts, broker CSV profiles,
 # advanced risk lab (VaR), FX ETF hedge optimizer, options strategy builder,
@@ -25,7 +24,7 @@ from sheets_client import (
     upsert_config, snapshot_tab
 )
 
-APP_VER = "v1.1.8-styled (more-keys2)"
+APP_VER = "v1.1.9-styled (form-key-fix)"
 
 # ---------- Utils ----------
 def now(): return datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
@@ -620,7 +619,7 @@ def cockpit(region_name, watch_tab, log_tab, countries, region_code="NA"):
         prc = c5.number_input("Price (opt)", 0.0, 1e9, float(px0), format="%.4f")
         note= c6.text_input("Note")
         tags= c7.text_input("Tags (comma)")
-        ok  = st.form_submit_button("Append", key=f"append_{region_code}")
+        ok  = st.form_submit_button("Append")
         if ok:
             tid = f"{sym}-{int(time.time())}"
             audit = f"{now()}|{APP_VER}|{region_name}"
