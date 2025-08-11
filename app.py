@@ -24,7 +24,7 @@ from sheets_client import (
     upsert_config, snapshot_tab
 )
 
-APP_VER = "v1.1.5-styled (tabs+themes+keys+cssfix)"
+APP_VER = "v1.1.6-styled (keys+header+dim)"
 
 # ---------- Utils ----------
 def now(): return datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
@@ -77,11 +77,11 @@ def vega_css(theme="Dark"):
     else:
         return """
         <style>
-        [data-testid="stAppViewContainer"] { background: #0b1220 !important; }
+        [data-testid="stAppViewContainer"] { background: #0f172a !important; }
         [data-testid="stHeader"] { background: transparent !important; border-bottom: 0 !important; }
         .block-container { padding-top: 0.6rem; }
         :root { --vega-primary:#0ea5e9; --vega-accent:#22c55e; --vega-danger:#ef4444; --vega-muted:#64748b; }
-        .vega-hero { padding:14px 18px; border-radius:12px; background: linear-gradient(90deg, rgba(14,165,233,.15), rgba(34,197,94,.12)); border:1px solid rgba(148,163,184,.2); color:#e2e8f0; display:flex; align-items:center; justify-content:space-between; }
+        .vega-hero { padding:14px 18px; border-radius:12px; background: linear-gradient(90deg, rgba(14,165,233,.15), rgba(34,197,94,.12)); border:1px solid rgba(148,163,184,.28); color:#e2e8f0; display:flex; align-items:center; justify-content:space-between; }
         .vega-chips { display:flex; gap:6px; flex-wrap:wrap; }
         .vega-chip { padding:6px 10px; border-radius:999px; font-size:.82rem; border:1px solid rgba(148,163,184,.25); color:#cbd5e1; cursor:pointer; }
         .vega-chip.active { background: var(--vega-primary); color:#fff; border-color:transparent; }
@@ -496,7 +496,7 @@ def cockpit(region_name, watch_tab, log_tab, countries, region_code="NA"):
     except Exception as e:
         st.warning(f"PnL auto-calc: {e}")
 
-    st.markdown("""
+    st.markdown(f"""
     <div class="vega-hero">
       <div class="brand">Vega • {region_name} — {"OPEN" if is_market_open(region_code) else "CLOSED"}</div>
       <div class="vega-chips">
@@ -534,7 +534,7 @@ def cockpit(region_name, watch_tab, log_tab, countries, region_code="NA"):
     # Dashboard
     with st.expander("Positions dashboard", expanded=False):
         tags_present = sorted({t.strip() for t in (",".join(ldf.get("Tags","").astype(str).tolist())).split(",") if t.strip()})
-        filt = st.multiselect("Filter by tag(s)", tags_present, default=[])
+        filt = st.multiselect("Filter by tag(s)", tags_present, default=[], key=f"tags_{region_code}")
         positions_dashboard(ldf, wdfA, region=region_code, tag_filter=filt)
 
     st.markdown('<div class="vega-sep"></div>', unsafe_allow_html=True)
