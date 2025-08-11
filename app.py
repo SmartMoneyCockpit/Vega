@@ -1,4 +1,5 @@
 
+
 # app.py — Vega Command Center v1+ (styled)
 # Adds: broker fee presets, earnings sync/alerts, broker CSV profiles,
 # advanced risk lab (VaR), FX ETF hedge optimizer, options strategy builder,
@@ -24,7 +25,7 @@ from sheets_client import (
     upsert_config, snapshot_tab
 )
 
-APP_VER = "v1.1.6-styled (keys+header+dim)"
+APP_VER = "v1.1.8-styled (more-keys2)"
 
 # ---------- Utils ----------
 def now(): return datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
@@ -512,7 +513,7 @@ def cockpit(region_name, watch_tab, log_tab, countries, region_code="NA"):
     st.dataframe(wdfA, use_container_width=True, hide_index=True)
 
     # Earnings alerts (on-demand)
-    if st.button("Sync earnings (on-demand)", key=f"sync_{region_code}"):
+    if st.button("Sync earnings (on-demand)", key=f"sync_{region_code}_on"):
         tickers = wdfA["Ticker"].astype(str).tolist() if "Ticker" in wdfA.columns else []
         snap = earnings_snapshot(tickers)
         if snap:
@@ -547,9 +548,9 @@ def cockpit(region_name, watch_tab, log_tab, countries, region_code="NA"):
             if c in tmp.columns: tmp[c] = pd.to_numeric(tmp[c], errors="coerce")
         tmp["Remain"] = tmp.get("Qty",0).fillna(0) - tmp.get("ExitQty",0).fillna(0)
         open_syms = sorted(tmp.loc[tmp["Remain"]>0, "Symbol"].dropna().astype(str).unique().tolist())
-    mode = st.radio("Mode", ["Single lot", "Average", "FIFO", "LIFO"], horizontal=True)
+    mode = st.radio("Mode", ["Single lot", "Average", "FIFO", "LIFO"], horizontal=True, key=f"mode_{region_code}")
     fee_df = load_fee_presets(); presets = ["<auto-match>"] + fee_df.get("Preset", pd.Series([])).astype(str).tolist()
-    preset_choice = st.selectbox("Broker fee preset", presets, index=0, help="Choose a preset or let the app match by market/country.")
+    preset_choice = st.selectbox("Broker fee preset", presets, key=f"feepreset_{region_code}", index=0, help="Choose a preset or let the app match by market/country.")
     if open_syms:
         c1,c2,c3 = st.columns([2,1.1,1])
         sym = c1.selectbox("Symbol (open)", open_syms, index=0, key=f"ct_sym_{log_tab}")
@@ -619,7 +620,7 @@ def cockpit(region_name, watch_tab, log_tab, countries, region_code="NA"):
         prc = c5.number_input("Price (opt)", 0.0, 1e9, float(px0), format="%.4f")
         note= c6.text_input("Note")
         tags= c7.text_input("Tags (comma)")
-        ok  = st.form_submit_button("Append")
+        ok  = st.form_submit_button("Append", key=f"append_{region_code}")
         if ok:
             tid = f"{sym}-{int(time.time())}"
             audit = f"{now()}|{APP_VER}|{region_name}"
