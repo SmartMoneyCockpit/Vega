@@ -670,39 +670,73 @@ def bs_greeks(S, K, T, r, sigma, kind="call"):
     return {"delta":delta,"gamma":gamma,"theta":theta,"vega":vega}
 
 def page_options_builder():
-    st.subheader("Options Strategy Builder (multi‑leg)")
-    tkr = st.text_input("Underlying", value="SPY")
-    r   = st.number_input("Risk‑free rate", 0.0, 0.2, 0.05, 0.005)
-    if yf is None:
-        st.warning("yfinance not available for chains; manual inputs only."); return
-    t = yf.Ticker(tkr)
-    exps = t.options
-    if not exps: st.warning("No options data."); return
-    exp = st.selectbox("Expiration", exps, index=0)
-    chain = t.option_chain(exp)
-    st.caption("Add legs (positive = long, negative = short). Greeks from Black‑Scholes using IV in chain.")
-    legs = []
-    with st.form("legs"):
-        for i in range(1, 5):
-            st.markdown(f"**Leg {i}**")
-            typ = st.selectbox(f"Type {i}", ["call","put"], key=f"type{i}")
-            strike = st.selectbox(f"Strike {i}", sorted(set(chain.calls["strike"].tolist()+chain.puts["strike"].tolist())), key=f"strike{i}")
-            qty = st.number_input(f"Qty {i} (±)", -50, 50, 0, key=f"qty{i}")
-            legs.append((typ, float(strike), int(qty)))
-        ok = st.form_submit_button("Compute Greeks")
-    if ok:
-        S = float(t.history(period="1d")["Close"].iloc[-1])
-        T = max((datetime.fromisoformat(exp)+" 00:00" if " " in exp else datetime.fromisoformat(exp+" 00:00")).timestamp() - time.time(), 0)/ (365*24*3600)
-        gtot = {"delta":0,"gamma":0,"theta":0,"vega":0}
-        for typ,K,q in legs:
-            if q==0: continue
-            # get IV from the chain
-            df = chain.calls if typ=="call" else chain.puts
-            row = df.loc[df["strike"]==K].head(1)
-            iv = float(row["impliedVolatility"].iloc[0]) if not row.empty and "impliedVolatility" in row.columns else 0.2
-            g = bs_greeks(S,K,T,r,iv,kind=typ)
-            for k in gtot: gtot[k] += g[k]*q
-        st.write("**Net Greeks (per 1 underlying unit):**", {k: round(v,3) for k,v in gtot.items()})
+    import time
+    import yfinance as yf
+    import streamlit as st
+
+    st.header("Options Builder")
+
+    # Start with a US optionable ticker to avoid Yahoo hiccups
+    sym = st.text_input(
+        "Symbol (US/CA, e.g., AAPL / SPY / MSFT)", value="AAPL"
+    ).strip().upper()
+
+    # --- helpers that retry and fail gracefully ---
+
+    def _safe_options_expirations(symbol: str, tries: int = 3, pause: float = 0.8):
+        """Return list of expirations or [] if the upstream returns non-JSON/empty."""
+        for i in range(tries):
+            try:
+                t = yf.Ticker(symbol)
+                exps = list(t.options or [])
+                if exps:
+                    return exps
+            except Exception:
+                pass
+            time.sleep(pause * (i + 1))
+        return []
+
+    def _safe_option_chain(symbol: str, expiry: str, tries: int = 3, pause: float = 0.8):
+        """Return (calls, puts) or (None, None) if unavailable."""
+        for i in range(tries):
+            try:
+                chain = yf.Ticker(symbol).option_chain(expiry)
+                return chain.calls, chain.puts
+            except Exception:
+                pass
+            time.sleep(pause * (i + 1))
+        return None, None
+
+    # --- fetch expirations safely ---
+    exps = _safe_options_expirations(sym)
+    if not exps:
+        st.warning(
+            "Options data is unavailable for this symbol right now. "
+            "This can be caused by a non-optionable ticker, unsupported market, "
+            "or a temporary Yahoo response issue. Try a different US/CA ticker or retry."
+        )
+        if st.button("Retry", key=f"opt_retry_{sym}"):
+            st.experimental_rerun()
+        return
+
+    exp = st.selectbox("Expiration", exps, index=0, key=f"exp_{sym}")
+
+    # --- fetch option chain safely ---
+    calls, puts = _safe_option_chain(sym, exp)
+    if calls is None or puts is None:
+        st.warning(
+            "Could not load option chain (upstream returned non-JSON). "
+            "Try another expiration or press Retry."
+        )
+        if st.button("Retry chain", key=f"opt_chain_retry_{sym}"):
+            st.experimental_rerun()
+        return
+
+    st.subheader(f"{sym} — {exp}")
+    st.write("Calls")
+    st.dataframe(calls, use_container_width=True)
+    st.write("Puts")
+    st.dataframe(puts, use_container_width=True)
 
 # ---------- Broker Import (profiles) ----------
 PROFILES = {
