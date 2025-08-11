@@ -47,31 +47,25 @@ def _to_float(x, default=0.0):
         return default
 
 # ---------- Page Config & Styling ----------
-st.set_page_config(page_title="Vega Command Center", layout="wide", page_icon="💹")
-
-PRIMARY = "#0ea5e9"
-ACCENT  = "#22c55e"
-DANGER  = "#ef4444"
-MUTED   = "#64748b"
-
 st.markdown(f"""
 <style>
-/* Global */
+/* Force dark background across Streamlit containers */
+[data-testid="stAppViewContainer"] {{
+  background: #0b1220 !important;
+}}
+[data-testid="stHeader"] {{
+  background: transparent !important;
+  border-bottom: 0 !important;
+}}
+.block-container {{ padding-top: 0.6rem; }}
+
+/* Vega theme tokens */
 :root {{
-  --vega-primary: {PRIMARY};
-  --vega-accent: {ACCENT};
-  --vega-danger: {DANGER};
-  --vega-muted: {MUTED};
+  --vega-primary: #0ea5e9;
+  --vega-accent:  #22c55e;
+  --vega-danger:  #ef4444;
+  --vega-muted:   #64748b;
 }}
-html, body {{ background: #0b1220; }}
-section.main > div {{ padding-top: 0.6rem; }}
-
-.vega-title {{
-  font-size: 1.1rem;
-  color: #cbd5e1;
-  margin-top: .6rem;
-}}
-
 .vega-hero {{
   padding: 14px 18px;
   border-radius: 12px;
@@ -80,21 +74,17 @@ section.main > div {{ padding-top: 0.6rem; }}
   color: #e2e8f0;
   display:flex; align-items:center; justify-content:space-between;
 }}
-.vega-hero .brand {{
-  font-weight: 700; font-size: 1.05rem; letter-spacing:.3px;
-}}
-.vega-chips {{ display:flex; gap:6px; flex-wrap: wrap; }}
+.vega-hero .brand {{ font-weight:700; font-size:1.05rem; letter-spacing:.3px; }}
+.vega-chips {{ display:flex; gap:6px; flex-wrap:wrap; }}
 .vega-chip {{
-  padding: 6px 10px; border-radius: 999px; font-size:.82rem;
-  border: 1px solid rgba(148,163,184,.25); color:#cbd5e1; cursor:pointer;
+  padding:6px 10px; border-radius:999px; font-size:.82rem;
+  border:1px solid rgba(148,163,184,.25); color:#cbd5e1; cursor:pointer;
 }}
-.vega-chip.active {{ background: var(--vega-primary); color: white; border-color: transparent; }}
-.vega-card {{
-  background: rgba(2,6,23,.5); border: 1px solid rgba(148,163,184,.2);
-  border-radius: 12px; padding: 14px 14px; color:#e2e8f0;
-}}
-.vega-sep {{ height:1px; background: rgba(148,163,184,.2); margin: 14px 0; }}
-/* table contrast */
+.vega-chip.active {{ background: var(--vega-primary); color:#fff; border-color:transparent; }}
+.vega-title {{ font-size:1.1rem; color:#cbd5e1; margin-top:.6rem; }}
+.vega-sep {{ height:1px; background: rgba(148,163,184,.2); margin:14px 0; }}
+
+/* Dataframe/readability tweaks */
 [data-testid="stDataFrame"] div[data-baseweb="base-input"] input{{ color:#e2e8f0; }}
 </style>
 """, unsafe_allow_html=True)
