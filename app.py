@@ -24,7 +24,7 @@ from sheets_client import (
     upsert_config, snapshot_tab
 )
 
-APP_VER = "v1.1.3-styled (tabs+themes)"
+APP_VER = "v1.1.4-styled (tabs+themes+keys)"
 
 # ---------- Utils ----------
 def now(): return datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
@@ -70,7 +70,9 @@ def vega_css(theme="Dark"):
         .vega-chip.active { background: var(--vega-primary); color:#fff; border-color: transparent; }
         .vega-title { font-size:1.1rem; color:#0f172a; margin-top:.6rem; }
         .vega-sep { height:1px; background:#e5e7eb; margin:14px 0; }
-        </style>
+        .stTabs [role="tablist"]{margin-top:6px; padding-top:6px;}
+.vega-hero{margin-top:8px;}
+</style>
         """
     else:
         return """
@@ -86,7 +88,9 @@ def vega_css(theme="Dark"):
         .vega-title { font-size:1.1rem; color:#cbd5e1; margin-top:.6rem; }
         .vega-sep { height:1px; background: rgba(148,163,184,.2); margin:14px 0; }
         [data-testid="stDataFrame"] div[data-baseweb="base-input"] input{ color:#e2e8f0; }
-        </style>
+        .stTabs [role="tablist"]{margin-top:6px; padding-top:6px;}
+.vega-hero{margin-top:8px;}
+</style>
         """
 
 st.markdown(vega_css(st.session_state["vega_theme"]), unsafe_allow_html=True)
@@ -140,6 +144,8 @@ section.main > div {{ padding-top: 0.6rem; }}
 .vega-sep {{ height:1px; background: rgba(148,163,184,.2); margin: 14px 0; }}
 /* table contrast */
 [data-testid="stDataFrame"] div[data-baseweb="base-input"] input{{ color:#e2e8f0; }}
+.stTabs [role="tablist"]{margin-top:6px; padding-top:6px;}
+.vega-hero{margin-top:8px;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -506,7 +512,7 @@ def cockpit(region_name, watch_tab, log_tab, countries, region_code="NA"):
     st.dataframe(wdfA, use_container_width=True, hide_index=True)
 
     # Earnings alerts (on-demand)
-    if st.button("Sync earnings (on-demand)"):
+    if st.button("Sync earnings (on-demand)", key=f"sync_{region_code}"):
         tickers = wdfA["Ticker"].astype(str).tolist() if "Ticker" in wdfA.columns else []
         snap = earnings_snapshot(tickers)
         if snap:
@@ -572,7 +578,7 @@ def cockpit(region_name, watch_tab, log_tab, countries, region_code="NA"):
             c4,c5 = st.columns([1,1])
             q  = c4.number_input("ExitQty", 0.0, float(remain), float(remain), format="%.4f")
             fee = _calc_fees(side, ex, q, *fee_tuple) if auto_fee else c5.number_input("Fees (this close)", 0.0, 1e9, 0.0, format="%.2f")
-            if st.button("Close selected lot"):
+            if st.button("Close selected lot", key=f"close1_{log_tab}"):
                 close_single_lot(log_tab, ldf, lots[i][0], ex, q, fee)
                 update_tradelog_pnl(log_tab, rows_to_df(read_range(f"{log_tab}!A1:Z8000")), wdf)
                 st.success("Closed.")
