@@ -24,7 +24,7 @@ from sheets_client import (
     upsert_config, snapshot_tab
 )
 
-APP_VER = "v1.1-styled"
+APP_VER = "v1.1.3-styled (tabs+themes)"
 
 # ---------- Utils ----------
 def now(): return datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
@@ -47,25 +47,75 @@ def _to_float(x, default=0.0):
         return default
 
 # ---------- Page Config & Styling ----------
+st.set_page_config(page_title="Vega Command Center", layout="wide", page_icon="💹")
+
+
+# ---- Theme toggle + themable CSS ----
+if "vega_theme" not in st.session_state:
+    st.session_state["vega_theme"] = "Dark"
+theme_choice = st.sidebar.selectbox("Theme", ["Dark","Light"], index=0 if st.session_state["vega_theme"]=="Dark" else 1)
+st.session_state["vega_theme"] = theme_choice
+
+def vega_css(theme="Dark"):
+    if theme == "Light":
+        return """
+        <style>
+        [data-testid="stAppViewContainer"] { background: #f7fafc !important; }
+        [data-testid="stHeader"] { background: #fff !important; border-bottom: 1px solid #e5e7eb !important; }
+        .block-container { padding-top: 0.6rem; }
+        :root { --vega-primary:#0ea5e9; --vega-accent:#16a34a; --vega-danger:#dc2626; --vega-muted:#475569; }
+        .vega-hero { padding:14px 18px; border-radius:12px; background: linear-gradient(90deg, rgba(14,165,233,.10), rgba(22,163,74,.08)); border:1px solid #e5e7eb; color:#0f172a; display:flex; align-items:center; justify-content:space-between; }
+        .vega-chips { display:flex; gap:6px; flex-wrap:wrap; }
+        .vega-chip { padding:6px 10px; border-radius:999px; font-size:.82rem; border:1px solid #e5e7eb; color:#111827; background:#fff; }
+        .vega-chip.active { background: var(--vega-primary); color:#fff; border-color: transparent; }
+        .vega-title { font-size:1.1rem; color:#0f172a; margin-top:.6rem; }
+        .vega-sep { height:1px; background:#e5e7eb; margin:14px 0; }
+        </style>
+        """
+    else:
+        return """
+        <style>
+        [data-testid="stAppViewContainer"] { background: #0b1220 !important; }
+        [data-testid="stHeader"] { background: transparent !important; border-bottom: 0 !important; }
+        .block-container { padding-top: 0.6rem; }
+        :root { --vega-primary:#0ea5e9; --vega-accent:#22c55e; --vega-danger:#ef4444; --vega-muted:#64748b; }
+        .vega-hero { padding:14px 18px; border-radius:12px; background: linear-gradient(90deg, rgba(14,165,233,.15), rgba(34,197,94,.12)); border:1px solid rgba(148,163,184,.2); color:#e2e8f0; display:flex; align-items:center; justify-content:space-between; }
+        .vega-chips { display:flex; gap:6px; flex-wrap:wrap; }
+        .vega-chip { padding:6px 10px; border-radius:999px; font-size:.82rem; border:1px solid rgba(148,163,184,.25); color:#cbd5e1; cursor:pointer; }
+        .vega-chip.active { background: var(--vega-primary); color:#fff; border-color:transparent; }
+        .vega-title { font-size:1.1rem; color:#cbd5e1; margin-top:.6rem; }
+        .vega-sep { height:1px; background: rgba(148,163,184,.2); margin:14px 0; }
+        [data-testid="stDataFrame"] div[data-baseweb="base-input"] input{ color:#e2e8f0; }
+        </style>
+        """
+
+st.markdown(vega_css(st.session_state["vega_theme"]), unsafe_allow_html=True)
+# ---- end theme toggle ----
+
+
+PRIMARY = "#0ea5e9"
+ACCENT  = "#22c55e"
+DANGER  = "#ef4444"
+MUTED   = "#64748b"
+
 st.markdown(f"""
 <style>
-/* Force dark background across Streamlit containers */
-[data-testid="stAppViewContainer"] {{
-  background: #0b1220 !important;
-}}
-[data-testid="stHeader"] {{
-  background: transparent !important;
-  border-bottom: 0 !important;
-}}
-.block-container {{ padding-top: 0.6rem; }}
-
-/* Vega theme tokens */
+/* Global */
 :root {{
-  --vega-primary: #0ea5e9;
-  --vega-accent:  #22c55e;
-  --vega-danger:  #ef4444;
-  --vega-muted:   #64748b;
+  --vega-primary: {PRIMARY};
+  --vega-accent: {ACCENT};
+  --vega-danger: {DANGER};
+  --vega-muted: {MUTED};
 }}
+html, body {{ background: #0b1220; }}
+section.main > div {{ padding-top: 0.6rem; }}
+
+.vega-title {{
+  font-size: 1.1rem;
+  color: #cbd5e1;
+  margin-top: .6rem;
+}}
+
 .vega-hero {{
   padding: 14px 18px;
   border-radius: 12px;
@@ -74,17 +124,21 @@ st.markdown(f"""
   color: #e2e8f0;
   display:flex; align-items:center; justify-content:space-between;
 }}
-.vega-hero .brand {{ font-weight:700; font-size:1.05rem; letter-spacing:.3px; }}
-.vega-chips {{ display:flex; gap:6px; flex-wrap:wrap; }}
-.vega-chip {{
-  padding:6px 10px; border-radius:999px; font-size:.82rem;
-  border:1px solid rgba(148,163,184,.25); color:#cbd5e1; cursor:pointer;
+.vega-hero .brand {{
+  font-weight: 700; font-size: 1.05rem; letter-spacing:.3px;
 }}
-.vega-chip.active {{ background: var(--vega-primary); color:#fff; border-color:transparent; }}
-.vega-title {{ font-size:1.1rem; color:#cbd5e1; margin-top:.6rem; }}
-.vega-sep {{ height:1px; background: rgba(148,163,184,.2); margin:14px 0; }}
-
-/* Dataframe/readability tweaks */
+.vega-chips {{ display:flex; gap:6px; flex-wrap: wrap; }}
+.vega-chip {{
+  padding: 6px 10px; border-radius: 999px; font-size:.82rem;
+  border: 1px solid rgba(148,163,184,.25); color:#cbd5e1; cursor:pointer;
+}}
+.vega-chip.active {{ background: var(--vega-primary); color: white; border-color: transparent; }}
+.vega-card {{
+  background: rgba(2,6,23,.5); border: 1px solid rgba(148,163,184,.2);
+  border-radius: 12px; padding: 14px 14px; color:#e2e8f0;
+}}
+.vega-sep {{ height:1px; background: rgba(148,163,184,.2); margin: 14px 0; }}
+/* table contrast */
 [data-testid="stDataFrame"] div[data-baseweb="base-input"] input{{ color:#e2e8f0; }}
 </style>
 """, unsafe_allow_html=True)
@@ -116,6 +170,7 @@ NA_COUNTRIES   = [s.strip() for s in (CFG.get("NA_COUNTRIES","US,CA").split(",")
 SUFFIX = {
     "JP": CFG.get("SUFFIX_JP",".T"),
     "AU": CFG.get("SUFFIX_AU",".AX"),
+    "NZ": CFG.get("SUFFIX_NZ",".NZ"),
     "HK": CFG.get("SUFFIX_HK",".HK"),
     "SG": CFG.get("SUFFIX_SG",".SI"),
     "IN": CFG.get("SUFFIX_IN",".NS"),
@@ -861,32 +916,26 @@ def page_docs():
 """)
 
 # ---------- Router & Quick Nav ----------
-MODULES = [
-    "NA Cockpit","APAC Cockpit","Morning News",
-    "Risk Lab","Options Builder","FX & Hedges",
-    "Broker Import","Health Journal","Admin / Backup","Docs"
-]
-# quick nav pills
-sel = st.radio("Quick Nav", MODULES, horizontal=True, label_visibility="collapsed", index=0, key="vega_nav")
-st.markdown('<div class="vega-sep"></div>', unsafe_allow_html=True)
+MODULES = ["NA Cockpit","APAC Cockpit","Morning News","Risk Lab","Options Builder","FX & Hedges","Broker Import","Health Journal","Admin / Backup","Docs"]
 
-if sel=="NA Cockpit":
+tabs = st.tabs(MODULES)
+with tabs[0]:
     cockpit("North America", "NA_Watch", "NA_TradeLog", NA_COUNTRIES, region_code="NA")
-elif sel=="APAC Cockpit":
+with tabs[1]:
     cockpit("Asia-Pacific", "APAC_Watch", "APAC_TradeLog", APAC_COUNTRIES, region_code="APAC")
-elif sel=="Morning News":
+with tabs[2]:
     page_news()
-elif sel=="Risk Lab":
+with tabs[3]:
     page_risk_lab()
-elif sel=="Options Builder":
+with tabs[4]:
     page_options_builder()
-elif sel=="FX & Hedges":
+with tabs[5]:
     page_fx()
-elif sel=="Broker Import":
+with tabs[6]:
     page_broker_import()
-elif sel=="Health Journal":
+with tabs[7]:
     page_health_min()
-elif sel=="Admin / Backup":
+with tabs[8]:
     page_admin_backup()
-elif sel=="Docs":
+with tabs[9]:
     page_docs()
