@@ -216,3 +216,64 @@ def bootstrap_sheet(watch_tab=None, log_tab=None):
         ws(log_tab).freeze(rows=1)
     except Exception:
         pass
+# --- Add to sheets_client.py ---
+
+def _col_letter(n: int) -> str:
+    s = ""
+    while n:
+        n, r = divmod(n - 1, 26)
+        s = chr(65 + r) + s
+    return s or "A"
+
+def ensure_tab(tab_name: str, headers=None, rows: int = 2000, cols: int = 26):
+    """
+    Ensure a worksheet exists with optional header row.
+    Safe to call repeatedly (idempotent).
+    """
+    ss = _client_spreadsheet()
+    names = {w.title for w in ss.worksheets()}
+    if tab_name not in names:
+        _with_backoff(ss.add_worksheet, title=tab_name, rows=rows, cols=max(cols, (len(headers) if headers else 1)))
+    if headers:
+        # read first row; if missing or different, write headers
+        try:
+            cur = read_range(f"{tab_name}!1:1")
+            cur_hdr = cur[0] if cur else []
+        except Exception:
+            cur_hdr = []
+        if list(map(str, cur_hdr)) != list(map(str, headers)):
+            write_range(f"{tab_name}!A1:{_col_letter(len(headers))}1", [list(map(str, headers))])
+
+def upsert_config(key: str, value: str):
+    """
+    Insert or update a key/value in the Config tab (A:key, B:value).
+    """
+    ensure_tab("Config", ["Key", "Value"], rows=200, cols=2)
+    rows = read_range("Config!A1:B200") or []
+    # build map of existing keys
+    found_row = None
+    for i, r in enumerate(rows[1:], start=2):
+        if r and str(r[0]).strip() == str(key):
+            found_row = i
+            break
+    if found_row:
+        write_range(f"Config!A{found_row}:B{found_row}", [[key, value]])
+    else:
+        append_row("Config", [key, value])
+
+def snapshot_tab(tab_name: str, max_rows: int = 10000):
+    """
+    Create a CSV-style snapshot of a tab by copying its cell values to a new tab.
+    Returns the new tab name.
+    """
+    ss = _client_spreadsheet()
+    # figure out how many columns by looking at header
+    header = read_range(f"{tab_name}!1:1")
+    hdr = header[0] if header else []
+    m = max(1, len(hdr))
+    rng = f"{tab_name}!A1:{_col_letter(m)}{max_rows}"
+    data = read_range(rng) or []
+    snap_name = f"{tab_name}_snap_{time.strftime('%Y%m%d_%H%M%S', time.gmtime())}"
+    _with_backoff(ss.add_worksheet, title=snap_name, rows=max_rows, cols=max(26, m))
+    write_range(f"{snap_name}!A1:{_col_letter(m)}{len(data or [[]])}", data or [[]])
+    return snap_name
