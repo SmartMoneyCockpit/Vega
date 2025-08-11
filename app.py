@@ -24,7 +24,7 @@ from sheets_client import (
     upsert_config, snapshot_tab
 )
 
-APP_VER = "v1.1.4-styled (tabs+themes+keys)"
+APP_VER = "v1.1.5-styled (tabs+themes+keys+cssfix)"
 
 # ---------- Utils ----------
 def now(): return datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
@@ -102,7 +102,7 @@ ACCENT  = "#22c55e"
 DANGER  = "#ef4444"
 MUTED   = "#64748b"
 
-st.markdown(f"""
+st.markdown("""
 <style>
 /* Global */
 :root {{
@@ -496,7 +496,7 @@ def cockpit(region_name, watch_tab, log_tab, countries, region_code="NA"):
     except Exception as e:
         st.warning(f"PnL auto-calc: {e}")
 
-    st.markdown(f"""
+    st.markdown("""
     <div class="vega-hero">
       <div class="brand">Vega • {region_name} — {"OPEN" if is_market_open(region_code) else "CLOSED"}</div>
       <div class="vega-chips">
