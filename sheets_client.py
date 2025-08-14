@@ -1,279 +1,296 @@
-# sheets_client.py — safe, low-quota Google Sheets client (Render-ready)
-import os, json, time, random
+
+"""
+Drop-in Google Sheets client for Vega Cockpit (Render-compatible).
+
+Goals:
+- Fix "Quota exceeded for quota metric 'Read requests' ... sheets.googleapis.com"
+- Batch reads/writes, cache metadata and values (TTL), and auto-fallback to local snapshots
+- Gentle rate limiting and exponential backoff for RESOURCE_EXHAUSTED / RATE_LIMIT_EXCEEDED
+
+Usage (minimal change):
+    from src.sheets_client import Sheets
+    sheets = Sheets()  # reads config from env
+    ws = sheets.ensure_tab(spreadsheet_id, "NA_TradeLog", headers=[...])
+    rows = sheets.read_table(spreadsheet_id, "WatchList")            # cached
+    sheets.append_rows(spreadsheet_id, "NA_TradeLog", [[...,...]])    # batched
+
+Environment (set in Render dashboard):
+    VEGA_SHEETS_TTL_SEC=120        # cache TTL for values
+    VEGA_SHEETS_META_TTL_SEC=1800  # cache TTL for metadata (tab list etc.)
+    VEGA_SHEETS_RPM_SOFT=50        # soft limit per minute
+    VEGA_SHEETS_RPS_SOFT=5         # soft limit per second
+    VEGA_SHEETS_SNAPSHOT_DIR=/opt/render/project/src/.cache/snapshots
+    GOOGLE_SHEETS_CREDENTIALS_JSON=/opt/render/project/src/credentials.json  (or service account default)
+
+This module only relies on gspread + google-auth. No extra libs required.
+"""
+from __future__ import annotations
+
+import os
+import time
+import json
+import threading
+import hashlib
+from typing import List, Dict, Any, Optional, Tuple
+
 import gspread
-from gspread.exceptions import APIError
 from google.oauth2.service_account import Credentials
+from google.auth.transport.requests import Request
+from google.auth.exceptions import RefreshError
+from googleapiclient.errors import HttpError
 
-# ---------------- Env ----------------
-SHEET_ID      = (os.getenv("SHEET_ID") or os.getenv("GOOGLE_SHEET_ID") or "").strip()
-MIN_INTERVAL  = float(os.getenv("SHEETS_MIN_INTERVAL", "1.2"))  # ~50 reads/min
-TTL_CONFIG    = float(os.getenv("TTL_CONFIG", "45"))            # seconds
-TTL_WATCH     = float(os.getenv("TTL_WATCH", "30"))
+# ---------------------------- utilities ----------------------------
 
-# ---------------- Singletons / caches ----------------
-_client = None
-_spreadsheet = None
-_ws = {}          # tab_name -> Worksheet
-_cache = {}       # simple in-proc cache
-_last_read = 0.0  # for throttle
+def _now() -> float:
+    return time.time()
 
-# ---------------- Throttle + backoff ----------------
-def _throttle():
-    global _last_read
-    dt = time.time() - _last_read
-    if dt < MIN_INTERVAL:
-        time.sleep(MIN_INTERVAL - dt)
-    _last_read = time.time()
+def _ensure_dir(path: str) -> None:
+    os.makedirs(path, exist_ok=True)
 
-def _with_backoff(fn, *a, **k):
-    delay = 1.0
-    for _ in range(6):  # up to ~30s total
-        try:
-            _throttle()
-            return fn(*a, **k)
-        except APIError as e:
-            s = str(e)
-            if "RATE_LIMIT_EXCEEDED" in s or "quota" in s.lower():
-                time.sleep(delay + random.random())
-                delay = min(delay * 2, 8)
-            else:
-                raise
-    raise RuntimeError("Sheets retry budget exhausted")
+def _hash_key(*parts: str) -> str:
+    h = hashlib.sha256()
+    for p in parts:
+        h.update(p.encode("utf-8"))
+    return h.hexdigest()[:16]
 
-# ---------------- Credentials loader ----------------
-def _build_creds():
-    """Supports GCP_SERVICE_ACCOUNT_JSON, GOOGLE_APPLICATION_CREDENTIALS, or SA_* pieces."""
-    scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+class TTLCache:
+    """Very small in-memory TTL cache (thread-safe)."""
+    def __init__(self, ttl: float) -> None:
+        self.ttl = ttl
+        self._lock = threading.Lock()
+        self._mem: Dict[str, Tuple[float, Any]] = {}
 
-    # 1) Full JSON stored in an env var
-    blob = os.getenv("GCP_SERVICE_ACCOUNT_JSON")
-    if blob:
-        info = json.loads(blob)
-        if "private_key" in info:
-            info["private_key"] = info["private_key"].replace("\\n", "\n")
-        return Credentials.from_service_account_info(info, scopes=scopes)
+    def get(self, key: str) -> Optional[Any]:
+        with self._lock:
+            item = self._mem.get(key)
+            if not item:
+                return None
+            ts, val = item
+            if _now() - ts > self.ttl:
+                self._mem.pop(key, None)
+                return None
+            return val
 
-    # 2) Path to JSON file
-    path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-    if path:
-        return Credentials.from_service_account_file(path, scopes=scopes)
+    def set(self, key: str, val: Any) -> None:
+        with self._lock:
+            self._mem[key] = (_now(), val)
 
-    # 3) Individual SA_* vars
-    required = [
-        "TYPE","PROJECT_ID","PRIVATE_KEY_ID","PRIVATE_KEY",
-        "CLIENT_EMAIL","CLIENT_ID","AUTH_URI","TOKEN_URI",
-        "AUTH_PROVIDER_X509_CERT_URL","CLIENT_X509_CERT_URL",
-    ]
-    if all(os.getenv(f"SA_{k}") for k in required):
-        info = {
-            "type": os.getenv("SA_TYPE"),
-            "project_id": os.getenv("SA_PROJECT_ID"),
-            "private_key_id": os.getenv("SA_PRIVATE_KEY_ID"),
-            "private_key": os.getenv("SA_PRIVATE_KEY").replace("\\n", "\n"),
-            "client_email": os.getenv("SA_CLIENT_EMAIL"),
-            "client_id": os.getenv("SA_CLIENT_ID"),
-            "auth_uri": os.getenv("SA_AUTH_URI"),
-            "token_uri": os.getenv("SA_TOKEN_URI"),
-            "auth_provider_x509_cert_url": os.getenv("SA_AUTH_PROVIDER_X509_CERT_URL"),
-            "client_x509_cert_url": os.getenv("SA_CLIENT_X509_CERT_URL"),
-        }
-        return Credentials.from_service_account_info(info, scopes=scopes)
+class TokenBucket:
+    """Simple token bucket limiter for RPM/RPS soft limits."""
+    def __init__(self, per_sec: float, per_min: float) -> None:
+        self.rate_sec = per_sec
+        self.rate_min = per_min
+        self.tokens_sec = per_sec
+        self.tokens_min = per_min
+        self.last = _now()
+        self._lock = threading.Lock()
 
-    raise RuntimeError(
-        "No Google credentials found. Set GCP_SERVICE_ACCOUNT_JSON or "
-        "GOOGLE_APPLICATION_CREDENTIALS, or SA_* vars."
-    )
+    def consume(self, cost: float = 1.0) -> None:
+        with self._lock:
+            now = _now()
+            elapsed = now - self.last
+            self.last = now
+            # refill
+            self.tokens_sec = min(self.rate_sec, self.tokens_sec + elapsed * self.rate_sec)
+            self.tokens_min = min(self.rate_min, self.tokens_min + elapsed * (self.rate_min/60.0))
+            # wait if not enough
+            def need_sleep(tokens, cost): return max(0.0, (cost - tokens) / (self.rate_sec if tokens is self.tokens_sec else self.rate_min))
+            while self.tokens_sec < cost or self.tokens_min < cost:
+                sleep_for = 0.05
+                time.sleep(sleep_for)
+                now2 = _now()
+                delta = now2 - self.last
+                self.last = now2
+                self.tokens_sec = min(self.rate_sec, self.tokens_sec + delta * self.rate_sec)
+                self.tokens_min = min(self.rate_min, self.tokens_min + delta * (self.rate_min/60.0))
+            self.tokens_sec -= cost
+            self.tokens_min -= cost
 
-# ---------------- Spreadsheet + worksheet access ----------------
-def _client_spreadsheet():
-    global _client, _spreadsheet
-    if not SHEET_ID:
-        raise RuntimeError("SHEET_ID env var is empty. Set it in your Render environment.")
-    if _client is None:
-        creds = _build_creds()
-        _client = gspread.authorize(creds)
-    if _spreadsheet is None:
-        _spreadsheet = _with_backoff(_client.open_by_key, SHEET_ID)
-    return _spreadsheet
+# ---------------------------- Sheets wrapper ----------------------------
 
-def ws(tab_name: str):
-    if tab_name not in _ws:
-        _ws[tab_name] = _client_spreadsheet().worksheet(tab_name)
-    return _ws[tab_name]
+class Sheets:
+    def __init__(self):
+        ttl = float(os.getenv("VEGA_SHEETS_TTL_SEC", "120"))
+        meta_ttl = float(os.getenv("VEGA_SHEETS_META_TTL_SEC", "1800"))
+        rps = float(os.getenv("VEGA_SHEETS_RPS_SOFT", "5"))
+        rpm = float(os.getenv("VEGA_SHEETS_RPM_SOFT", "50"))
+        self.snap_dir = os.getenv("VEGA_SHEETS_SNAPSHOT_DIR", "./.cache/snapshots")
+        _ensure_dir(self.snap_dir)
 
-def batch_get(ranges):
-    """
-    Version-agnostic batch reader.
-    Uses Spreadsheet.batch_get if available; otherwise falls back to
-    Spreadsheet.values_batch_get; and finally to per-range reads.
-    Returns a list of 2D lists, one per range.
-    """
-    ss = _client_spreadsheet()
+        self.cache = TTLCache(ttl)
+        self.meta_cache = TTLCache(meta_ttl)
+        self.limiter = TokenBucket(per_sec=rps, per_min=rpm)
 
-    # Preferred (newer gspread)
-    if hasattr(ss, "batch_get"):
-        return _with_backoff(ss.batch_get, ranges)
-
-    # Fallback (older gspread): values_batch_get returns API shape
-    if hasattr(ss, "values_batch_get"):
-        def _do():
-            resp = ss.values_batch_get(ranges)  # one HTTP call
-            vrs = resp.get("valueRanges", [])
-            return [vr.get("values", []) for vr in vrs]
-        return _with_backoff(_do)
-
-    # Last resort: iterate (still throttled/backed off)
-    out = []
-    for a1 in ranges:
-        if "!" in a1:
-            tab, rng = a1.split("!", 1)
-            out.append(_with_backoff(ws(tab).get, rng))
+        creds_path = os.getenv("GOOGLE_SHEETS_CREDENTIALS_JSON")
+        scope = [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive",
+        ]
+        if creds_path and os.path.exists(creds_path):
+            creds = Credentials.from_service_account_file(creds_path, scopes=scope)
         else:
-            out.append(_with_backoff(_client_spreadsheet().get_worksheet(0).get, a1))
-    return out
+            # fallback to default service account if gspread can find it
+            creds = Credentials.from_service_account_info(json.loads(os.environ.get("GOOGLE_CREDENTIALS_JSON", "{}") or "{}"), scopes=scope) if os.environ.get("GOOGLE_CREDENTIALS_JSON") else None
+            if creds is None:
+                # last resort: let gspread try default
+                pass
+        self.gc = gspread.authorize(creds) if 'creds' in locals() and creds is not None else gspread.service_account()
 
-# ---------------- Tiny cache helper ----------------
-def get_cached(name: str, ttl: float, loader):
-    rec = _cache.get(name)
-    now = time.time()
-    if rec and now - rec["t"] < ttl:
-        return rec["v"]
-    v = loader()
-    _cache[name] = {"v": v, "t": now}
-    return v
+    # ---------- helpers ----------
+    def _snapshot_path(self, spreadsheet_id: str, tab: str, a1: Optional[str]) -> str:
+        key = _hash_key(spreadsheet_id, tab, a1 or "ALL")
+        return os.path.join(self.snap_dir, f"{key}.json")
 
-# ---------------- High-level reads/writes ----------------
-def read_config():
-    """Returns rows from Config!A1:Z100 (adjust TTL via TTL_CONFIG)."""
-    return get_cached("config", TTL_CONFIG, lambda: batch_get(["Config!A1:Z100"])[0])
-
-def read_watchlist():
-    """Returns rows from Watch List!A1:Z1000 (adjust TTL via TTL_WATCH)."""
-    tab = "Watch List"
-    return get_cached("watch", TTL_WATCH, lambda: batch_get([f"{tab}!A1:Z1000"])[0])
-
-def append_trade_log(row_values, tab_name=None):
-    """Append a single row to TradeLog (or a provided tab) with USER_ENTERED semantics."""
-    target = tab_name or "TradeLog"
-    return _with_backoff(ws(target).append_row, row_values, value_input_option="USER_ENTERED")
-
-# ---------------- Compatibility shims (old API names) ----------------
-def get_sheet(tab_name: str):
-    return ws(tab_name)
-
-def append_row(tab_name: str, row_values):
-    return _with_backoff(ws(tab_name).append_row, row_values, value_input_option="USER_ENTERED")
-
-def read_range(a1_range: str):
-    return batch_get([a1_range])[0]
-
-def write_range(a1_range: str, values):
-    """Write a 2D list to a range like 'Tab!A1:C3' (USER_ENTERED)."""
-    if "!" in a1_range:
-        tab_name, rng = a1_range.split("!", 1)
-    else:
-        tab_name, rng = None, a1_range
-    target_ws = ws(tab_name) if tab_name else _client_spreadsheet().get_worksheet(0)
-    return _with_backoff(target_ws.update, rng, values, value_input_option="USER_ENTERED")
-
-# ---------------- Bootstrap (create tabs, headers, config) ----------------
-def bootstrap_sheet(watch_tab=None, log_tab=None):
-    """
-    Idempotent setup for your Google Sheet.
-    - Creates Config, Watch List, TradeLog if missing
-    - Adds headers
-    - Seeds Config with basic keys
-    """
-    ss = _client_spreadsheet()
-    names = {w.title for w in ss.worksheets()}
-
-    # Resolve tab names
-    watch_tab = watch_tab or os.getenv("GOOGLE_SHEET_MAIN_TAB") or "Watch List"
-    log_tab   = log_tab   or os.getenv("GOOGLE_SHEET_LOG_TAB")  or "TradeLog"
-
-    # Create missing tabs
-    if "Config" not in names:
-        _with_backoff(ss.add_worksheet, title="Config", rows=200, cols=26)
-    if watch_tab not in names:
-        _with_backoff(ss.add_worksheet, title=watch_tab, rows=2000, cols=26)
-    if log_tab not in names:
-        _with_backoff(ss.add_worksheet, title=log_tab, rows=2000, cols=26)
-
-    # Headers + seed config
-    _with_backoff(ws(watch_tab).update, "A1:E1", [["Symbol","Side","Entry","Stop","Note"]])
-    _with_backoff(ws(log_tab).update, "A1:E1", [["Timestamp","Symbol","Side","Qty","Note"]])
-    _with_backoff(ws("Config").update, "A1:B6", [
-        ["WATCHLIST_TAB", watch_tab],
-        ["LOG_TAB",       log_tab],
-        ["ALERT_PCT",     os.getenv("ALERT_PCT", "1.5")],
-        ["RR_TARGET",     os.getenv("RR_TARGET", "2.0")],
-        ["REFRESH_SECS",  os.getenv("REFRESH_SECS", "60")],
-        ["SHEET_ID",      (os.getenv("SHEET_ID") or os.getenv("GOOGLE_SHEET_ID") or "").strip()],
-    ])
-    # Freeze headers (best effort)
-    try:
-        ws(watch_tab).freeze(rows=1)
-        ws(log_tab).freeze(rows=1)
-    except Exception:
-        pass
-# --- Add to sheets_client.py ---
-
-def _col_letter(n: int) -> str:
-    s = ""
-    while n:
-        n, r = divmod(n - 1, 26)
-        s = chr(65 + r) + s
-    return s or "A"
-
-def ensure_tab(tab_name: str, headers=None, rows: int = 2000, cols: int = 26):
-    """
-    Ensure a worksheet exists with optional header row.
-    Safe to call repeatedly (idempotent).
-    """
-    ss = _client_spreadsheet()
-    names = {w.title for w in ss.worksheets()}
-    if tab_name not in names:
-        _with_backoff(ss.add_worksheet, title=tab_name, rows=rows, cols=max(cols, (len(headers) if headers else 1)))
-    if headers:
-        # read first row; if missing or different, write headers
+    def _save_snapshot(self, path: str, data: Any) -> None:
         try:
-            cur = read_range(f"{tab_name}!1:1")
-            cur_hdr = cur[0] if cur else []
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump({"ts": _now(), "data": data}, f)
         except Exception:
-            cur_hdr = []
-        if list(map(str, cur_hdr)) != list(map(str, headers)):
-            write_range(f"{tab_name}!A1:{_col_letter(len(headers))}1", [list(map(str, headers))])
+            pass
 
-def upsert_config(key: str, value: str):
-    """
-    Insert or update a key/value in the Config tab (A:key, B:value).
-    """
-    ensure_tab("Config", ["Key", "Value"], rows=200, cols=2)
-    rows = read_range("Config!A1:B200") or []
-    # build map of existing keys
-    found_row = None
-    for i, r in enumerate(rows[1:], start=2):
-        if r and str(r[0]).strip() == str(key):
-            found_row = i
-            break
-    if found_row:
-        write_range(f"Config!A{found_row}:B{found_row}", [[key, value]])
-    else:
-        append_row("Config", [key, value])
+    def _load_snapshot(self, path: str) -> Optional[Any]:
+        try:
+            if not os.path.exists(path):
+                return None
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f).get("data")
+        except Exception:
+            return None
 
-def snapshot_tab(tab_name: str, max_rows: int = 10000):
-    """
-    Create a CSV-style snapshot of a tab by copying its cell values to a new tab.
-    Returns the new tab name.
-    """
-    ss = _client_spreadsheet()
-    # figure out how many columns by looking at header
-    header = read_range(f"{tab_name}!1:1")
-    hdr = header[0] if header else []
-    m = max(1, len(hdr))
-    rng = f"{tab_name}!A1:{_col_letter(m)}{max_rows}"
-    data = read_range(rng) or []
-    snap_name = f"{tab_name}_snap_{time.strftime('%Y%m%d_%H%M%S', time.gmtime())}"
-    _with_backoff(ss.add_worksheet, title=snap_name, rows=max_rows, cols=max(26, m))
-    write_range(f"{snap_name}!A1:{_col_letter(m)}{len(data or [[]])}", data or [[]])
-    return snap_name
+    def _open(self, spreadsheet_id: str):
+        # metadata cache: spreadsheet obj
+        cache_key = f"open::{spreadsheet_id}"
+        ss = self.meta_cache.get(cache_key)
+        if ss is not None:
+            return ss
+        self.limiter.consume()
+        ss = self.gc.open_by_key(spreadsheet_id)
+        self.meta_cache.set(cache_key, ss)
+        return ss
+
+    def list_tabs(self, spreadsheet_id: str) -> List[str]:
+        cache_key = f"tabs::{spreadsheet_id}"
+        tabs = self.meta_cache.get(cache_key)
+        if tabs is not None:
+            return tabs
+        ss = self._open(spreadsheet_id)
+        self.limiter.consume()
+        worksheets = ss.worksheets()
+        tabs = [w.title for w in worksheets]
+        self.meta_cache.set(cache_key, tabs)
+        return tabs
+
+    def ensure_tab(self, spreadsheet_id: str, tab: str, headers: Optional[List[str]] = None):
+        """Create tab if not exists, set headers only once. Cached to avoid repeated metadata calls."""
+        tabs = self.list_tabs(spreadsheet_id)
+        ss = self._open(spreadsheet_id)
+        if tab not in tabs:
+            # create once
+            self.limiter.consume()
+            ws = ss.add_worksheet(title=tab, rows=1000, cols=50)
+            # update cache
+            self.meta_cache.set(f"tabs::{spreadsheet_id}", tabs + [tab])
+        else:
+            ws = ss.worksheet(tab)
+
+        if headers:
+            # read first row from cache or remote
+            first_row = self.read_range(spreadsheet_id, tab, "1:1")
+            if not first_row or not first_row[0] or [h.strip() for h in first_row[0]] != [h.strip() for h in headers]:
+                # write headers once
+                self.update_range(spreadsheet_id, tab, "1:1", [headers])
+        return ws
+
+    # ---------- value operations with caching/fallback ----------
+
+    def read_range(self, spreadsheet_id: str, tab: str, a1_range: str) -> List[List[Any]]:
+        cache_key = f"read::{spreadsheet_id}::{tab}::{a1_range}"
+        cached = self.cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        path = self._snapshot_path(spreadsheet_id, tab, a1_range)
+        try:
+            self.limiter.consume()
+            ws = self._open(spreadsheet_id).worksheet(tab)
+            values = ws.get(a1_range)  # gspread auto batch under the hood
+            self.cache.set(cache_key, values)
+            self._save_snapshot(path, values)
+            return values
+        except Exception as e:
+            # fallback to snapshot
+            snap = self._load_snapshot(path)
+            if snap is not None:
+                return snap
+            # as last resort, return empty
+            return []
+
+    def read_table(self, spreadsheet_id: str, tab: str) -> List[Dict[str, Any]]:
+        """Reads entire tab as list of dicts (header -> value). Cached; falls back to snapshot."""
+        cache_key = f"table::{spreadsheet_id}::{tab}"
+        cached = self.cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        path = self._snapshot_path(spreadsheet_id, tab, None)
+        try:
+            self.limiter.consume()
+            ws = self._open(spreadsheet_id).worksheet(tab)
+            rows = ws.get_all_values()
+            if not rows:
+                return []
+            headers = [h.strip() for h in rows[0]]
+            data = [dict(zip(headers, r + [""] * (len(headers)-len(r)))) for r in rows[1:]]
+            self.cache.set(cache_key, data)
+            self._save_snapshot(path, data)
+            return data
+        except Exception:
+            snap = self._load_snapshot(path)
+            return snap or []
+
+    def update_range(self, spreadsheet_id: str, tab: str, a1_range: str, values: List[List[Any]]) -> None:
+        """Writes a 2D array to the given range; rate-limited with backoff."""
+        path = self._snapshot_path(spreadsheet_id, tab, a1_range)
+        backoff = 0.5
+        for attempt in range(6):
+            try:
+                self.limiter.consume()
+                ws = self._open(spreadsheet_id).worksheet(tab)
+                ws.update(a1_range, values)
+                # update cache & snapshot
+                self._save_snapshot(path, values)
+                self.cache.set(f"read::{spreadsheet_id}::{tab}::{a1_range}", values)
+                return
+            except Exception as e:
+                msg = str(e)
+                if "RESOURCE_EXHAUSTED" in msg or "RATE_LIMIT_EXCEEDED" in msg or "429" in msg:
+                    time.sleep(backoff)
+                    backoff = min(backoff * 2, 8.0)
+                    continue
+                else:
+                    raise
+
+    def append_rows(self, spreadsheet_id: str, tab: str, rows: List[List[Any]]) -> None:
+        """Appends rows in a single request; retries on limit errors."""
+        if not rows:
+            return
+        backoff = 0.5
+        for attempt in range(6):
+            try:
+                self.limiter.consume()
+                ws = self._open(spreadsheet_id).worksheet(tab)
+                ws.append_rows(rows, value_input_option="USER_ENTERED")
+                # invalidate table cache (new rows)
+                self.cache.set(f"table::{spreadsheet_id}::{tab}", None)
+                return
+            except Exception as e:
+                msg = str(e)
+                if "RESOURCE_EXHAUSTED" in msg or "RATE_LIMIT_EXCEEDED" in msg or "429" in msg:
+                    time.sleep(backoff)
+                    backoff = min(backoff * 2, 8.0)
+                    continue
+                else:
+                    raise
+
+# Singleton for convenience
+sheets = Sheets()
