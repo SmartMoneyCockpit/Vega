@@ -4,6 +4,9 @@
 # advanced risk lab (VaR), FX ETF hedge optimizer, options strategy builder,
 # quick top nav, and in-app docs. Keeps low-API usage and Render-friendly design.
 
+from src.utils.deps_check import show_missing
+show_missing()
+
 import os, math, json, io, zipfile, time, statistics as stats
 from datetime import datetime, timedelta
 from typing import Dict, List, Tuple
