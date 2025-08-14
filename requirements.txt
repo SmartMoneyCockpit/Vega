@@ -24,9 +24,9 @@ scipy==1.13.1
 statsmodels==0.14.2
 cachetools==5.3.3
 
-# News API (optional – keep if you’ll use it)
+# News API (optional)
 newsapi-python==0.2.7
 
-# IBKR (optional – only if enabling live broker import)
+# IBKR (optional)
 ib-insync==0.9.86
 eventkit==1.0.3
