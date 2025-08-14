@@ -1,6 +1,14 @@
 streamlit==1.36.0
 pandas==2.2.2
+numpy==1.26.4
 requests==2.32.3
-gspread==6.0.2
-google-auth==2.31.0
+gspread==6.1.2
+google-auth==2.32.0
 yfinance==0.2.40
+
+# NEW packages for Sheets quota fix
+google-auth-httplib2==0.2.0
+google-api-python-client==2.141.0
+
+# Optional for charts (future upgrades)
+matplotlib==3.9.0
