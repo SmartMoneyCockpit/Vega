@@ -1,14 +1,32 @@
+# Core
 streamlit==1.36.0
 pandas==2.2.2
 numpy==1.26.4
 requests==2.32.3
+pytz==2024.1
+pyyaml==6.0.2
+
+# Google Sheets stack
 gspread==6.1.2
 google-auth==2.32.0
-yfinance==0.2.40
-
-# NEW packages for Sheets quota fix
 google-auth-httplib2==0.2.0
 google-api-python-client==2.141.0
 
-# Optional for charts (future upgrades)
+# Market data helpers
+yfinance==0.2.40
+polygon-api-client==1.13.7
+
+# Plots / Indicators / Math
 matplotlib==3.9.0
+plotly==5.22.0
+ta==0.11.0
+scipy==1.13.1
+statsmodels==0.14.2
+cachetools==5.3.3
+
+# News API (optional – keep if you’ll use it)
+newsapi-python==0.2.7
+
+# IBKR (optional – only if enabling live broker import)
+ib-insync==0.9.86
+eventkit==1.0.3
