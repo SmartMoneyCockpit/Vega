@@ -90,29 +90,26 @@ def _to_float(x, default: float = 0.0) -> float:
 # =========================
 # Theme & CSS
 # =========================
-if "vega_theme" not in st.session_state:
-    st.session_state["vega_theme"] = "Dark"
-
-theme_choice = st.sidebar.selectbox(
-    "Theme", ["Dark", "Light"], index=0 if st.session_state["vega_theme"] == "Dark" else 1
-)
-st.session_state["vega_theme"] = theme_choice
-
-def vega_css(theme: str = "Dark") -> str:
+def vega_css(theme="Dark"):
     if theme == "Light":
         return """
         <style>
+        /* App background + header */
         [data-testid="stAppViewContainer"] { background: #f7fafc !important; }
         [data-testid="stHeader"] { background: #fff !important; border-bottom: 1px solid #e5e7eb !important; }
-        .block-container { padding-top: 0.6rem; }
-        :root { --vega-primary:#0ea5e9; --vega-accent:#16a34a; --vega-danger:#dc2626; --vega-muted:#475569; }
-        .vega-hero { padding:14px 18px; border-radius:12px; background: linear-gradient(90deg, rgba(14,165,233,.10), rgba(22,163,74,.08)); border:1px solid #e5e7eb; color:#0f172a; display:flex; align-items:center; justify-content:space-between; }
-        .vega-chips { display:flex; gap:6px; flex-wrap:wrap; }
-        .vega-chip { padding:6px 10px; border-radius:999px; font-size:.82rem; border:1px solid #e5e7eb; color:#111827; background:#fff; }
-        .vega-chip.active { background: var(--vega-primary); color:#fff; border-color: transparent; }
-        .vega-title { font-size:1.1rem; color:#0f172a; margin-top:.6rem; }
-        .vega-sep { height:1px; background:#e5e7eb; margin:14px 0; }
-        .stTabs [role="tablist"]{margin-top:6px; padding-top:6px;}
+
+        /* Give the main container more breathing room so tabs aren’t under the header */
+        .block-container { padding-top: 1.25rem !important; }
+
+        /* Keep the module tabs visible and above the header/toolbars */
+        .stTabs [role="tablist"]{
+          position: sticky; top: 0; z-index: 6;
+          background: #fff; margin-top: 0; padding: .25rem 0;
+          border-bottom: 1px solid #e5e7eb;
+        }
+
+        /* Ensure Streamlit’s floating toolbar doesn’t cover the tabs */
+        [data-testid="stToolbar"] { z-index: 1; }
         .vega-hero{margin-top:8px;}
         </style>
         """
@@ -121,21 +118,23 @@ def vega_css(theme: str = "Dark") -> str:
         <style>
         [data-testid="stAppViewContainer"] { background: #0f172a !important; }
         [data-testid="stHeader"] { background: transparent !important; border-bottom: 0 !important; }
-        .block-container { padding-top: 0.6rem; }
-        :root { --vega-primary:#0ea5e9; --vega-accent:#22c55e; --vega-danger:#ef4444; --vega-muted:#64748b; }
-        .vega-hero { padding:14px 18px; border-radius:12px; background: linear-gradient(90deg, rgba(14,165,233,.15), rgba(34,197,94,.12)); border:1px solid rgba(148,163,184,.28); color:#e2e8f0; display:flex; align-items:center; justify-content:space-between; }
-        .vega-chips { display:flex; gap:6px; flex-wrap:wrap; }
-        .vega-chip { padding:6px 10px; border-radius:999px; font-size:.82rem; border:1px solid rgba(148,163,184,.25); color:#cbd5e1; cursor:pointer; }
-        .vega-chip.active { background: var(--vega-primary); color:#fff; border-color:transparent; }
-        .vega-title { font-size:1.1rem; color:#cbd5e1; margin-top:.6rem; }
-        .vega-sep { height:1px; background: rgba(148,163,184,.2); margin:14px 0; }
-        [data-testid="stDataFrame"] div[data-baseweb="base-input"] input{ color:#e2e8f0; }
-        .stTabs [role="tablist"]{margin-top:6px; padding-top:6px;}
+
+        /* Slightly more top room for symmetry with Light */
+        .block-container { padding-top: 1rem !important; }
+
+        /* Sticky tabs also in dark; semi-opaque background for readability */
+        .stTabs [role="tablist"]{
+          position: sticky; top: 0; z-index: 6;
+          background: rgba(2,6,23,.85);
+          backdrop-filter: blur(4px);
+          margin-top: 0; padding: .25rem 0;
+          border-bottom: 1px solid rgba(148,163,184,.20);
+        }
+
+        [data-testid="stToolbar"] { z-index: 1; }
         .vega-hero{margin-top:8px;}
         </style>
         """
-
-st.markdown(vega_css(st.session_state["vega_theme"]), unsafe_allow_html=True)
 
 # =========================
 # Config & ENV
