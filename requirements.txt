@@ -14,7 +14,6 @@ google-api-python-client==2.141.0
 
 # Market data helpers
 yfinance==0.2.40
-polygon-api-client==1.13.7
 
 # Plots / Indicators / Math
 matplotlib==3.9.0
