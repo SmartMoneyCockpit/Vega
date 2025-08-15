@@ -1,230 +1,180 @@
-"""
-sheets_client.py — Google Sheets helper for Vega
-
-Auth sources (priority):
-1) GOOGLE_SHEETS_CREDENTIALS_JSON -> absolute path to service-account JSON (e.g. /etc/secrets/credentials.json)
-2) GCP_SERVICE_ACCOUNT_JSON        -> full JSON blob (string)
-3) ./Json/credentials.json or ./credentials.json (fallback for local dev)
-
-Sheet ID env: VEGA_SHEET_ID (or SHEET_ID / GOOGLE_SHEET_ID)
-
-Environment tuning (optional):
-- SHEETS_MIN_INTERVAL   : minimum seconds between API calls (default 2.5)
-- VEGA_SHEETS_TTL_SEC   : Spreadsheet client cache TTL seconds (default 300)
-- VEGA_SHEETS_RPM_SOFT  : soft limit (not enforced strictly; informational)
-- VEGA_SHEETS_RPS_SOFT  : soft limit (not enforced strictly; informational)
-"""
+# sheets_client.py — minimal, rate-limit-friendly Google Sheets helper for Vega
+#
+# Auth sources (priority):
+# 1) GOOGLE_SHEETS_CREDENTIALS_JSON -> path to service-account JSON (e.g. /etc/secrets/credentials.json)
+# 2) GCP_SERVICE_ACCOUNT_JSON       -> JSON string
+# 3) ./Json/credentials.json or ./credentials.json
+#
+# Sheet ID env keys (first found wins):
+#   VEGA_SHEET_ID  | SHEET_ID | GOOGLE_SHEET_ID
+#
+# Caching:
+# - Spreadsheet + Worksheet objects cached with TTL to reduce API calls.
+#   Set TTL via VEGA_SHEETS_TTL_SEC (default 300). You can also set SHEETS_TTL_SEC.
 
 from __future__ import annotations
 
-import json
 import os
+import json
 import time
 from datetime import datetime
-from typing import List
+from typing import List, Dict, Tuple, Any
 
 import gspread
-from gspread.exceptions import APIError, WorksheetNotFound
 
-# ---------------------- Tuning / Throttle ----------------------
+# -------------------- config / caches --------------------
 
-_MIN_INTERVAL = float(os.getenv("SHEETS_MIN_INTERVAL", "2.5"))
-_TTL_SEC     = int(os.getenv("VEGA_SHEETS_TTL_SEC", "300"))
+_TTL_SEC: float = float(os.getenv("VEGA_SHEETS_TTL_SEC", os.getenv("SHEETS_TTL_SEC", "300")))
 
-# Module-level throttle state
-_last_call_ts: float = 0.0
+# Spreadsheet cache: (spreadsheet, expires_at, sheet_id)
+_SS_CACHE: Tuple[Any, float, str] = (None, 0.0, "")
 
-def _throttle() -> None:
-    """Ensure at least _MIN_INTERVAL seconds between live API calls."""
-    global _last_call_ts
-    now = time.time()
-    wait = _MIN_INTERVAL - (now - _last_call_ts)
-    if wait > 0:
-        time.sleep(wait)
-    _last_call_ts = time.time()
+# Worksheet cache per tab name: {tab: (worksheet, expires_at)}
+_WS_CACHE: Dict[str, Tuple[Any, float]] = {}
 
-# ---------------------- Sheet ID / Credentials ----------------------
+# Remember tabs we’ve already ensured (headers created/merged) this run
+_ensured_tabs_runtime = set()
+
+WorksheetNotFound = gspread.exceptions.WorksheetNotFound
+
+# -------------------- helpers --------------------
+
+def _now() -> float:
+    return time.time()
 
 def _env_sheet_id() -> str:
-    """Resolve the Google Sheet ID from env vars."""
     for k in ("VEGA_SHEET_ID", "SHEET_ID", "GOOGLE_SHEET_ID"):
-        v = os.getenv(k, "").strip()
-        if v:
-            return v
-    raise RuntimeError(
-        "No Google Sheet ID found. Set VEGA_SHEET_ID (or SHEET_ID / GOOGLE_SHEET_ID) "
-        "in your Render environment."
-    )
+        v = os.getenv(k)
+        if v and v.strip():
+            return v.strip()
+    raise RuntimeError("No Sheet ID. Set VEGA_SHEET_ID (or SHEET_ID / GOOGLE_SHEET_ID) in Render env.")
 
-# Simple TTL cache for credentials + client + spreadsheet
-_creds_cache: dict | None = None
-_gc_cache: gspread.Client | None = None
-_ss_cache: gspread.Spreadsheet | None = None
-_cache_born: float = 0.0
-
-def _load_credentials_dict() -> dict:
-    """
-    Load service-account credentials as a dict using the priority order:
-    1) GOOGLE_SHEETS_CREDENTIALS_JSON -> absolute path to file
-    2) GCP_SERVICE_ACCOUNT_JSON        -> JSON string
-    3) ./Json/credentials.json or ./credentials.json
-    """
-    # 1) Explicit secret-file path (Render Secret Files pattern)
-    path = os.getenv("GOOGLE_SHEETS_CREDENTIALS_JSON", "").strip()
-    if not path:
-        # Popular default for Render Secret Files
-        default_secret = "/etc/secrets/credentials.json"
-        if os.path.exists(default_secret):
-            path = default_secret
-
+def _service_account_credentials() -> dict:
+    # 1) Path in env
+    path = os.getenv("GOOGLE_SHEETS_CREDENTIALS_JSON")
     if path and os.path.exists(path):
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
-
-    # 2) Full JSON blob in env
-    blob = os.getenv("GCP_SERVICE_ACCOUNT_JSON", "").strip()
+    # 2) Raw JSON in env
+    blob = os.getenv("GCP_SERVICE_ACCOUNT_JSON")
     if blob:
         return json.loads(blob)
-
-    # 3) Local dev fallbacks
-    for candidate in ("Json/credentials.json", "credentials.json"):
-        if os.path.exists(candidate):
-            with open(candidate, "r", encoding="utf-8") as f:
+    # 3) Local fallbacks
+    for p in ("Json/credentials.json", "credentials.json"):
+        if os.path.exists(p):
+            with open(p, "r", encoding="utf-8") as f:
                 return json.load(f)
-
     raise RuntimeError(
         "Google credentials not found. Use Render Secret Files and set "
-        "GOOGLE_SHEETS_CREDENTIALS_JSON to the absolute path (e.g. /etc/secrets/credentials.json), "
-        "or provide GCP_SERVICE_ACCOUNT_JSON."
+        "GOOGLE_SHEETS_CREDENTIALS_JSON to the secret file path."
     )
 
-def _maybe_refresh_cache() -> None:
-    """Invalidate the cached client/spreadsheet after TTL."""
-    global _creds_cache, _gc_cache, _ss_cache, _cache_born
-    if not _cache_born or (time.time() - _cache_born) > _TTL_SEC:
-        _creds_cache = None
-        _gc_cache = None
-        _ss_cache = None
-        _cache_born = time.time()
-
-def _gc() -> gspread.Client:
-    """Get a cached gspread client (refresh by TTL)."""
-    global _creds_cache, _gc_cache, _cache_born
-    _maybe_refresh_cache()
-    if _gc_cache is None:
-        _creds_cache = _creds_cache or _load_credentials_dict()
-        _gc_cache = gspread.service_account_from_dict(_creds_cache)
-    return _gc_cache
-
-def _ss() -> gspread.Spreadsheet:
-    """Get a cached Spreadsheet (refresh by TTL)."""
-    global _ss_cache
-    _maybe_refresh_cache()
-    if _ss_cache is None:
-        _throttle()  # opening by key hits the API
-        _ss_cache = _gc().open_by_key(_env_sheet_id())
-    return _ss_cache
-
-# ---------------------- Resilient request helpers ----------------------
+def _gc():
+    # gspread Client from credentials dict
+    return gspread.service_account_from_dict(_service_account_credentials())
 
 def _with_retries(fn, *args, **kwargs):
-    """
-    Call a function with throttle + small backoff on 429/5xx.
-    Intended for short, single API operations.
-    """
-    delays = [0, 0.6, 1.2]  # up to ~2s extra
-    last_exc = None
-    for d in delays:
-        if d:
-            time.sleep(d)
+    """Small retry helper for transient errors."""
+    for i in range(3):
         try:
-            _throttle()
             return fn(*args, **kwargs)
-        except APIError as e:
-            last_exc = e
-            # Retry on 429 or 5xx
-            code = getattr(e, "response", None)
-            code = getattr(code, "status_code", None) or getattr(e, "code", None)
-            if code and int(code) in (429, 500, 502, 503, 504):
-                continue
-            raise
-        except Exception as e:
-            last_exc = e
-            # Retry on generic transient network errors
-            continue
-    # If we exhausted retries, raise the last error
-    if last_exc:
-        raise last_exc
+        except Exception:
+            if i == 2:
+                raise
+            time.sleep(0.5 * (i + 1))  # backoff: 0.5s, 1.0s
 
-# ---------------------- Public API used by app.py ----------------------
+def _ss():
+    """Get Spreadsheet with TTL cache."""
+    global _SS_CACHE
+    ss, exp, cached_id = _SS_CACHE
+    wanted_id = _env_sheet_id()
+    if ss is not None and _now() < exp and cached_id == wanted_id:
+        return ss
+    # refresh
+    client = _gc()
+    ss = _with_retries(client.open_by_key, wanted_id)
+    _SS_CACHE = (ss, _now() + _TTL_SEC, wanted_id)
+    # invalidate worksheet cache (titles may have changed)
+    _WS_CACHE.clear()
+    return ss
+
+def _ws(tab: str):
+    """Get a Worksheet by title with TTL cache."""
+    item = _WS_CACHE.get(tab)
+    if item and _now() < item[1]:
+        return item[0]
+    try:
+        ws = _with_retries(_ss().worksheet, tab)
+    except WorksheetNotFound:
+        # Create lazily when writers call ensure_tab/write_range/append_row
+        raise
+    _WS_CACHE[tab] = (ws, _now() + _TTL_SEC)
+    return ws
+
+# -------------------- public API --------------------
 
 def batch_get(ranges: List[str]) -> List[List[List[str]]]:
-    """
-    Get multiple A1 ranges possibly across worksheets.
-    Returns list aligned with ranges, each item is a 2D list of values.
-    """
-    ss = _ss()
+    """Batch read across tabs; graceful on errors."""
     out: List[List[List[str]]] = []
-    for r in ranges:
+    for a1 in ranges:
+        tab, rng = (a1.split("!", 1) + ["A1:Z2000"])[:2] if "!" in a1 else (a1, "A1:Z2000")
         try:
-            vals = _with_retries(ss.values_get, r).get("values", [])
+            ws = _ws(tab)
+            vals = _with_retries(ws.get, rng) or []
         except Exception:
             vals = []
         out.append(vals)
     return out
 
 def read_range(a1: str) -> List[List[str]]:
-    """
-    Read a range "Sheet!A1:Z" or "Sheet" (defaults to A1:Z2000).
-    """
     tab, rng = (a1.split("!", 1) + ["A1:Z2000"])[:2] if "!" in a1 else (a1, "A1:Z2000")
-    ws = _with_retries(_ss().worksheet, tab)
-    try:
-        return _with_retries(ws.get, rng) or []
-    except Exception:
-        return []
+    ws = _ws(tab)
+    return _with_retries(ws.get, rng) or []
 
 def write_range(a1: str, rows: List[List]) -> None:
-    """Write values to a range; auto-creates the worksheet if needed."""
     tab, rng = (a1.split("!", 1) + ["A1"])[:2] if "!" in a1 else (a1, "A1")
     try:
-        ws = _with_retries(_ss().worksheet, tab)
+        ws = _ws(tab)
     except WorksheetNotFound:
         ws = _with_retries(_ss().add_worksheet, title=tab, rows=2000, cols=26)
+        _WS_CACHE[tab] = (ws, _now() + _TTL_SEC)
     _with_retries(ws.update, rng, rows, value_input_option="USER_ENTERED")
 
 def append_row(tab: str, row: List) -> None:
-    """Append a single row to a worksheet; auto-creates the worksheet if needed."""
     try:
-        ws = _with_retries(_ss().worksheet, tab)
+        ws = _ws(tab)
     except WorksheetNotFound:
         ws = _with_retries(_ss().add_worksheet, title=tab, rows=2000, cols=26)
-    cleaned = [("" if x is None else x) for x in row]
-    _with_retries(ws.append_row, cleaned, value_input_option="USER_ENTERED")
+        _WS_CACHE[tab] = (ws, _now() + _TTL_SEC)
+    clean = [("" if x is None else x) for x in row]
+    _with_retries(ws.append_row, clean, value_input_option="USER_ENTERED")
 
 def append_trade_log(row: List, tab_name: str = "NA_TradeLog") -> None:
     append_row(tab_name, row)
 
 def ensure_tab(tab: str, headers: List[str]) -> None:
-    """
-    Ensure a tab exists and that header row contains at least the given headers
-    (union; preserves existing order and columns).
-    """
+    """Create the tab if missing; ensure header row contains at least `headers`."""
+    key = (tab, tuple(headers))
+    if key in _ensured_tabs_runtime:
+        return
+
     ss = _ss()
     try:
         ws = _with_retries(ss.worksheet, tab)
     except WorksheetNotFound:
         ws = _with_retries(ss.add_worksheet, title=tab, rows=2000, cols=26)
         _with_retries(ws.update, "A1", [headers])
+        _WS_CACHE[tab] = (ws, _now() + _TTL_SEC)
+        _ensured_tabs_runtime.add(key)
         return
 
     cur = _with_retries(ws.row_values, 1) or []
     if not cur:
         _with_retries(ws.update, "A1", [headers])
+        _ensured_tabs_runtime.add(key)
         return
 
-    need = list(cur)
-    changed = False
+    need, changed = list(cur), False
     for h in headers:
         if h not in need:
             need.append(h)
@@ -232,38 +182,31 @@ def ensure_tab(tab: str, headers: List[str]) -> None:
     if changed:
         _with_retries(ws.update, "A1", [need])
 
+    _ensured_tabs_runtime.add(key)
+
 def read_config() -> List[List[str]]:
-    """Return Config rows (2D values) or empty list if no tab."""
     try:
-        ws = _with_retries(_ss().worksheet, "Config")
-    except WorksheetNotFound:
+        return read_range("Config!A1:Z999") or []
+    except Exception:
         return []
-    return _with_retries(ws.get, "A1:Z999") or []
 
 def upsert_config(key: str, value: str) -> None:
-    """
-    Upsert a key/value into the Config tab.
-    Creates the tab if missing and seeds header row.
-    """
-    ss = _ss()
     try:
-        ws = _with_retries(ss.worksheet, "Config")
+        ws = _ws("Config")
     except WorksheetNotFound:
-        ws = _with_retries(ss.add_worksheet, title="Config", rows=200, cols=5)
+        ws = _with_retries(_ss().add_worksheet, title="Config", rows=200, cols=5)
         _with_retries(ws.update, "A1", [["Key", "Value"]])
+        _WS_CACHE["Config"] = (ws, _now() + _TTL_SEC)
 
     rows = _with_retries(ws.get_all_values)
-    for i, r in enumerate(rows[1:], start=2):  # skip header
+    for i, r in enumerate(rows[1:], start=2):
         if r and str(r[0]).strip() == key:
             _with_retries(ws.update, f"A{i}:B{i}", [[key, str(value)]])
             return
     _with_retries(ws.append_row, [key, str(value)], value_input_option="USER_ENTERED")
 
 def bootstrap_sheet() -> List[str]:
-    """
-    Create core tabs with headers if they don't exist.
-    Returns list of created tab names.
-    """
+    """Create core tabs if missing; return names of tabs that were created."""
     ss = _ss()
     created: List[str] = []
 
@@ -274,22 +217,17 @@ def bootstrap_sheet() -> List[str]:
         except WorksheetNotFound:
             ws = _with_retries(ss.add_worksheet, title=title, rows=2000, cols=26)
             _with_retries(ws.update, "A1", [hdrs])
+            _WS_CACHE[title] = (ws, _now() + _TTL_SEC)
             created.append(title)
 
-    _mk("NA_Watch",  ["Ticker", "Country", "Strategy", "Entry", "Stop", "Target", "Note", "Status", "Audit"])
-    _mk("APAC_Watch",["Ticker", "Country", "Strategy", "Entry", "Stop", "Target", "Note", "Status", "Audit"])
-
-    _mk("NA_TradeLog",   ["Timestamp","TradeID","Symbol","Side","Qty","Price","Note","ExitPrice","ExitQty","Fees","PnL","R","Tags","Audit"])
-    _mk("APAC_TradeLog", ["Timestamp","TradeID","Symbol","Side","Qty","Price","Note","ExitPrice","ExitQty","Fees","PnL","R","Tags","Audit"])
-
+    _mk("NA_Watch",   ["Ticker", "Country", "Strategy", "Entry", "Stop", "Target", "Note", "Status", "Audit"])
+    _mk("APAC_Watch", ["Ticker", "Country", "Strategy", "Entry", "Stop", "Target", "Note", "Status", "Audit"])
+    _mk("NA_TradeLog",   ["Timestamp", "TradeID", "Symbol", "Side", "Qty", "Price", "Note", "ExitPrice", "ExitQty", "Fees", "PnL", "R", "Tags", "Audit"])
+    _mk("APAC_TradeLog", ["Timestamp", "TradeID", "Symbol", "Side", "Qty", "Price", "Note", "ExitPrice", "ExitQty", "Fees", "PnL", "R", "Tags", "Audit"])
     _mk("Config", ["Key", "Value"])
     return created
 
 def snapshot_tab(tab: str) -> str:
-    """
-    Copy a worksheet to a new sheet named <tab>_snap_YYYYMMDD_HHMM with values only.
-    Returns the new title.
-    """
     ss = _ss()
     try:
         ws = _with_retries(ss.worksheet, tab)
@@ -298,9 +236,9 @@ def snapshot_tab(tab: str) -> str:
 
     ts = datetime.utcnow().strftime("%Y%m%d_%H%M")
     new_title = f"{tab}_snap_{ts}"
-
     new_ws = _with_retries(ss.add_worksheet, title=new_title, rows=ws.row_count, cols=ws.col_count)
     vals = _with_retries(ws.get_all_values)
     if vals:
         _with_retries(new_ws.update, "A1", vals)
+    _WS_CACHE[new_title] = (new_ws, _now() + _TTL_SEC)
     return new_title
