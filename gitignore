@@ -8,7 +8,7 @@ __pycache__/
 build/
 dist/
 
-# Environment & credentials
+# Environment & credentialssss
 .env
 *.env
 .env.*
