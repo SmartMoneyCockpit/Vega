@@ -157,23 +157,151 @@ SUFFIX = {
 }
 
 # ---------- Sidebar ----------
+import os
+import streamlit as st
+from datetime import datetime as _dt
+
+# Optional imports guarded so the app doesn't crash if files are missing
+try:
+    from app_snippet import start_vega_monitor
+except Exception:
+    start_vega_monitor = None
+
+try:
+    from jobs.test_alert import main as _send_test_alert
+except Exception:
+    _send_test_alert = None
+
+try:
+    from vega_monitor.alerts import send_email, send_webhook
+except Exception:
+    send_email = send_webhook = None
+
+# ---- Header & PIN ----
 st.sidebar.header("Vega • Session Controls")
-entered_pin = st.sidebar.text_input("Admin PIN (optional)", type="password", help="Only required if you set ADMIN_PIN in Config.")
+
+entered_pin = st.sidebar.text_input(
+    "Admin PIN (optional)",
+    type="password",
+    help="Only required if you set ADMIN_PIN in Config."
+)
+
+# You already define ADMIN_PIN somewhere else; keep this logic as-is:
 is_admin = (not ADMIN_PIN) or (entered_pin and entered_pin == ADMIN_PIN)
 
+# ---- Bootstrap / Repair ----
 if st.sidebar.button("Setup / Repair Google Sheet"):
-    try: bootstrap_sheet(); st.sidebar.success("Core tabs checked/created.")
-    except Exception as e: st.sidebar.error(f"Bootstrap error: {e}")
+    try:
+        bootstrap_sheet()
+        st.sidebar.success("Core tabs checked/created.")
+    except Exception as e:
+        st.sidebar.error(f"Bootstrap error: {e}")
 
+# ---- Monitor Controls ----
+st.sidebar.subheader("System Health (ACI)")
+
+email_cfg = all([
+    os.getenv("VEGA_EMAIL_HOST"),
+    os.getenv("VEGA_EMAIL_USER"),
+    os.getenv("VEGA_EMAIL_PASS"),
+    os.getenv("VEGA_EMAIL_TO"),
+])
+webhook_cfg = bool(os.getenv("VEGA_WEBHOOK_URL"))
+
+st.sidebar.write(
+    f"Email alerts: **{'ON' if email_cfg else 'OFF'}** · "
+    f"Webhook: **{'ON' if webhook_cfg else 'OFF'}**"
+)
+
+# Thresholds (defaults shown if not set)
+warn  = float(os.getenv("VEGA_THRESH_WARN", "0.75"))
+actn  = float(os.getenv("VEGA_THRESH_ACTION", "0.80"))
+crit  = float(os.getenv("VEGA_THRESH_CRITICAL", "0.90"))
+st.sidebar.caption(f"Thresholds — Warn: {warn:.2f} · Action: {actn:.2f} · Critical: {crit:.2f}")
+
+# Start the background monitor once per session
+if "monitor_started" not in st.session_state:
+    st.session_state["monitor_started"] = False
+
+def _start_monitor():
+    if start_vega_monitor is None:
+        st.sidebar.warning("Monitor package not found yet.")
+        return
+    if not st.session_state["monitor_started"]:
+        start_vega_monitor()
+        st.session_state["monitor_started"] = True
+        st.sidebar.success("Resource Monitor started (background).")
+    else:
+        st.sidebar.info("Resource Monitor already running.")
+
+if st.sidebar.button("▶️ Start Resource Monitor", disabled=st.session_state["monitor_started"]):
+    _start_monitor()
+
+# ---- Alert Tests ----
+st.sidebar.subheader("Alerts (Test)")
+
+if st.sidebar.button("🔔 Send Test Alert (Email)"):
+    if _send_test_alert:
+        try:
+            _send_test_alert()
+            st.sidebar.success("Sent: check Gmail for ‘VEGA ALERT — Test Trigger (Email OK)’")
+        except Exception as e:
+            st.sidebar.error(f"Failed: {e}")
+    elif send_email:
+        # Fallback direct email if jobs/test_alert.py isn't present
+        try:
+            subj = "VEGA ALERT — Test Trigger (Email OK)"
+            now  = _dt.now().strftime("%Y-%m-%d %H:%M:%S")
+            body = f"Test alert from Vega at {now}\nThis verifies Gmail SMTP configuration."
+            send_email(subj, body)
+            st.sidebar.success("Sent: check Gmail for ‘VEGA ALERT — Test Trigger (Email OK)’")
+        except Exception as e:
+            st.sidebar.error(f"Failed: {e}")
+    else:
+        st.sidebar.error("Alert module not available. Install vega_monitor/alerts.py")
+
+if st.sidebar.button("🛡 Simulate Defensive Mode (Email/Webhook)"):
+    if send_email or send_webhook:
+        try:
+            subj = "VEGA ALERT — Defensive Mode ENTER (SIMULATED)"
+            body = (
+                "This is a simulated Defensive Mode entry to verify alert formatting.\n"
+                "Levels: CPU=0.92 MEM=0.81 DISK=0.77\n"
+            )
+            if send_email:
+                send_email(subj, body)
+            if send_webhook:
+                send_webhook({"type": "defensive_mode", "simulated": True,
+                              "levels": {"cpu": 0.92, "mem": 0.81, "disk": 0.77}})
+            st.sidebar.success("Simulated Defensive Mode alert sent.")
+        except Exception as e:
+            st.sidebar.error(f"Failed: {e}")
+    else:
+        st.sidebar.error("Alert module not available. Install vega_monitor/alerts.py")
+
+# ---- Diagnostics ----
 with st.sidebar.expander("Diagnostics"):
-    st.write({
-        "version": APP_VER,
-        "TZ": TZ_NAME,
-        "local_time": now(),
-        "POLYGON": bool(POLY),
-        "NEWSAPI": bool(NEWSKEY),
-        "ADMIN": bool(ADMIN_PIN)
-    })
+    try:
+        st.write({
+            "version": APP_VER,
+            "TZ": TZ_NAME,
+            "local_time": now(),   # assumes you have now() defined
+            "POLYGON": bool(POLY),
+            "NEWSAPI": bool(NEWSKEY),
+            "ADMIN": bool(ADMIN_PIN),
+            "Monitor running": st.session_state["monitor_started"],
+            "Email alerts": email_cfg,
+            "Webhook alerts": webhook_cfg,
+        })
+    except Exception:
+        # Fallback if some symbols (APP_VER, TZ_NAME, etc.) aren’t in scope here
+        st.write({
+            "local_time": _dt.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "Monitor running": st.session_state["monitor_started"],
+            "Email alerts": email_cfg,
+            "Webhook alerts": webhook_cfg,
+        })
+
 
 # ---------- Price helpers ----------
 def price_polygon(sym: str):
