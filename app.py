@@ -893,6 +893,43 @@ def get_health_diag():
         ),
     }
 
+def email_system_health_report():
+    """Compose + send a one-shot email with pass/fail + fix tips."""
+    diag = get_health_diag()
+    lines = []
+    for name, (ok, tip, critical) in diag.items():
+        status = "OK" if ok else "FAIL"
+        add = f"{name}: {status}"
+        if not ok:
+            add += f"  |  Fix: {tip}"
+        if critical:
+            add += "  [critical]"
+        lines.append(add)
+    body = "Vega System Health Report\n\n" + "\n".join(lines)
+    ts = datetime.now(ZoneInfo(TZ_NAME)).strftime("%Y-%m-%d %H:%M")
+    subj = f"Vega System Health - {ts} {TZ_NAME}"
+    return safe_send_email(subj, body)
+
+# ---------- Defensive Mode helpers ----------
+def _set_defensive_mode(on: bool):
+    st.session_state["defensive_mode"] = bool(on)
+    try:
+        if on:
+            subj = "VEGA ALERT - Defensive Mode ENTER"
+            body = "Defensive Mode entered by operator.\nRisk controls heightened."
+        else:
+            subj = "VEGA ALERT - Defensive Mode EXIT"
+            body = "Defensive Mode exited by operator."
+        safe_send_email(subj, body)
+        if send_webhook:
+            safe_send_webhook({"type": "defensive_mode", "active": on, "ts": now_utc_iso()})
+    except Exception:
+        pass
+
+def render_defensive_banner():
+    if st.session_state.get("defensive_mode", False):
+        st.error("DEFENSIVE MODE ACTIVE — Risk controls heightened.")
+
 # ---------- Startup banner (runs once) ----------
 def show_startup_banner():
     if st.session_state.get("startup_checked"):
@@ -922,16 +959,145 @@ def page_system_check():
     for name, (ok, tip, _) in diag.items():
         row(name, ok, tip)
 
+    st.markdown("---")
+    c1, c2, c3 = st.columns([1, 1, 2])
+    if c1.button("Email System Health report"):
+        ok = email_system_health_report()
+        st.success("Health report emailed." if ok else "Email not configured. Set VEGA_EMAIL_HOST/USER/PASS/TO in secrets.")
+    if c2.button("Enter Defensive Mode"):
+        _set_defensive_mode(True); st.success("Defensive Mode entered.")
+    if c3.button("Exit Defensive Mode"):
+        _set_defensive_mode(False); st.success("Defensive Mode exited.")
+
     st.divider()
     st.caption("Run this before markets open. All critical rows should be green.")
 
-# Show a one-time startup health banner (keep this just before Router)
+# ---------- PnL Analytics tab ----------
+def page_pnl_analytics():
+    st.header("PnL Analytics (NA_TradeLog)")
+    df = read_df("NA_TradeLog!A1:Z8000")
+    if df.empty:
+        st.info("No trades yet.")
+        return
+
+    # Coerce numerics
+    for c in ("Qty","Price","ExitPrice","ExitQty","PnL","R"):
+        if c in df.columns:
+            df[c] = pd.to_numeric(df[c], errors="coerce")
+
+    # Realized PnL summary
+    realized_df = df[pd.to_numeric(df.get("PnL", pd.Series([])), errors="coerce").notna()].copy()
+    trades = len(realized_df)
+    wins = int((realized_df["PnL"] > 0).sum()) if "PnL" in realized_df.columns else 0
+    wr = (wins / trades * 100) if trades else 0.0
+    avgR = float(realized_df["R"].mean()) if "R" in realized_df.columns and not realized_df["R"].dropna().empty else 0.0
+    realized_total = float(realized_df["PnL"].sum()) if "PnL" in realized_df.columns else 0.0
+    best = float(realized_df["PnL"].max()) if "PnL" in realized_df.columns and trades else 0.0
+    worst = float(realized_df["PnL"].min()) if "PnL" in realized_df.columns and trades else 0.0
+
+    c1,c2,c3,c4,c5 = st.columns(5)
+    c1.metric("Realized P/L", f"${realized_total:,.0f}")
+    c2.metric("Trades closed", f"{trades}")
+    c3.metric("Win %", f"{wr:.0f}%")
+    c4.metric("Avg R", f"{avgR:.2f}")
+    c5.metric("Best / Worst", f"${best:,.0f} / ${worst:,.0f}")
+
+    # Daily cum PnL
+    try:
+        realized_df["Date"] = pd.to_datetime(realized_df["Timestamp"], errors="coerce").dt.date
+        daily = realized_df.groupby("Date")["PnL"].sum().reset_index()
+        daily["CumPnL"] = daily["PnL"].cumsum()
+        import plotly.express as px
+        st.plotly_chart(px.line(daily, x="Date", y="CumPnL", title="Cumulative Realized P/L"), use_container_width=True)
+    except Exception:
+        pass
+
+    # Top symbols by realized PnL
+    try:
+        top = realized_df.groupby("Symbol")["PnL"].sum().sort_values(ascending=False).head(15).reset_index()
+        import plotly.express as px
+        st.plotly_chart(px.bar(top, x="Symbol", y="PnL", title="Top Symbols (Realized P/L)"), use_container_width=True)
+    except Exception:
+        pass
+
+    # R distribution
+    try:
+        rvals = realized_df["R"].dropna()
+        if not rvals.empty:
+            import plotly.express as px
+            st.plotly_chart(px.histogram(rvals, nbins=30, title="R distribution (closed trades)"), use_container_width=True)
+    except Exception:
+        pass
+
+    # Open exposure snapshot
+    tmp = df.copy()
+    if "Qty" in tmp.columns and "ExitQty" in tmp.columns:
+        tmp["Remain"] = pd.to_numeric(tmp["Qty"], errors="coerce").fillna(0) - pd.to_numeric(tmp["ExitQty"], errors="coerce").fillna(0)
+        open_rows = tmp[tmp["Remain"] > 0]
+        if not open_rows.empty:
+            open_rows["Notional"] = open_rows["Remain"] * pd.to_numeric(open_rows["Price"], errors="coerce").fillna(0)
+            side_expo = open_rows.groupby(open_rows["Side"].str.upper())["Notional"].sum().to_dict()
+            st.write("Open exposure (notional by side):", {k: f"${v:,.0f}" for k,v in side_expo.items()})
+            st.dataframe(open_rows[["Symbol","Side","Remain","Price","Notional","Timestamp"]], use_container_width=True, hide_index=True)
+
+# ---------- Backtest (Beta) tab ----------
+def page_backtest_beta():
+    st.header("Backtest (Beta) — MA crossover")
+    if yf is None:
+        st.warning("yfinance not available on server.")
+        return
+    sym = st.text_input("Symbol", value="AAPL").strip().upper()
+    colA, colB, colC = st.columns(3)
+    fast = colA.number_input("Fast MA", 2, 250, 20)
+    slow = colB.number_input("Slow MA", 5, 400, 50)
+    period = colC.selectbox("History", ["6mo","1y","2y","5y","max"], index=3)
+
+    if slow <= fast:
+        st.info("Slow MA must be greater than Fast MA.")
+        return
+
+    try:
+        t = yf.Ticker(sym)
+        hist = t.history(period=period)
+        if hist.empty:
+            st.warning("No price history.")
+            return
+        px = hist["Close"].copy()
+        ma_f = px.rolling(fast).mean()
+        ma_s = px.rolling(slow).mean()
+        pos = (ma_f > ma_s).astype(int)  # long-only
+        ret = px.pct_change().fillna(0.0)
+        strat = (pos.shift(1).fillna(0) * ret)
+        eq = (1 + strat).cumprod()
+        import plotly.express as pxl
+        df_plot = pd.DataFrame({"Equity": eq, "Price(norm)": px / px.iloc[0]})
+        st.plotly_chart(pxl.line(df_plot, title=f"{sym} strategy vs price (normalized)"), use_container_width=True)
+
+        # Metrics
+        n = len(strat)
+        if n > 0:
+            cagr = (eq.iloc[-1] ** (252/max(n,1)) - 1) if eq.iloc[-1] > 0 else 0.0
+            rollmax = eq.cummax()
+            mdd = float(((eq/rollmax) - 1).min())
+            winrate = float((strat > 0).sum() / max((strat != 0).sum(), 1)) * 100.0
+        else:
+            cagr = mdd = winrate = 0.0
+        s1, s2, s3 = st.columns(3)
+        s1.metric("CAGR (approx)", f"{cagr*100:.1f}%")
+        s2.metric("Max Drawdown", f"{mdd*100:.1f}%")
+        s3.metric("Win rate", f"{winrate:.0f}%")
+    except Exception as e:
+        st.error(f"Backtest error: {e}")
+
+# ---- render global banners before building tabs ----
+render_defensive_banner()
 show_startup_banner()
 
 # ---------- Router & Quick Nav ----------
 MODULES = [
     "System Check",
     "NA Cockpit", "APAC Cockpit", "Morning News", "Risk Lab",
+    "PnL Analytics", "Backtest (Beta)",
     "Options Builder", "FX & Hedges", "Broker Import",
     "Health Journal", "Admin / Backup", "Docs"
 ]
@@ -949,14 +1115,18 @@ with tabs[3]:
 with tabs[4]:
     page_risk_lab()
 with tabs[5]:
-    page_options_builder()
+    page_pnl_analytics()
 with tabs[6]:
-    page_fx()
+    page_backtest_beta()
 with tabs[7]:
-    page_broker_import()
+    page_options_builder()
 with tabs[8]:
-    page_health_min()
+    page_fx()
 with tabs[9]:
-    page_admin_backup()
+    page_broker_import()
 with tabs[10]:
+    page_health_min()
+with tabs[11]:
+    page_admin_backup()
+with tabs[12]:
     page_docs()
