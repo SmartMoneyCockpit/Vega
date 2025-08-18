@@ -194,17 +194,16 @@ if st.sidebar.button("▶️ Start Resource Monitor", disabled=st.session_state[
 
 st.sidebar.subheader("Alerts (Test)")
 if st.sidebar.button("🔔 Send Test Alert (Email)"):
-    if _send_test_alert:
-        try: _send_test_alert(); st.sidebar.success("Sent: check Gmail for ‘VEGA ALERT — Test Trigger (Email OK)’")
-        except Exception as e: st.sidebar.error(f"Failed: {e}")
-    elif send_email:
-        try:
-            subj="VEGA ALERT — Test Trigger (Email OK)"; tnow=_dt.now().strftime("%Y-%m-%d %H:%M:%S")
-            body=f"Test alert from Vega at {tnow}\\nThis verifies Gmail SMTP configuration."
-            safe_send_email(subj, body)  # ANCHOR:TEST_EMAIL_CALL
-            st.sidebar.success("Sent: check Gmail for ‘VEGA ALERT — Test Trigger (Email OK)’")
-        except Exception as e: st.sidebar.error(f"Failed: {e}")
-    else: st.sidebar.error("Alert module not available. Install vega_monitor/alerts.py")
+    try:
+        tnow = _dt.now().strftime("%Y-%m-%d %H:%M:%S")
+        subj = "VEGA ALERT — Test Trigger (Email OK)"  # pretty; wrapper will sanitize if server is ASCII-only
+        body = f"Test alert from Vega at {tnow}\nThis verifies Gmail SMTP configuration."
+        safe_send_email(subj, body)  # always go through the UTF-8/ASCII-safe wrapper
+        st.sidebar.success("Sent: check Gmail for 'VEGA ALERT — Test Trigger (Email OK)'")
+    except Exception as e:
+        # extra safety: try again with plain ASCII just in case
+        safe_send_email("VEGA ALERT - Test Trigger (Email OK)", body.replace("—", "-"))
+        st.sidebar.warning(f"Sent with ASCII fallback. Detail: {e}")
 
 if st.sidebar.button("🛡 Simulate Defensive Mode (Email/Webhook)"):
     if send_email or send_webhook:
