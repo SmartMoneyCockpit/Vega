@@ -1,3 +1,6 @@
+# app.py — Vega Command Center (Feature Pack 2)
+# Copy/paste this entire file.
+
 import os, sys, math, json, io, zipfile, time, statistics as stats
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Tuple
@@ -44,7 +47,68 @@ from sheets_client import (
     upsert_config, snapshot_tab
 )
 
-APP_VER = "v1.2.0 (UTF8-fixes + UI offset)"
+# ---------- Google Sheets rate-limit guard + cache ----------
+# Keep originals so we can wrap them
+_ORIG_READ_RANGE = read_range
+_ORIG_WRITE_RANGE = write_range
+_ORIG_APPEND_ROW = append_row
+_ORIG_APPEND_TRADE_LOG = append_trade_log
+
+# Cache TTL for reads (seconds). Tweak via env: VEGA_SHEETS_TTL
+SHEETS_TTL = int(os.getenv("VEGA_SHEETS_TTL", "25"))
+if "sheets_rev" not in st.session_state:
+    st.session_state["sheets_rev"] = 0  # bump this after any write to bust cache
+
+@st.cache_data(ttl=SHEETS_TTL, show_spinner=False)
+def _cached_read_range(a1: str, rev: int):
+    # rev included so cache busts after writes
+    return _ORIG_READ_RANGE(a1)
+
+def read_range(a1: str):
+    """Drop-in replacement with small retry and a friendly warning on 429."""
+    rev = st.session_state.get("sheets_rev", 0)
+    try:
+        return _cached_read_range(a1, rev)
+    except Exception as e:
+        msg = str(e)
+        if "429" in msg or "Quota exceeded" in msg:
+            for delay in (1.0, 2.0, 4.0):  # quick backoff retries
+                time.sleep(delay)
+                try:
+                    return _cached_read_range(a1, rev)
+                except Exception as e2:
+                    if "429" not in str(e2):
+                        raise
+            st.warning("Google Sheets is rate limiting reads. Please wait ~30–60 seconds and try again.")
+            return []  # keep UI alive
+        raise
+
+def _bump_rev_and_clear():
+    st.session_state["sheets_rev"] = st.session_state.get("sheets_rev", 0) + 1
+    try:
+        _cached_read_range.clear()
+    except Exception:
+        try:
+            st.cache_data.clear()
+        except Exception:
+            pass
+
+def write_range(a1: str, rows):
+    res = _ORIG_WRITE_RANGE(a1, rows)
+    _bump_rev_and_clear()
+    return res
+
+def append_row(tab: str, row):
+    res = _ORIG_APPEND_ROW(tab, row)
+    _bump_rev_and_clear()
+    return res
+
+def append_trade_log(row, tab_name: str = "NA_TradeLog"):
+    res = _ORIG_APPEND_TRADE_LOG(row, tab_name=tab_name)
+    _bump_rev_and_clear()
+    return res
+
+APP_VER = "v1.3.0 (FP2: caching + system-check + analytics)"
 
 # ---------- UTF-8 Safe Alert Wrappers (ANCHOR:SAFE_HELPERS) ----------
 import unicodedata
@@ -62,10 +126,17 @@ def _sanitize_ascii(s: str) -> str:
     return unicodedata.normalize("NFKD", s).encode("ascii","ignore").decode("ascii")
 def safe_send_email(subj: str, body: str):
     try: send_email(_to_utf8(subj), _to_utf8(body))
-    except Exception: send_email(_sanitize_ascii(subj), _sanitize_ascii(body))
+    except Exception: 
+        try:
+            send_email(_sanitize_ascii(subj), _sanitize_ascii(body))
+        except Exception:
+            pass
 def safe_send_webhook(payload: dict):
     def _clean(v): return _sanitize_ascii(v) if isinstance(v, str) else v
-    if send_webhook: send_webhook({k:_clean(v) for k,v in payload.items()})
+    try:
+        if send_webhook: send_webhook({k:_clean(v) for k,v in payload.items()})
+    except Exception:
+        pass
 
 # ---------- Utils ----------
 def rows_to_df(rows):
@@ -194,22 +265,23 @@ if st.sidebar.button("▶️ Start Resource Monitor", disabled=st.session_state[
 
 st.sidebar.subheader("Alerts (Test)")
 if st.sidebar.button("🔔 Send Test Alert (Email)"):
-    try:
-        tnow = _dt.now().strftime("%Y-%m-%d %H:%M:%S")
-        subj = "VEGA ALERT — Test Trigger (Email OK)"  # pretty; wrapper will sanitize if server is ASCII-only
-        body = f"Test alert from Vega at {tnow}\nThis verifies Gmail SMTP configuration."
-        safe_send_email(subj, body)  # always go through the UTF-8/ASCII-safe wrapper
-        st.sidebar.success("Sent: check Gmail for 'VEGA ALERT — Test Trigger (Email OK)'")
-    except Exception as e:
-        # extra safety: try again with plain ASCII just in case
-        safe_send_email("VEGA ALERT - Test Trigger (Email OK)", body.replace("—", "-"))
-        st.sidebar.warning(f"Sent with ASCII fallback. Detail: {e}")
+    if _send_test_alert:
+        try: _send_test_alert(); st.sidebar.success("Sent: check Gmail for ‘VEGA ALERT — Test Trigger (Email OK)’")
+        except Exception as e: st.sidebar.error(f"Failed: {e}")
+    elif send_email:
+        try:
+            subj="VEGA ALERT — Test Trigger (Email OK)"; tnow=_dt.now().strftime("%Y-%m-%d %H:%M:%S")
+            body=f"Test alert from Vega at {tnow}\nThis verifies Gmail SMTP configuration."
+            safe_send_email(subj, body)  # ANCHOR:TEST_EMAIL_CALL
+            st.sidebar.success("Sent: check Gmail for ‘VEGA ALERT — Test Trigger (Email OK)’")
+        except Exception as e: st.sidebar.error(f"Failed: {e}")
+    else: st.sidebar.error("Alert module not available. Install vega_monitor/alerts.py")
 
 if st.sidebar.button("🛡 Simulate Defensive Mode (Email/Webhook)"):
     if send_email or send_webhook:
         try:
             subj="VEGA ALERT — Defensive Mode ENTER (SIMULATED)"
-            body="This is a simulated Defensive Mode entry to verify alert formatting.\\nLevels: CPU=0.92 MEM=0.81 DISK=0.77\\n"
+            body="This is a simulated Defensive Mode entry to verify alert formatting.\nLevels: CPU=0.92 MEM=0.81 DISK=0.77\n"
             if send_email:   safe_send_email(subj, body)  # ANCHOR:DEF_EMAIL_CALL
             if send_webhook: safe_send_webhook({"type":"defensive_mode","simulated":True,"levels":{"cpu":0.92,"mem":0.81,"disk":0.77}})  # ANCHOR:DEF_WEBHOOK_CALL
             st.sidebar.success("Simulated Defensive Mode alert sent.")
@@ -331,12 +403,21 @@ def list_open_lots(log_df: pd.DataFrame, symbol: str) -> List[Tuple[int,float,st
     m=(df.get("Symbol","").astype(str)==symbol)
     for idx, r in df[m].iterrows():
         qty=float(r.get("Qty",0) or 0); exq=float(r.get("ExitQty",0) or 0); remain=max(qty - exq, 0.0)
-        if remain>0 and str(r.get("Side","")).upper() in ("BUY","SELL"):
+        if remain>0 and str(r.get("Side","BUY")).upper() in ("BUY","SELL"):
             out.append((idx, remain, str(r.get("Side","")).upper(), float(r.get("Price",0) or 0), str(r.get("Timestamp",""))))
     return out
+
+# Cached Fee Presets (5 min)
 def load_fee_presets():
     ensure_tabs({"Fee_Presets": ["Preset","Markets","Base","BpsBuy","BpsSell","TaxBps","Notes"]})
-    return read_df("Fee_Presets!A1:Z200")
+    now_ts = time.time()
+    cache = st.session_state.get("_fee_cache")
+    if cache and (now_ts - cache["ts"] < 300):
+        return cache["df"]
+    df = rows_to_df(read_range("Fee_Presets!A1:Z200"))
+    st.session_state["_fee_cache"] = {"ts": now_ts, "df": df}
+    return df
+
 def match_preset_for(country_code: str, preset_name: str=None):
     df=load_fee_presets()
     if not df.empty and preset_name:
@@ -740,99 +821,182 @@ def news_top(country_code: str, q: str=None, page_size=10):
         return [{"source":(a.get("source") or {}).get("name",""),"title":a.get("title",""),"url":a.get("url",""),"publishedAt":a.get("publishedAt","")[:19].replace("T"," ")} for a in articles]
     except Exception: return []
 def page_news():
-    ensure_tabs({"News_Daily": ["Date","Region","Country","Source","Title","URL","Tickers","Notes"],"News_Archive": ["Timestamp","Region","Country","Title","URL"]})
-    st.subheader("Morning News"); region=st.radio("Region", ["North America","Asia-Pacific"], index=0, horizontal=True)
-    countries=NA_COUNTRIES if region=="North America" else APAC_COUNTRIES
-    sel=st.multiselect("Countries", countries, default=countries)
-    watch=st.text_input("Tickers (comma-separated)", value="SPY,AAPL,MSFT")
-    fetched=[]
+    ensure_tabs({
+        "News_Daily": ["Date","Region","Country","Source","Title","URL","Tickers","Notes"],
+        "News_Archive": ["Timestamp","Region","Country","Title","URL"]
+    })
+    st.subheader("Morning News")
+    region = st.radio("Region", ["North America","Asia-Pacific"], index=0, horizontal=True)
+    countries = NA_COUNTRIES if region=="North America" else APAC_COUNTRIES
+    sel = st.multiselect("Countries", countries, default=countries)
+    watch = st.text_input("Tickers (comma-separated)", value="SPY,AAPL,MSFT")
+
+    # fetch headlines (in-memory for this run)
+    fetched = []
     if NEWSKEY and st.button("Fetch headlines"):
         for c in sel:
-            cc=COUNTRY_NEWSAPI.get(c.upper()); 
-            if cc: fetched.extend([{**x, "region":region, "country":c} for x in news_top(cc, page_size=6)])
-    if fetched: st.dataframe(pd.DataFrame(fetched), use_container_width=True, hide_index=True)
+            cc = COUNTRY_NEWSAPI.get(c.upper())
+            if cc:
+                fetched.extend([{**x, "region":region, "country":c} for x in news_top(cc, page_size=6)])
+
+    if fetched:
+        st.dataframe(pd.DataFrame(fetched), use_container_width=True, hide_index=True)
+
     if st.button("Append Morning Brief template"):
-        today=datetime.now(ZoneInfo(TZ_NAME)).date().isoformat()
+        today = datetime.now(ZoneInfo(TZ_NAME)).date().isoformat()
         for c in sel: append_row("News_Daily", [today, region, c, "", f"{c} – Key items:", "", watch, ""])
         st.success("Template rows appended.")
+
     with st.form("news_form", clear_on_submit=True):
-        c1,c2,c3,c4=st.columns([1.4,3,3,1.8])
-        c=c1.selectbox("Country", countries, index=0); t=c2.text_input("Title"); u=c3.text_input("URL"); n=c4.text_input("Notes")
-        ok=st.form_submit_button("Append item")
+        c1,c2,c3,c4 = st.columns([1.4,3,3,1.8])
+        c  = c1.selectbox("Country", countries, index=0)
+        t  = c2.text_input("Title")
+        u  = c3.text_input("URL")
+        n  = c4.text_input("Notes")
+        ok = st.form_submit_button("Append item")
         if ok:
             append_row("News_Daily", [datetime.now(ZoneInfo(TZ_NAME)).date().isoformat(), region, c, "", t, u, watch, n])
-            append_row("News_Archive", [now(), region, c, t, u]); st.success("Added.")
+            append_row("News_Archive", [now(), region, c, t, u])
+            st.success("Added.")
+
+    st.markdown("---")
+
+    # -------- Email Morning Brief (headlines + earnings + mini P/L) --------
+    if st.button("Email Morning Brief now"):
+        try:
+            # HEADLINES: prefer freshly fetched; else fallback to News_Daily (today)
+            headlines_txt = ""
+            if fetched:
+                top = fetched[:6]
+                lines = [f"• {i+1}. {x['title']} ({x['source']})\n  {x['url']}" for i, x in enumerate(top)]
+                headlines_txt = "\n".join(lines)
+            else:
+                try:
+                    nd = read_df("News_Daily!A1:Z5000")
+                    if not nd.empty and "Date" in nd.columns:
+                        today = datetime.now(ZoneInfo(TZ_NAME)).date().isoformat()
+                        filt = nd[nd["Date"].astype(str) == today]
+                        if not filt.empty:
+                            rows = filt.head(6)
+                            headlines_txt = "\n".join([f"• {r.Title} ({r.Country})\n  {r.URL}" for _, r in rows.iterrows()])
+                        else:
+                            headlines_txt = "(No headlines for today. Click 'Fetch headlines' first.)"
+                    else:
+                        headlines_txt = "(News_Daily is empty.)"
+                except Exception:
+                    headlines_txt = "(Could not read News_Daily.)"
+
+            # EARNINGS (≤ 7 days) from 'Earnings' tab
+            earnings_txt = ""
+            try:
+                e = read_df("Earnings!A1:Z5000")
+                if not e.empty and "NextEarnings" in e.columns and "Ticker" in e.columns:
+                    e2 = e.copy()
+                    e2["NextEarningsDt"] = pd.to_datetime(e2["NextEarnings"], errors="coerce")
+                    soon = e2[e2["NextEarningsDt"].notna()]
+                    soon = soon[soon["NextEarningsDt"].dt.date.between(
+                        pd.Timestamp.utcnow().date(),
+                        (pd.Timestamp.utcnow() + pd.Timedelta(days=7)).date()
+                    )]
+                    if not soon.empty:
+                        rows = soon.sort_values("NextEarningsDt").head(10)[["Ticker","NextEarningsDt"]]
+                        earnings_txt = "\n".join([f"• {r.Ticker}: {r.NextEarningsDt.date()}" for _, r in rows.iterrows()])
+                    else:
+                        earnings_txt = "(No earnings in the next 7 days.)"
+                else:
+                    earnings_txt = "(Earnings tab empty — run 'Sync earnings'.)"
+            except Exception:
+                earnings_txt = "(Could not read Earnings tab.)"
+
+            # P/L snapshot from NA_TradeLog (quick, no live price calls)
+            pl_txt = ""
+            try:
+                log = read_df("NA_TradeLog!A1:Z8000")
+                if not log.empty:
+                    for c in ("Qty","Price","ExitPrice","ExitQty","PnL"):
+                        if c in log.columns:
+                            log[c] = pd.to_numeric(log[c], errors="coerce")
+                    realized = float(pd.to_numeric(log.get("PnL", pd.Series([])), errors="coerce").fillna(0).sum()) if "PnL" in log.columns else 0.0
+                    open_pl = 0.0
+                    tmp = log.copy()
+                    tmp["Remain"] = tmp.get("Qty",0).fillna(0) - tmp.get("ExitQty",0).fillna(0)
+                    for _, r in tmp.iterrows():
+                        try:
+                            remain = float(r.get("Remain",0) or 0)
+                            if remain <= 0: 
+                                continue
+                            px = float(r.get("Price",0) or 0)
+                            pr = px  # using entry as snapshot to avoid API calls
+                            side = str(r.get("Side","BUY")).upper()
+                            open_pl += (pr - px)*remain if side=="BUY" else (px - pr)*remain
+                        except Exception:
+                            pass
+                    pl_txt = f"Realized P/L: ${realized:,.0f}\nOpen P/L (snapshot): ${open_pl:,.0f}"
+                else:
+                    pl_txt = "(No trades yet.)"
+            except Exception:
+                pl_txt = "(Could not compute P/L.)"
+
+            # Compose + send
+            today = datetime.now(ZoneInfo(TZ_NAME)).strftime("%Y-%m-%d")
+            subj = f"Vega Morning Brief - {today}"
+            body = (
+                f"Region: {region}\n"
+                f"Countries: {', '.join(sel) if sel else '(none)'}\n"
+                f"Tickers watch: {watch}\n\n"
+                f"=== Headlines ===\n{headlines_txt}\n\n"
+                f"=== Upcoming Earnings (<= 7 days) ===\n{earnings_txt}\n\n"
+                f"=== P/L Snapshot ===\n{pl_txt}\n"
+            )
+            safe_send_email(subj, body)
+            st.success("Morning Brief email sent.")
+        except Exception as e:
+            st.error(f"Failed to send Morning Brief: {e}")
 
 # ---------- Health, Docs, Admin ----------
 def page_health_min():
     ensure_tabs({"Health_Log":["Timestamp","Mood","SleepHrs","Stress(1-10)","ExerciseMin","Notes"]})
-    st.subheader("Wellness Log")
-    df = read_df("Health_Log!A1:Z2000")
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.subheader("Wellness Log"); df=read_df("Health_Log!A1:Z2000"); st.dataframe(df, use_container_width=True, hide_index=True)
     with st.form("hlog", clear_on_submit=True):
-        c1,c2,c3,c4,c5 = st.columns([1,1,1,1,3])
-        mood = c1.selectbox("Mood", ["🙂","😐","🙁","🤩","😴"])
-        sl   = c2.number_input("Sleep", 0.0, 24.0, 7.0, 0.5)
-        stv  = c3.slider("Stress", 1, 10, 4)
-        ex   = c4.number_input("Exercise", 0, 1000, 0, 5)
-        nt   = c5.text_input("Notes")
-        if st.form_submit_button("Add"):
-            append_row("Health_Log", [now(), mood, sl, stv, ex, nt])
-            st.success("Logged.")
-
+        c1,c2,c3,c4,c5=st.columns([1,1,1,1,3])
+        mood=c1.selectbox("Mood", ["🙂","😐","🙁","🤩","😴"]); sl=c2.number_input("Sleep",0.0,24.0,7.0,0.5)
+        stv=c3.slider("Stress",1,10,4); ex=c4.number_input("Exercise",0,1000,0,5); nt=c5.text_input("Notes")
+        if st.form_submit_button("Add"): append_row("Health_Log", [now(), mood, sl, stv, ex, nt]); st.success("Logged.")
 def export_bundle(tabs: List[str]):
-    mem = io.BytesIO()
+    mem=io.BytesIO()
     with zipfile.ZipFile(mem, "w", zipfile.ZIP_DEFLATED) as z:
         for t in tabs:
             try:
-                df = read_df(f"{t}!A1:Z5000")
-                z.writestr(f"{t}.csv", df.to_csv(index=False))
-            except Exception:
-                pass
-    mem.seek(0)
-    return mem
-
+                df=read_df(f"{t}!A1:Z5000"); z.writestr(f"{t}.csv", df.to_csv(index=False))
+            except Exception: pass
+    mem.seek(0); return mem
 def page_admin_backup():
     st.subheader("Backups & snapshots")
-    tabs_txt = st.text_area(
-        "Comma-separated tab names to backup",
-        value="NA_Watch,NA_TradeLog,APAC_Watch,APAC_TradeLog,Config"
-    )
+    tabs=st.text_area("Comma-separated tab names to backup", value="NA_Watch,NA_TradeLog,APAC_Watch,APAC_TradeLog,Config")
     if st.button("Snapshot tabs"):
-        names = [t.strip() for t in tabs_txt.split(",") if t.strip()]
-        created = []
+        names=[t.strip() for t in tabs.split(",") if t.strip()]; created=[]
         for t in names:
-            try:
-                created.append(snapshot_tab(t))
-            except Exception as e:
-                st.error(f"{t}: {e}")
-        if created:
-            st.success("Snapshots: " + ", ".join(created))
+            try: created.append(snapshot_tab(t))
+            except Exception as e: st.error(f"{t}: {e}")
+        if created: st.success("Snapshots: " + ", ".join(created))
     if st.button("Download CSV bundle"):
-        names = [t.strip() for t in tabs_txt.split(",") if t.strip()]
-        z = export_bundle(names)
-        st.download_button("Download bundle.zip", z, file_name="vega_bundle.zip", mime="application/zip")
-
+        names=[t.strip() for t in tabs.split(",") if t.strip()]
+        z=export_bundle(names); st.download_button("Download bundle.zip", z, file_name="vega_bundle.zip", mime="application/zip")
 def page_docs():
     st.subheader("How to use Vega (quick guide)")
     st.markdown(f"""
 **Local time:** All human timestamps use **{TZ_NAME}**; audits use **UTC**.
-
 **Initial setup**
 1) Sidebar → **Setup / Repair Google Sheet** once.
 2) On Watch List (NA/APAC), add rows `Ticker, Country, Entry, Stop, Target`.
 3) Optional config: set `ALERT_PCT`, `RR_TARGET`, `ACCOUNT_EQUITY`, `RISK_PCT` in **Config** tab.
-
 **Fees / Presets**
 - Edit **Fee_Presets** tab: `Preset, Markets, Base, BpsBuy, BpsSell, TaxBps`.
-
 **Trading**
 - Use **Quick Entry** to log trades. `ExitPrice` + `ExitQty` auto-compute `PnL` and `R`.
 - Close modes: **Single**, **Average**, **FIFO**, **LIFO**. Fees auto-calc from preset or enter manually.
-
 **Dashboards**
 - In each cockpit, open **Positions dashboard** for P/L, Win%, Avg R. Filter by **Tags**.
-
 **Earnings**
 - Press **Sync earnings** to snapshot upcoming dates to the `Earnings` tab.
 """)
@@ -894,13 +1058,17 @@ def get_health_diag():
     }
 
 def email_system_health_report():
-    """Compose + send a one-shot email with pass/fail + fix tips."""
+    """Compose + send a one-shot email with pass/fail + fix tips (marks webhook as N/A if disabled)."""
     diag = get_health_diag()
     lines = []
     for name, (ok, tip, critical) in diag.items():
-        status = "OK" if ok else "FAIL"
+        # Treat webhook as N/A if not configured
+        if name == "Webhook alerts" and not os.getenv("VEGA_WEBHOOK_URL"):
+            status = "N/A (disabled)"
+        else:
+            status = "OK" if ok else "FAIL"
         add = f"{name}: {status}"
-        if not ok:
+        if status == "FAIL":
             add += f"  |  Fix: {tip}"
         if critical:
             add += "  [critical]"
@@ -908,18 +1076,18 @@ def email_system_health_report():
     body = "Vega System Health Report\n\n" + "\n".join(lines)
     ts = datetime.now(ZoneInfo(TZ_NAME)).strftime("%Y-%m-%d %H:%M")
     subj = f"Vega System Health - {ts} {TZ_NAME}"
-    return safe_send_email(subj, body)
+    try:
+        safe_send_email(subj, body)
+        return True
+    except Exception:
+        return False
 
 # ---------- Defensive Mode helpers ----------
 def _set_defensive_mode(on: bool):
     st.session_state["defensive_mode"] = bool(on)
     try:
-        if on:
-            subj = "VEGA ALERT - Defensive Mode ENTER"
-            body = "Defensive Mode entered by operator.\nRisk controls heightened."
-        else:
-            subj = "VEGA ALERT - Defensive Mode EXIT"
-            body = "Defensive Mode exited by operator."
+        subj = "VEGA ALERT - Defensive Mode ENTER" if on else "VEGA ALERT - Defensive Mode EXIT"
+        body = "Defensive Mode entered by operator.\nRisk controls heightened." if on else "Defensive Mode exited by operator."
         safe_send_email(subj, body)
         if send_webhook:
             safe_send_webhook({"type": "defensive_mode", "active": on, "ts": now_utc_iso()})
@@ -950,11 +1118,17 @@ def page_system_check():
     diag = get_health_diag()
 
     def row(name, ok, tip):
+        # Show N/A if webhook not configured
+        webhook_na = (name == "Webhook alerts" and not os.getenv("VEGA_WEBHOOK_URL"))
         c1, c2 = st.columns([2, 1])
         c1.write(name)
-        c2.markdown("✅ **OK**" if ok else "❌ **FAIL**")
-        if not ok:
-            st.caption(f"Fix: {tip}")
+        if webhook_na:
+            c2.markdown("🟦 **N/A**")
+            st.caption("Webhook alerts disabled — set VEGA_WEBHOOK_URL to enable.")
+        else:
+            c2.markdown("✅ **OK**" if ok else "❌ **FAIL**")
+            if not ok:
+                st.caption(f"Fix: {tip}")
 
     for name, (ok, tip, _) in diag.items():
         row(name, ok, tip)
