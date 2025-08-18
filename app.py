@@ -8,10 +8,8 @@ import pandas as pd
 import streamlit as st
 import requests
 
-# ---------- Streamlit page config MUST be first ----------
 st.set_page_config(page_title="Vega Command Center", layout="wide", page_icon="💹")
 
-# --- Make imports work with or without a /src directory ---
 BASE_DIR = os.path.dirname(__file__)
 SRC_DIR = os.path.join(BASE_DIR, "src")
 if BASE_DIR not in sys.path:
@@ -19,18 +17,16 @@ if BASE_DIR not in sys.path:
 if os.path.isdir(SRC_DIR) and SRC_DIR not in sys.path:
     sys.path.insert(0, SRC_DIR)
 
-# Optional dependency checker (safe if module doesn't exist)
 try:
     from src.utils.deps_check import show_missing
 except ModuleNotFoundError:
     try:
         from utils.deps_check import show_missing
     except ModuleNotFoundError:
-        def show_missing(): 
+        def show_missing():
             pass
 show_missing()
 
-# ---- Timezone (California default) ----
 from zoneinfo import ZoneInfo  # Python 3.9+
 TZ_NAME = os.getenv("VEGA_TZ", "America/Los_Angeles")  # set once in Render if you ever need to change
 
@@ -42,13 +38,11 @@ def now_utc_iso() -> str:
     """Machine log/audit in UTC ISO-8601."""
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
-# ---- yfinance (optional) ----
 try:
     import yfinance as yf
 except Exception:
     yf = None
 
-# ---- Sheets client (import from your local file) ----
 from sheets_client import (
     read_config, batch_get, read_range, write_range,
     append_row, append_trade_log, ensure_tab, bootstrap_sheet,
@@ -57,7 +51,6 @@ from sheets_client import (
 
 APP_VER = "v1.1.9-styled (CA-time)"
 
-# ---------- Utils ----------
 def rows_to_df(rows):
     rows = rows or []
     if not rows: return pd.DataFrame()
@@ -66,7 +59,7 @@ def rows_to_df(rows):
     return pd.DataFrame(data, columns=hdr)
 def df_to_rows(df): return [list(df.columns)] + df.fillna("").astype(str).values.tolist()
 def col_letter(n):
-    s=""; 
+    s="";
     while n: n,r=divmod(n-1,26); s=chr(65+r)+s
     return s or "A"
 def _to_float(x, default=0.0):
@@ -76,7 +69,6 @@ def _to_float(x, default=0.0):
     except Exception:
         return default
 
-# ---------- Styling ----------
 if "vega_theme" not in st.session_state:
     st.session_state["vega_theme"] = "Dark"
 theme_choice = st.sidebar.selectbox("Theme", ["Dark","Light"], index=0 if st.session_state["vega_theme"]=="Dark" else 1)
@@ -301,7 +293,6 @@ with st.sidebar.expander("Diagnostics"):
             "Email alerts": email_cfg,
             "Webhook alerts": webhook_cfg,
         })
-
 
 # ---------- Price helpers ----------
 def price_polygon(sym: str):
@@ -735,7 +726,7 @@ def cockpit(region_name, watch_tab, log_tab, countries, region_code="NA"):
     with st.form(f"form_{log_tab}", clear_on_submit=True):
         c1,c2,c3,c4,c5,c6,c7 = st.columns([2,1,1,1,1.6,3,2])
         sym = c1.selectbox("Symbol", tickers, index=0)
-        side= c2.selectbox("Side", ["BUY","SELL"]) 
+        side= c2.selectbox("Side", ["BUY","SELL"])
         qty = c3.number_input("Qty", 1.0, 1_000_000.0, 1.0, step=1.0, format="%.4f")
         country = c4.selectbox("Country", countries, index=0)
         px0 = get_price(sym, region=region_code, country=country) or 0.0
@@ -747,7 +738,7 @@ def cockpit(region_name, watch_tab, log_tab, countries, region_code="NA"):
             tid = f"{sym}-{int(time.time())}"
             audit = f"{now_utc_iso()}|{APP_VER}|{region_name}|tz={TZ_NAME}"
             row = [now(), tid, sym.upper(), side, qty, prc, note, "", "", "", "", "", tags, audit]
-            append_trade_log(row, tab_name=log_tab); st.success(f"Logged {sym} x{qty:g} ({side})")    
+            append_trade_log(row, tab_name=log_tab); st.success(f"Logged {sym} x{qty:g} ({side})")
 
 # ---------- Risk Lab (VaR) ----------
 def page_risk_lab():
@@ -942,13 +933,13 @@ def page_news():
     fetched = []
     if NEWSKEY and st.button("Fetch headlines"):
         for c in sel:
-            cc = COUNTRY_NEWSAPI.get(c.upper()); 
+            cc = COUNTRY_NEWSAPI.get(c.upper());
             if cc: fetched.extend([{**x, "region":region, "country":c} for x in news_top(cc, page_size=6)])
     if fetched: st.dataframe(pd.DataFrame(fetched), use_container_width=True, hide_index=True)
     if st.button("Append Morning Brief template"):
         today = datetime.now(ZoneInfo(TZ_NAME)).date().isoformat()
         for c in sel:
-            append_row("News_Daily", [today, region, c, "", f"{c} – Key items:", "", watch, ""]) 
+            append_row("News_Daily", [today, region, c, "", f"{c} – Key items:", "", watch, ""])
         st.success("Template rows appended.")
     with st.form("news_form", clear_on_submit=True):
         c1,c2,c3,c4 = st.columns([1.4,3,3,1.8])
@@ -999,7 +990,7 @@ def page_docs():
 **Local time:** All human timestamps use **{TZ_NAME}**; audits use **UTC**.
 
 **Initial setup**
-1) In the sidebar, click **Setup / Repair Google Sheet** once.  
+1) In the sidebar, click **Setup / Repair Google Sheet** once.
 2) On the Watch List (NA/APAC), add rows with `Ticker, Country, Entry, Stop, Target`.
 3) Optional config: set `ALERT_PCT`, `RR_TARGET`, `ACCOUNT_EQUITY`, `RISK_PCT` in the **Config** tab.
 
@@ -1007,7 +998,7 @@ def page_docs():
 - Edit the **Fee_Presets** tab: `Preset, Markets (US,JP,AU,..), Base, BpsBuy, BpsSell, TaxBps`.
 
 **Trading**
-- Use **Quick Entry** to log trades. `ExitPrice` + `ExitQty` auto-computes `PnL` and `R` (per unit).  
+- Use **Quick Entry** to log trades. `ExitPrice` + `ExitQty` auto-computes `PnL` and `R` (per unit).
 - Close modes: **Single**, **Average**, **FIFO**, **LIFO**. Fees auto-calc from preset or enter manually.
 
 **Dashboards**
