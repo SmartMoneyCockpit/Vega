@@ -882,6 +882,76 @@ def show_startup_banner():
         st.success("All critical systems are GO.")
     st.session_state["startup_checked"] = True
 
+# ---------- System Health (shared) ----------
+def _email_ok():
+    return all([
+        os.getenv("VEGA_EMAIL_HOST"),
+        os.getenv("VEGA_EMAIL_USER"),
+        os.getenv("VEGA_EMAIL_PASS"),
+        os.getenv("VEGA_EMAIL_TO"),
+    ])
+
+def _sheets_ok():
+    try:
+        _ = read_config()  # lightweight read to confirm auth & access
+        return True
+    except Exception:
+        return False
+
+def get_health_diag():
+    """name -> (ok, tip, critical)"""
+    return {
+        "Sheets I/O": (
+            _sheets_ok(),
+            "Check Google auth/service account and share the Sheet with it.",
+            True,
+        ),
+        "Email alerts": (
+            _email_ok(),
+            "Set VEGA_EMAIL_HOST/USER/PASS/TO in your server's secrets.",
+            True,
+        ),
+        "Monitor running": (
+            st.session_state.get("monitor_started", False),
+            "Click 'Start Resource Monitor' in the sidebar.",
+            True,
+        ),
+        "POLYGON": (
+            bool(POLY),
+            "Set POLYGON_KEY in secrets to enable real-time prices.",
+            False,
+        ),
+        "NEWSAPI": (
+            bool(NEWSKEY),
+            "Set NEWSAPI_KEY in secrets to fetch headlines.",
+            False,
+        ),
+        "ADMIN PIN": (
+            bool(ADMIN_PIN),
+            "Set ADMIN_PIN in Config or leave blank to disable the PIN.",
+            False,
+        ),
+        "Webhook alerts": (
+            bool(os.getenv("VEGA_WEBHOOK_URL")),
+            "Set VEGA_WEBHOOK_URL if you add Slack/Discord/Teams later.",
+            False,
+        ),
+    }
+
+# ---------- Startup banner (runs once) ----------
+def show_startup_banner():
+    if st.session_state.get("startup_checked"):
+        return
+    diag = get_health_diag()
+    # Any critical items that are not OK?
+    critical_fails = [(name, tip) for name, (ok, tip, critical) in diag.items() if critical and not ok]
+    if critical_fails:
+        lines = "\n".join([f"- **{name}** → {tip}" for name, tip in critical_fails])
+        st.error("**System check failed (critical):**\n" + lines)
+    else:
+        st.success("All critical systems are GO.")
+    st.session_state["startup_checked"] = True
+
 # ---------- System Health Check tab ----------
 def page_system_check():
     st.header("Vega System Health Check")
@@ -901,8 +971,9 @@ def page_system_check():
     st.divider()
     st.caption("Run this before markets open. All critical rows should be green.")
 
-# Show a one-time startup health banner
+# Show a one-time startup health banner (place this line immediately before your Router)
 show_startup_banner()
+
 
 # ---------- Router & Quick Nav ----------
 MODULES = [
