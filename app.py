@@ -1,13 +1,3 @@
-# We'll generate a fully updated `app.py` with:
-# - UTF-8 safe alert wrappers (safe_send_email / safe_send_webhook)
-# - Replaced calls in alert buttons
-# - Safe Tags aggregation fix
-# - "Menus too far up" UI fix via CSS offset, configurable by MENU_OFFSET_PX
-# We'll also output anchor line numbers for easy search/replace in the generated file.
-
-from textwrap import dedent
-
-code = dedent('''
 import os, sys, math, json, io, zipfile, time, statistics as stats
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Tuple
