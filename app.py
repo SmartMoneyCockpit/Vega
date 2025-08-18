@@ -823,40 +823,31 @@ def page_docs():
 """)
 
 # ---------- Router & Quick Nav ----------
-MODULES=["NA Cockpit","APAC Cockpit","Morning News","Risk Lab","Options Builder","FX & Hedges","Broker Import","Health Journal","Admin / Backup","Docs"]
+MODULES = [
+    "NA Cockpit","APAC Cockpit","Morning News","Risk Lab",
+    "Options Builder","FX & Hedges","Broker Import",
+    "Health Journal","Admin / Backup","Docs"
+]
+
 tabs = st.tabs(MODULES)
-with tabs[0]: cockpit("North America", "NA_Watch", "NA_TradeLog", NA_COUNTRIES, region_code="NA")
-with tabs[1]: cockpit("Asia-Pacific", "APAC_Watch", "APAC_TradeLog", APAC_COUNTRIES, region_code="APAC")
-with tabs[2]: page_news()
-with tabs[3]: page_risk_lab()
-with tabs[4]: page_options_builder()
-with tabs[5]: page_fx()
-with tabs[6]: page_broker_import()
-with tabs[7]: page_health_min()
-with tabs[8]: page_admin_backup()
-with tabs[9]: page_docs()
-''').strip("\n")
 
-# Save the file
-path = "/mnt/data/app_fixed.py"
-with open(path, "w", encoding="utf-8") as f:
-    f.write(code)
-
-# Compute anchor line numbers for quick reference
-anchors = {
-    "SAFE_HELPERS": "UTF-8 Safe Alert Wrappers (ANCHOR:SAFE_HELPERS)",
-    "TEST_EMAIL_CALL": "ANCHOR:TEST_EMAIL_CALL",
-    "DEF_EMAIL_CALL": "ANCHOR:DEF_EMAIL_CALL",
-    "DEF_WEBHOOK_CALL": "ANCHOR:DEF_WEBHOOK_CALL",
-    "TAGS_FIX": "ANCHOR:TAGS_FIX"
-}
-
-lines = code.splitlines()
-anchor_lines = {}
-for i, line in enumerate(lines, start=1):
-    for key, token in anchors.items():
-        if token in line:
-            anchor_lines[key] = i
-
-# Return summary and download path
-{"path": path, "num_lines": len(lines), "anchors": anchor_lines}
+with tabs[0]:
+    cockpit("North America", "NA_Watch", "NA_TradeLog", NA_COUNTRIES, region_code="NA")
+with tabs[1]:
+    cockpit("Asia-Pacific", "APAC_Watch", "APAC_TradeLog", APAC_COUNTRIES, region_code="APAC")
+with tabs[2]:
+    page_news()
+with tabs[3]:
+    page_risk_lab()
+with tabs[4]:
+    page_options_builder()
+with tabs[5]:
+    page_fx()
+with tabs[6]:
+    page_broker_import()
+with tabs[7]:
+    page_health_min()
+with tabs[8]:
+    page_admin_backup()
+with tabs[9]:
+    page_docs()
