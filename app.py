@@ -812,35 +812,97 @@ def page_docs():
 """)
 
 
-# ---------- System Health Check ----------
-def page_system_check():
-    st.header("Vega System Health Check")
+# ---------- System Health (shared) ----------
+def _email_ok():
+    return all([
+        os.getenv("VEGA_EMAIL_HOST"),
+        os.getenv("VEGA_EMAIL_USER"),
+        os.getenv("VEGA_EMAIL_PASS"),
+        os.getenv("VEGA_EMAIL_TO"),
+    ])
 
-    # Grab diagnostics values
-    diag = {
-        "version": APP_VER,
-        "TZ": TZ_NAME,
-        "POLYGON": bool(POLY),
-        "NEWSAPI": bool(NEWSKEY),
-        "ADMIN": bool(ADMIN_PIN),
-        "Monitor running": st.session_state.get("monitor_started", False),
-        "Email alerts": all([os.getenv("VEGA_EMAIL_HOST"), os.getenv("VEGA_EMAIL_USER"),
-                             os.getenv("VEGA_EMAIL_PASS"), os.getenv("VEGA_EMAIL_TO")]),
-        "Webhook alerts": bool(os.getenv("VEGA_WEBHOOK_URL"))
+def _sheets_ok():
+    try:
+        _ = read_config()  # lightweight read to confirm auth & access
+        return True
+    except Exception:
+        return False
+
+def get_health_diag():
+    """name -> (ok, tip, critical)"""
+    return {
+        "Sheets I/O": (
+            _sheets_ok(),
+            "Check Google auth/service account and share the Sheet with it.",
+            True,
+        ),
+        "Email alerts": (
+            _email_ok(),
+            "Set VEGA_EMAIL_HOST/USER/PASS/TO in your server's secrets.",
+            True,
+        ),
+        "Monitor running": (
+            st.session_state.get("monitor_started", False),
+            "Click 'Start Resource Monitor' in the sidebar.",
+            True,
+        ),
+        "POLYGON": (
+            bool(POLY),
+            "Set POLYGON_KEY in secrets to enable real-time prices.",
+            False,
+        ),
+        "NEWSAPI": (
+            bool(NEWSKEY),
+            "Set NEWSAPI_KEY in secrets to fetch headlines.",
+            False,
+        ),
+        "ADMIN PIN": (
+            bool(ADMIN_PIN),
+            "Set ADMIN_PIN in Config or leave blank to disable the PIN.",
+            False,
+        ),
+        "Webhook alerts": (
+            bool(os.getenv("VEGA_WEBHOOK_URL")),
+            "Set VEGA_WEBHOOK_URL if you add Slack/Discord/Teams later.",
+            False,
+        ),
     }
 
-    # Helper to print status
-    def status_row(name, ok):
-        col1, col2 = st.columns([2,1])
-        col1.write(name)
-        col2.markdown("✅ **OK**" if ok else "❌ **FAIL**")
+# ---------- Startup banner (runs once) ----------
+def show_startup_banner():
+    if st.session_state.get("startup_checked"):
+        return
+    diag = get_health_diag()
+    # Any critical items that are not OK?
+    critical_fails = [(name, tip) for name, (ok, tip, critical) in diag.items() if critical and not ok]
+    if critical_fails:
+        lines = "\n".join([f"- **{name}** → {tip}" for name, tip in critical_fails])
+        st.error("**System check failed (critical):**\n" + lines)
+    else:
+        st.success("All critical systems are GO.")
+    st.session_state["startup_checked"] = True
 
-    # Show checks
-    for k, v in diag.items():
-        status_row(k, v)
+# ---------- System Health Check tab ----------
+def page_system_check():
+    st.header("Vega System Health Check")
+    st.caption(f"Version: {APP_VER}  |  TZ: {TZ_NAME}")
+    diag = get_health_diag()
+
+    def row(name, ok, tip):
+        c1, c2 = st.columns([2, 1])
+        c1.write(name)
+        c2.markdown("✅ **OK**" if ok else "❌ **FAIL**")
+        if not ok:
+            st.caption(f"Fix: {tip}")
+
+    for name, (ok, tip, _) in diag.items():
+        row(name, ok, tip)
 
     st.divider()
-    st.caption("Tip: Run this before markets open. All should be green ✅ for a healthy cockpit.")
+    st.caption("Run this before markets open. All critical rows should be green.")
+
+# Show a one-time startup health banner
+show_startup_banner()
 
 # ---------- Router & Quick Nav ----------
 MODULES = [
@@ -874,5 +936,3 @@ with tabs[9]:
     page_admin_backup()
 with tabs[10]:
     page_docs()
-
-
