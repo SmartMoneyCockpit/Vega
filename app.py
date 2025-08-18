@@ -811,32 +811,68 @@ def page_docs():
 - Press **Sync earnings** to snapshot upcoming dates to the `Earnings` tab.
 """)
 
+
+# ---------- System Health Check ----------
+def page_system_check():
+    st.header("Vega System Health Check")
+
+    # Grab diagnostics values
+    diag = {
+        "version": APP_VER,
+        "TZ": TZ_NAME,
+        "POLYGON": bool(POLY),
+        "NEWSAPI": bool(NEWSKEY),
+        "ADMIN": bool(ADMIN_PIN),
+        "Monitor running": st.session_state.get("monitor_started", False),
+        "Email alerts": all([os.getenv("VEGA_EMAIL_HOST"), os.getenv("VEGA_EMAIL_USER"),
+                             os.getenv("VEGA_EMAIL_PASS"), os.getenv("VEGA_EMAIL_TO")]),
+        "Webhook alerts": bool(os.getenv("VEGA_WEBHOOK_URL"))
+    }
+
+    # Helper to print status
+    def status_row(name, ok):
+        col1, col2 = st.columns([2,1])
+        col1.write(name)
+        col2.markdown("✅ **OK**" if ok else "❌ **FAIL**")
+
+    # Show checks
+    for k, v in diag.items():
+        status_row(k, v)
+
+    st.divider()
+    st.caption("Tip: Run this before markets open. All should be green ✅ for a healthy cockpit.")
+
 # ---------- Router & Quick Nav ----------
 MODULES = [
-    "NA Cockpit","APAC Cockpit","Morning News","Risk Lab",
-    "Options Builder","FX & Hedges","Broker Import",
-    "Health Journal","Admin / Backup","Docs"
+    "System Check",
+    "NA Cockpit", "APAC Cockpit", "Morning News", "Risk Lab",
+    "Options Builder", "FX & Hedges", "Broker Import",
+    "Health Journal", "Admin / Backup", "Docs"
 ]
 
 tabs = st.tabs(MODULES)
 
 with tabs[0]:
-    cockpit("North America", "NA_Watch", "NA_TradeLog", NA_COUNTRIES, region_code="NA")
+    page_system_check()
 with tabs[1]:
-    cockpit("Asia-Pacific", "APAC_Watch", "APAC_TradeLog", APAC_COUNTRIES, region_code="APAC")
+    cockpit("North America", "NA_Watch", "NA_TradeLog", NA_COUNTRIES, region_code="NA")
 with tabs[2]:
-    page_news()
+    cockpit("Asia-Pacific", "APAC_Watch", "APAC_TradeLog", APAC_COUNTRIES, region_code="APAC")
 with tabs[3]:
-    page_risk_lab()
+    page_news()
 with tabs[4]:
-    page_options_builder()
+    page_risk_lab()
 with tabs[5]:
-    page_fx()
+    page_options_builder()
 with tabs[6]:
-    page_broker_import()
+    page_fx()
 with tabs[7]:
-    page_health_min()
+    page_broker_import()
 with tabs[8]:
-    page_admin_backup()
+    page_health_min()
 with tabs[9]:
+    page_admin_backup()
+with tabs[10]:
     page_docs()
+
+
