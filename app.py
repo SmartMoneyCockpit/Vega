@@ -766,52 +766,77 @@ def page_news():
 # ---------- Health, Docs, Admin ----------
 def page_health_min():
     ensure_tabs({"Health_Log":["Timestamp","Mood","SleepHrs","Stress(1-10)","ExerciseMin","Notes"]})
-    st.subheader("Wellness Log"); df=read_df("Health_Log!A1:Z2000"); st.dataframe(df, use_container_width=True, hide_index=True)
+    st.subheader("Wellness Log")
+    df = read_df("Health_Log!A1:Z2000")
+    st.dataframe(df, use_container_width=True, hide_index=True)
     with st.form("hlog", clear_on_submit=True):
-        c1,c2,c3,c4,c5=st.columns([1,1,1,1,3])
-        mood=c1.selectbox("Mood", ["🙂","😐","🙁","🤩","😴"]); sl=c2.number_input("Sleep",0.0,24.0,7.0,0.5)
-        stv=c3.slider("Stress",1,10,4); ex=c4.number_input("Exercise",0,1000,0,5); nt=c5.text_input("Notes")
-        if st.form_submit_button("Add"): append_row("Health_Log", [now(), mood, sl, stv, ex, nt]); st.success("Logged.")
+        c1,c2,c3,c4,c5 = st.columns([1,1,1,1,3])
+        mood = c1.selectbox("Mood", ["🙂","😐","🙁","🤩","😴"])
+        sl   = c2.number_input("Sleep", 0.0, 24.0, 7.0, 0.5)
+        stv  = c3.slider("Stress", 1, 10, 4)
+        ex   = c4.number_input("Exercise", 0, 1000, 0, 5)
+        nt   = c5.text_input("Notes")
+        if st.form_submit_button("Add"):
+            append_row("Health_Log", [now(), mood, sl, stv, ex, nt])
+            st.success("Logged.")
+
 def export_bundle(tabs: List[str]):
-    mem=io.BytesIO()
+    mem = io.BytesIO()
     with zipfile.ZipFile(mem, "w", zipfile.ZIP_DEFLATED) as z:
         for t in tabs:
             try:
-                df=read_df(f"{t}!A1:Z5000"); z.writestr(f"{t}.csv", df.to_csv(index=False))
-            except Exception: pass
-    mem.seek(0); return mem
+                df = read_df(f"{t}!A1:Z5000")
+                z.writestr(f"{t}.csv", df.to_csv(index=False))
+            except Exception:
+                pass
+    mem.seek(0)
+    return mem
+
 def page_admin_backup():
     st.subheader("Backups & snapshots")
-    tabs=st.text_area("Comma-separated tab names to backup", value="NA_Watch,NA_TradeLog,APAC_Watch,APAC_TradeLog,Config")
+    tabs_txt = st.text_area(
+        "Comma-separated tab names to backup",
+        value="NA_Watch,NA_TradeLog,APAC_Watch,APAC_TradeLog,Config"
+    )
     if st.button("Snapshot tabs"):
-        names=[t.strip() for t in tabs.split(",") if t.strip()]; created=[]
+        names = [t.strip() for t in tabs_txt.split(",") if t.strip()]
+        created = []
         for t in names:
-            try: created.append(snapshot_tab(t))
-            except Exception as e: st.error(f"{t}: {e}")
-        if created: st.success("Snapshots: " + ", ".join(created))
+            try:
+                created.append(snapshot_tab(t))
+            except Exception as e:
+                st.error(f"{t}: {e}")
+        if created:
+            st.success("Snapshots: " + ", ".join(created))
     if st.button("Download CSV bundle"):
-        names=[t.strip() for t in tabs.split(",") if t.strip()]
-        z=export_bundle(names); st.download_button("Download bundle.zip", z, file_name="vega_bundle.zip", mime="application/zip")
+        names = [t.strip() for t in tabs_txt.split(",") if t.strip()]
+        z = export_bundle(names)
+        st.download_button("Download bundle.zip", z, file_name="vega_bundle.zip", mime="application/zip")
+
 def page_docs():
     st.subheader("How to use Vega (quick guide)")
     st.markdown(f"""
 **Local time:** All human timestamps use **{TZ_NAME}**; audits use **UTC**.
+
 **Initial setup**
 1) Sidebar → **Setup / Repair Google Sheet** once.
 2) On Watch List (NA/APAC), add rows `Ticker, Country, Entry, Stop, Target`.
 3) Optional config: set `ALERT_PCT`, `RR_TARGET`, `ACCOUNT_EQUITY`, `RISK_PCT` in **Config** tab.
+
 **Fees / Presets**
 - Edit **Fee_Presets** tab: `Preset, Markets, Base, BpsBuy, BpsSell, TaxBps`.
+
 **Trading**
 - Use **Quick Entry** to log trades. `ExitPrice` + `ExitQty` auto-compute `PnL` and `R`.
 - Close modes: **Single**, **Average**, **FIFO**, **LIFO**. Fees auto-calc from preset or enter manually.
+
 **Dashboards**
 - In each cockpit, open **Positions dashboard** for P/L, Win%, Avg R. Filter by **Tags**.
+
 **Earnings**
 - Press **Sync earnings** to snapshot upcoming dates to the `Earnings` tab.
 """)
 
-
 # ---------- System Health (shared) ----------
 def _email_ok():
     return all([
@@ -873,81 +898,10 @@ def show_startup_banner():
     if st.session_state.get("startup_checked"):
         return
     diag = get_health_diag()
-    # Any critical items that are not OK?
     critical_fails = [(name, tip) for name, (ok, tip, critical) in diag.items() if critical and not ok]
     if critical_fails:
-        lines = "\n".join([f"- **{name}** → {tip}" for name, tip in critical_fails])
-        st.error("**System check failed (critical):**\n" + lines)
-    else:
-        st.success("All critical systems are GO.")
-    st.session_state["startup_checked"] = True
-
-# ---------- System Health (shared) ----------
-def _email_ok():
-    return all([
-        os.getenv("VEGA_EMAIL_HOST"),
-        os.getenv("VEGA_EMAIL_USER"),
-        os.getenv("VEGA_EMAIL_PASS"),
-        os.getenv("VEGA_EMAIL_TO"),
-    ])
-
-def _sheets_ok():
-    try:
-        _ = read_config()  # lightweight read to confirm auth & access
-        return True
-    except Exception:
-        return False
-
-def get_health_diag():
-    """name -> (ok, tip, critical)"""
-    return {
-        "Sheets I/O": (
-            _sheets_ok(),
-            "Check Google auth/service account and share the Sheet with it.",
-            True,
-        ),
-        "Email alerts": (
-            _email_ok(),
-            "Set VEGA_EMAIL_HOST/USER/PASS/TO in your server's secrets.",
-            True,
-        ),
-        "Monitor running": (
-            st.session_state.get("monitor_started", False),
-            "Click 'Start Resource Monitor' in the sidebar.",
-            True,
-        ),
-        "POLYGON": (
-            bool(POLY),
-            "Set POLYGON_KEY in secrets to enable real-time prices.",
-            False,
-        ),
-        "NEWSAPI": (
-            bool(NEWSKEY),
-            "Set NEWSAPI_KEY in secrets to fetch headlines.",
-            False,
-        ),
-        "ADMIN PIN": (
-            bool(ADMIN_PIN),
-            "Set ADMIN_PIN in Config or leave blank to disable the PIN.",
-            False,
-        ),
-        "Webhook alerts": (
-            bool(os.getenv("VEGA_WEBHOOK_URL")),
-            "Set VEGA_WEBHOOK_URL if you add Slack/Discord/Teams later.",
-            False,
-        ),
-    }
-
-# ---------- Startup banner (runs once) ----------
-def show_startup_banner():
-    if st.session_state.get("startup_checked"):
-        return
-    diag = get_health_diag()
-    # Any critical items that are not OK?
-    critical_fails = [(name, tip) for name, (ok, tip, critical) in diag.items() if critical and not ok]
-    if critical_fails:
-        lines = "\n".join([f"- **{name}** → {tip}" for name, tip in critical_fails])
-        st.error("**System check failed (critical):**\n" + lines)
+        lines = "\n".join([f"- {name} -> {tip}" for name, tip in critical_fails])
+        st.error("System check failed (critical):\n" + lines)
     else:
         st.success("All critical systems are GO.")
     st.session_state["startup_checked"] = True
@@ -971,9 +925,8 @@ def page_system_check():
     st.divider()
     st.caption("Run this before markets open. All critical rows should be green.")
 
-# Show a one-time startup health banner (place this line immediately before your Router)
+# Show a one-time startup health banner (keep this just before Router)
 show_startup_banner()
-
 
 # ---------- Router & Quick Nav ----------
 MODULES = [
