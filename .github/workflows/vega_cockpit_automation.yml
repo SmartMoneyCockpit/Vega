@@ -2,13 +2,14 @@ name: Vega Cockpit Automation
 
 on:
   schedule:
-    # Every 15 min for monitors (all day; scripts self-limit to market windows)
+    # Monitors every 15m (scripts self-limit to market windows)
     - cron: "*/15 * * * *"
-    # North American Morning Report: 14:25 UTC ~ 7:25 AM PT (adjust for DST as needed)
+    # NA Morning Report: 14:25 UTC ≈ 7:25 AM PT (Mon–Fri)
     - cron: "25 14 * * 1-5"
-    # Asia-Pacific Afternoon Report: 01:00 UTC ~ 6:00 PM PT (previous day)
+    # NA Midday Verdict: 19:00 UTC ≈ 12:00 PM PT (Mon–Fri)
+    - cron: "0 19 * * 1-5"
+    # APAC Afternoon Report: 01:00 UTC ≈ 6:00 PM PT (prev day)
     - cron: "0 1 * * *"
-    - cron: '0 19 * * 1-5'   # NA Midday Verdict — 12:00 PM PT (Mon–Fri)
   workflow_dispatch:
 
 jobs:
@@ -18,12 +19,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: '3.11' }
+        with:
+          python-version: '3.11'
       - run: pip install -r requirements-actions.txt
       - name: Run Volatility & Hedge Monitor
         env:
-          TZ_PREF: ${{ secrets.TZ_PREF }}
-          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+          TZ_PREF:    ${{ secrets.TZ_PREF }}
+          WEBHOOK_URL:${{ secrets.WEBHOOK_URL }}
           EMAIL_TO:   ${{ secrets.EMAIL_TO }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
           SMTP_HOST:  ${{ secrets.SMTP_HOST }}
@@ -40,12 +42,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: '3.11' }
+        with:
+          python-version: '3.11'
       - run: pip install -r requirements.txt
       - name: North American Morning Report
         env:
-          TZ_PREF: ${{ secrets.TZ_PREF }}
-          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+          TZ_PREF:    ${{ secrets.TZ_PREF }}
+          WEBHOOK_URL:${{ secrets.WEBHOOK_URL }}
           EMAIL_TO:   ${{ secrets.EMAIL_TO }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
           SMTP_HOST:  ${{ secrets.SMTP_HOST }}
@@ -54,18 +57,40 @@ jobs:
           SMTP_PASS:  ${{ secrets.SMTP_PASS }}
         run: python report_na.py
 
+  midday_report:
+    if: github.event.schedule == '0 19 * * 1-5' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements-actions.txt
+      - name: North American Midday Verdict
+        env:
+          TZ_PREF:    ${{ secrets.TZ_PREF }}
+          WEBHOOK_URL:${{ secrets.WEBHOOK_URL }}
+          EMAIL_TO:   ${{ secrets.EMAIL_TO }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          SMTP_HOST:  ${{ secrets.SMTP_HOST }}
+          SMTP_PORT:  ${{ secrets.SMTP_PORT }}
+          SMTP_USER:  ${{ secrets.SMTP_USER }}
+          SMTP_PASS:  ${{ secrets.SMTP_PASS }}
+        run: python report_midday.py
+
   apac_report:
     if: github.event.schedule == '0 1 * * *' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: '3.11' }
+        with:
+          python-version: '3.11'
       - run: pip install -r requirements.txt
       - name: Asia-Pacific Afternoon Report
         env:
-          TZ_PREF: ${{ secrets.TZ_PREF }}
-          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+          TZ_PREF:    ${{ secrets.TZ_PREF }}
+          WEBHOOK_URL:${{ secrets.WEBHOOK_URL }}
           EMAIL_TO:   ${{ secrets.EMAIL_TO }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
           SMTP_HOST:  ${{ secrets.SMTP_HOST }}
@@ -75,7 +100,7 @@ jobs:
         run: python report_apac.py
 
   notify_failure:
-    needs: [monitor, morning_report, apac_report]
+    needs: [monitor, morning_report, midday_report, apac_report]
     if: failure()          # runs only if any needed job failed
     runs-on: ubuntu-latest
     steps:
@@ -90,33 +115,28 @@ jobs:
           RUN_URL:    https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
           MONITOR_R:  ${{ needs.monitor.result }}
           NA_R:       ${{ needs.morning_report.result }}
+          MID_R:      ${{ needs.midday_report.result }}
           APAC_R:     ${{ needs.apac_report.result }}
         run: |
           python - <<'PY'
           import os, smtplib
           from email.mime.text import MIMEText
 
-          to   = os.environ["EMAIL_TO"]
-          frm  = os.environ["EMAIL_FROM"]
-          url  = os.environ["RUN_URL"]
+          to, frm = os.environ["EMAIL_TO"], os.environ["EMAIL_FROM"]
+          url = os.environ["RUN_URL"]
           parts = []
-          for name in ("MONITOR_R","NA_R","APAC_R"):
-              v = os.getenv(name,"")
-              if v: parts.append(f"{name.split('_')[0].title()}: {v}")
+          for key,label in [("MONITOR_R","Monitor"),("NA_R","Morning"),("MID_R","Midday"),("APAC_R","APAC")]:
+              v = os.getenv(key,"")
+              if v: parts.append(f"{label}: {v}")
           summary = ", ".join(parts) or "A job failed."
 
-          body = f"""⚠️ Vega GitHub Actions: a job failed
-
-          {summary}
-          Check logs: {url}
-          """
+          body = f"⚠️ Vega GitHub Actions: a job failed\n\n{summary}\nCheck logs: {url}\n"
 
           msg = MIMEText(body)
           msg["Subject"] = "⚠️ Vega Actions: job failure"
           msg["From"] = frm
           msg["To"] = to
-
-          with smtplib.SMTP(os.environ["SMTP_HOST"], int(os.environ.get("SMTP_PORT", "587"))) as s:
+          with smtplib.SMTP(os.environ["SMTP_HOST"], int(os.environ.get("SMTP_PORT","587"))) as s:
               s.starttls()
               s.login(os.environ["SMTP_USER"], os.environ["SMTP_PASS"])
               s.sendmail(frm, [to], msg.as_string())
