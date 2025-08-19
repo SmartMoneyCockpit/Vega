@@ -49,4 +49,33 @@ def fmt_num(x, n=2):
 # --- Optional: Gist logging for alert history ---
 def fetch_gist(gist_id, token):
     try:
-        r = requests.get(
+        url = f"https://api.github.com/gists/{gist_id}"
+        headers = {"Authorization": f"token {token}"}
+        r = requests.get(url, headers=headers, timeout=10)
+        if r.status_code != 200:
+            return None
+        data = r.json()
+        files = data.get("files", {})
+        f = files.get("alerts_log.txt")
+        if isinstance(f, dict):
+            content = f.get("content")
+            if isinstance(content, str):
+                return content
+    except Exception:
+        return None
+    return None
+
+def append_gist(gist_id, token, line):
+    try:
+        existing = fetch_gist(gist_id, token) or ""
+        new_content = existing + ("\n" if existing else "") + line
+        url = f"https://api.github.com/gists/{gist_id}"
+        headers = {
+            "Authorization": f"token {token}",
+            "Accept": "application/vnd.github+json",
+        }
+        payload = {"files": {"alerts_log.txt": {"content": new_content}}}
+        r = requests.patch(url, headers=headers, json=payload, timeout=10)
+        return 200 <= r.status_code < 300
+    except Exception:
+        return False
