@@ -9,6 +9,11 @@ import pandas as pd
 import streamlit as st
 import requests
 
+# app.py (top-level, after imports)
+from app_snippet import start_vega_monitor_if_needed
+start_vega_monitor_if_needed()
+
+
 # ---------- Streamlit page config MUST be first ----------
 st.set_page_config(page_title="Vega Command Center", layout="wide", page_icon="💹")
 
