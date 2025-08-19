@@ -1,7 +1,7 @@
-import threading
-from vega_monitor.service import MonitorService
+# app_snippet.py
+# Call this from app.py ONCE at startup (before you render the UI)
+from vega_monitor.service import start_vega_monitor
 
-def start_vega_monitor():
-    t = threading.Thread(target=MonitorService().run_forever, kwargs={"interval":5}, daemon=True)
-    t.start()
-    return t
+def start_vega_monitor_if_needed():
+    # 5s sensor cadence is a good default; adjust if needed
+    start_vega_monitor(interval=5)
