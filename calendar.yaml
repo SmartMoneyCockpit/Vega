@@ -1,0 +1,11 @@
+# Optional manual events (will be included in today's report if date matches PT today)
+# You can keep this lightweight and edit in GitHub UI.
+events:
+  - date: 2025-08-21
+    time: "08:00 MT"
+    title: "Jackson Hole — Powell keynote"
+    region: "USA"
+  - date: 2025-08-22
+    time: "All day"
+    title: "Jackson Hole Symposium (Day 2)"
+    region: "USA"
