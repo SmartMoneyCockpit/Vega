@@ -1,0 +1,24 @@
+name: Volatility & Hedge Monitor
+on:
+  schedule:
+    - cron: "*/15 * * * *"   # every 15 min
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install yfinance pytz requests
+      - env:
+          TZ_PREF: "America/Los_Angeles"
+          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}       # optional
+          EMAIL_TO:   ${{ secrets.EMAIL_TO }}           # optional
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}         # optional
+          SMTP_HOST:  ${{ secrets.SMTP_HOST }}          # optional
+          SMTP_PORT:  ${{ secrets.SMTP_PORT }}          # optional
+          SMTP_USER:  ${{ secrets.SMTP_USER }}          # optional
+          SMTP_PASS:  ${{ secrets.SMTP_PASS }}          # optional
+        run: python monitor_vol_hedge.py
