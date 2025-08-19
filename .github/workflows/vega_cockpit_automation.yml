@@ -8,6 +8,7 @@ on:
     - cron: "25 14 * * 1-5"
     # Asia-Pacific Afternoon Report: 01:00 UTC ~ 6:00 PM PT (previous day)
     - cron: "0 1 * * *"
+    - cron: '0 19 * * 1-5'   # NA Midday Verdict — 12:00 PM PT (Mon–Fri)
   workflow_dispatch:
 
 jobs:
