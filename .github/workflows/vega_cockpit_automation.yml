@@ -24,16 +24,16 @@ jobs:
       - run: pip install -r requirements-actions.txt
       - name: Run Volatility & Hedge Monitor
         env:
-          TZ_PREF:    ${{ secrets.TZ_PREF }}
-          WEBHOOK_URL:${{ secrets.WEBHOOK_URL }}
-          EMAIL_TO:   ${{ secrets.EMAIL_TO }}
-          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
-          SMTP_HOST:  ${{ secrets.SMTP_HOST }}
-          SMTP_PORT:  ${{ secrets.SMTP_PORT }}
-          SMTP_USER:  ${{ secrets.SMTP_USER }}
-          SMTP_PASS:  ${{ secrets.SMTP_PASS }}
-          GIST_ID:    ${{ secrets.GIST_ID }}
-          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
+          TZ_PREF:     ${{ secrets.TZ_PREF }}
+          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+          EMAIL_TO:    ${{ secrets.EMAIL_TO }}
+          EMAIL_FROM:  ${{ secrets.EMAIL_FROM }}
+          SMTP_HOST:   ${{ secrets.SMTP_HOST }}
+          SMTP_PORT:   ${{ secrets.SMTP_PORT }}
+          SMTP_USER:   ${{ secrets.SMTP_USER }}
+          SMTP_PASS:   ${{ secrets.SMTP_PASS }}
+          GIST_ID:     ${{ secrets.GIST_ID }}
+          GIST_TOKEN:  ${{ secrets.GIST_TOKEN }}
         run: python monitor_vol_hedge.py
 
   morning_report:
@@ -47,14 +47,14 @@ jobs:
       - run: pip install -r requirements.txt
       - name: North American Morning Report
         env:
-          TZ_PREF:    ${{ secrets.TZ_PREF }}
-          WEBHOOK_URL:${{ secrets.WEBHOOK_URL }}
-          EMAIL_TO:   ${{ secrets.EMAIL_TO }}
-          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
-          SMTP_HOST:  ${{ secrets.SMTP_HOST }}
-          SMTP_PORT:  ${{ secrets.SMTP_PORT }}
-          SMTP_USER:  ${{ secrets.SMTP_USER }}
-          SMTP_PASS:  ${{ secrets.SMTP_PASS }}
+          TZ_PREF:     ${{ secrets.TZ_PREF }}
+          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+          EMAIL_TO:    ${{ secrets.EMAIL_TO }}
+          EMAIL_FROM:  ${{ secrets.EMAIL_FROM }}
+          SMTP_HOST:   ${{ secrets.SMTP_HOST }}
+          SMTP_PORT:   ${{ secrets.SMTP_PORT }}
+          SMTP_USER:   ${{ secrets.SMTP_USER }}
+          SMTP_PASS:   ${{ secrets.SMTP_PASS }}
         run: python report_na.py
 
   midday_report:
@@ -68,14 +68,14 @@ jobs:
       - run: pip install -r requirements-actions.txt
       - name: North American Midday Verdict
         env:
-          TZ_PREF:    ${{ secrets.TZ_PREF }}
-          WEBHOOK_URL:${{ secrets.WEBHOOK_URL }}
-          EMAIL_TO:   ${{ secrets.EMAIL_TO }}
-          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
-          SMTP_HOST:  ${{ secrets.SMTP_HOST }}
-          SMTP_PORT:  ${{ secrets.SMTP_PORT }}
-          SMTP_USER:  ${{ secrets.SMTP_USER }}
-          SMTP_PASS:  ${{ secrets.SMTP_PASS }}
+          TZ_PREF:     ${{ secrets.TZ_PREF }}
+          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+          EMAIL_TO:    ${{ secrets.EMAIL_TO }}
+          EMAIL_FROM:  ${{ secrets.EMAIL_FROM }}
+          SMTP_HOST:   ${{ secrets.SMTP_HOST }}
+          SMTP_PORT:   ${{ secrets.SMTP_PORT }}
+          SMTP_USER:   ${{ secrets.SMTP_USER }}
+          SMTP_PASS:   ${{ secrets.SMTP_PASS }}
         run: python report_midday.py
 
   apac_report:
@@ -89,19 +89,19 @@ jobs:
       - run: pip install -r requirements.txt
       - name: Asia-Pacific Afternoon Report
         env:
-          TZ_PREF:    ${{ secrets.TZ_PREF }}
-          WEBHOOK_URL:${{ secrets.WEBHOOK_URL }}
-          EMAIL_TO:   ${{ secrets.EMAIL_TO }}
-          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
-          SMTP_HOST:  ${{ secrets.SMTP_HOST }}
-          SMTP_PORT:  ${{ secrets.SMTP_PORT }}
-          SMTP_USER:  ${{ secrets.SMTP_USER }}
-          SMTP_PASS:  ${{ secrets.SMTP_PASS }}
+          TZ_PREF:     ${{ secrets.TZ_PREF }}
+          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+          EMAIL_TO:    ${{ secrets.EMAIL_TO }}
+          EMAIL_FROM:  ${{ secrets.EMAIL_FROM }}
+          SMTP_HOST:   ${{ secrets.SMTP_HOST }}
+          SMTP_PORT:   ${{ secrets.SMTP_PORT }}
+          SMTP_USER:   ${{ secrets.SMTP_USER }}
+          SMTP_PASS:   ${{ secrets.SMTP_PASS }}
         run: python report_apac.py
 
   notify_failure:
     needs: [monitor, morning_report, midday_report, apac_report]
-    if: failure()          # runs only if any needed job failed
+    if: failure()
     runs-on: ubuntu-latest
     steps:
       - name: Send failure email
@@ -121,7 +121,6 @@ jobs:
           python - <<'PY'
           import os, smtplib
           from email.mime.text import MIMEText
-
           to, frm = os.environ["EMAIL_TO"], os.environ["EMAIL_FROM"]
           url = os.environ["RUN_URL"]
           parts = []
@@ -129,9 +128,7 @@ jobs:
               v = os.getenv(key,"")
               if v: parts.append(f"{label}: {v}")
           summary = ", ".join(parts) or "A job failed."
-
           body = f"⚠️ Vega GitHub Actions: a job failed\n\n{summary}\nCheck logs: {url}\n"
-
           msg = MIMEText(body)
           msg["Subject"] = "⚠️ Vega Actions: job failure"
           msg["From"] = frm
