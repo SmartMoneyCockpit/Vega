@@ -6,7 +6,7 @@ import yfinance as yf
 from utils import now_pt, in_us_window, in_apac_window, pct_from_prev_close, last_price, fmt_num, append_gist
 from email_webhook import broadcast
 
-PT = pytz.timezone(os.getenv("TZ_PREF","America/Los_Angeles"))
+PT = pytz.timezone('UTC')
 now = now_pt()
 
 # Only act during target windows to reduce noise
