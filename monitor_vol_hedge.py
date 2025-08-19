@@ -1,4 +1,7 @@
 \
+# near the top
+import os
+FORCE_ALERT = os.getenv("FORCE_ALERT") == "1"
 import os
 from datetime import datetime
 import pytz
