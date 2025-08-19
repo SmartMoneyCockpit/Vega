@@ -7,6 +7,7 @@ def pct(t):
     try: return pct_from_prev_close(t)
     except: return None
 
+PT = pytz.timezone('UTC')
 now = now_pt()
 
 # Benchmarks & FX
