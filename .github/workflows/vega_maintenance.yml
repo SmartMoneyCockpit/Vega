@@ -1,0 +1,74 @@
+name: Vega Maintenance & Config Check
+
+on:
+  schedule:
+    # Mondays 07:00 UTC (adjust if you want)
+    - cron: "0 7 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: vega-maintenance
+  cancel-in-progress: true
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Prune common caches/logs (runner-local)
+        run: |
+          echo "Cleaning pip cache…"
+          rm -rf ~/.cache/pip || true
+          echo "Listing large logs (if any)…"
+          sudo find /var/log -type f -size +50M -print || true
+          echo "Done."
+
+  config_check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      # Secrets (safe: we only check presence, never print values)
+      EMAIL_TO:    ${{ secrets.EMAIL_TO }}
+      EMAIL_FROM:  ${{ secrets.EMAIL_FROM }}
+      SMTP_HOST:   ${{ secrets.SMTP_HOST }}
+      SMTP_PORT:   ${{ secrets.SMTP_PORT }}
+      SMTP_USER:   ${{ secrets.SMTP_USER }}
+      SMTP_PASS:   ${{ secrets.SMTP_PASS }}
+      WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+      GIST_ID:     ${{ secrets.GIST_ID }}
+      GIST_TOKEN:  ${{ secrets.GIST_TOKEN }}
+      TZ_PREF:     ${{ secrets.TZ_PREF }}
+      # Repo Variables
+      FORCE_ALERT: ${{ vars.FORCE_ALERT }}
+      DEBUG:       ${{ vars.DEBUG }}
+    steps:
+      - name: Verify required settings are present (no secrets shown)
+        run: |
+          py() {
+            python - <<'PY'
+          import os, sys
+          keys = [
+            ("TZ_PREF", True),
+            ("EMAIL_TO", True), ("EMAIL_FROM", True),
+            ("SMTP_HOST", True), ("SMTP_PORT", True),
+            ("SMTP_USER", True), ("SMTP_PASS", True),
+          ]
+          optional = [
+            "WEBHOOK_URL", "GIST_ID", "GIST_TOKEN",
+            "FORCE_ALERT", "DEBUG"
+          ]
+          missing = []
+          for k, required in keys:
+            if not os.getenv(k):
+              missing.append(k)
+          print("=== Vega config check ===")
+          for k, _ in keys:
+            print(f"{k}: {'SET' if os.getenv(k) else 'MISSING'}")
+          for k in optional:
+            print(f"{k}: {'SET' if os.getenv(k) else 'MISSING/DEFAULT'}")
+          if missing:
+            print("::warning::Missing required settings: " + ", ".join(missing))
+            sys.exit(0)  # soft exit; still pass but warn
+          PY
+          }
+          py
