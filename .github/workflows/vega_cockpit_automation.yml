@@ -55,6 +55,10 @@ jobs:
           GIST_TOKEN:  ${{ secrets.GIST_TOKEN }}
           WATCH_STATE_DIR: ".vega_state"
           ALERT_COOLDOWN_MIN: "15"
+
+          # 👇 NEW: Controlled by GitHub Repository Variable
+          FORCE_ALERT: ${{ vars.FORCE_ALERT }}
+
         run: python monitor_vol_hedge.py
 
       - name: Save watchdog state
