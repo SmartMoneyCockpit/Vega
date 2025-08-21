@@ -1,5 +1,4 @@
-# email_webhook.py
-# Drop-in: robust email/webhook broadcaster with retry + de-dupe cache.
+# Robust broadcaster with exponential retry + de-dupe cache.
 
 from __future__ import annotations
 import os, json, time, hashlib, pathlib, smtplib, ssl, socket
@@ -13,7 +12,7 @@ STATE_DIR.mkdir(parents=True, exist_ok=True)
 CACHE_FILE = STATE_DIR / "mail_cache.json"
 
 MAIL_DEDUPE_MIN   = int(os.getenv("MAIL_DEDUPE_MIN", "10"))   # minutes to suppress duplicates
-MAIL_MAX_RETRIES  = int(os.getenv("MAIL_MAX_RETRIES", "3"))   # exponential retries for send
+MAIL_MAX_RETRIES  = int(os.getenv("MAIL_MAX_RETRIES", "3"))    # exponential retries
 MAIL_RETRY_BASE_S = float(os.getenv("MAIL_RETRY_BASE_S", "1"))
 
 # SMTP (optional if using WEBHOOK only)
@@ -25,10 +24,9 @@ SMTP_USER   = os.getenv("SMTP_USER")
 SMTP_PASS   = os.getenv("SMTP_PASS")
 
 # Webhook (optional)
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # if set, will POST message JSON in addition to SMTP
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
 # ========= De-dupe helpers =========
-
 def _load_cache() -> dict:
     if CACHE_FILE.exists():
         try:
@@ -60,25 +58,20 @@ def _is_duplicate(fingerprint: str, cache: dict, window_sec: int) -> bool:
     return False
 
 # ========= Senders =========
-
 def _send_smtp(subject: str, body: str) -> None:
     if not (EMAIL_TO and EMAIL_FROM and SMTP_HOST and SMTP_PORT and SMTP_USER and SMTP_PASS):
-        # Missing SMTP config; treat as no-op rather than raising.
         print("[broadcast] SMTP not configured; skipping SMTP send.")
         return
-
     msg = MIMEText(body)
     msg["Subject"] = subject
     msg["From"] = EMAIL_FROM
     msg["To"] = EMAIL_TO
-
     context = ssl.create_default_context()
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=20) as s:
         s.ehlo()
         try:
             s.starttls(context=context)
         except smtplib.SMTPException:
-            # Some relays are already TLS; continue
             pass
         s.login(SMTP_USER, SMTP_PASS)
         s.sendmail(EMAIL_FROM, [EMAIL_TO], msg.as_string())
@@ -87,18 +80,11 @@ def _send_webhook(subject: str, body: str) -> None:
     if not WEBHOOK_URL:
         return
     payload = json.dumps({"subject": subject, "body": body}).encode("utf-8")
-    req = urlreq.Request(
-        WEBHOOK_URL,
-        data=payload,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
+    req = urlreq.Request(WEBHOOK_URL, data=payload, headers={"Content-Type": "application/json"}, method="POST")
     with urlreq.urlopen(req, timeout=20) as resp:
-        # Read to ensure the request completes
         _ = resp.read()
 
 # ========= Public API =========
-
 def broadcast(subject: str, body: str) -> None:
     """
     Sends via SMTP (if configured) and Webhook (if configured).
@@ -112,7 +98,6 @@ def broadcast(subject: str, body: str) -> None:
         print("[broadcast] duplicate suppressed within window")
         return
 
-    # Retry helper
     def _with_retries(fn, label: str):
         delay = MAIL_RETRY_BASE_S
         for attempt in range(1, MAIL_MAX_RETRIES + 1):
@@ -127,8 +112,7 @@ def broadcast(subject: str, body: str) -> None:
                     return
                 print(f"[broadcast] {label} error (attempt {attempt}): {e}. Retrying in {delay:.1f}s...")
                 time.sleep(delay)
-                delay *= 2  # exponential backoff
+                delay *= 2
 
-    # Send SMTP then Webhook (order doesn’t matter; both are attempted)
     _with_retries(lambda: _send_smtp(subject, body), "SMTP")
     _with_retries(lambda: _send_webhook(subject, body), "WEBHOOK")
