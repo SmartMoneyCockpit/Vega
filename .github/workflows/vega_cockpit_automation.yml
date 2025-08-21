@@ -12,16 +12,38 @@ on:
     - cron: "0 1 * * *"
   workflow_dispatch:
 
+# 1) Prevent overlapping workflow runs from spamming
+concurrency:
+  group: vega-cockpit-automation
+  cancel-in-progress: true
+
+# (Optional) set timezone for date formatting inside jobs
+env:
+  TZ: ${{ secrets.TZ_PREF }}   # e.g., "America/Los_Angeles"
+
 jobs:
   monitor:
     if: github.event.schedule == '*/15 * * * *' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # 2) Extra protection at the job level
+    concurrency:
+      group: vega-monitor
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       - run: pip install -r requirements-actions.txt
+
+      # 3) Persist tiny state file for ENTER/EXIT + cooldown logic
+      - name: Restore watchdog state
+        uses: actions/cache@v4
+        with:
+          path: .vega_state
+          key: vega-watchdog-state
+
       - name: Run Volatility & Hedge Monitor
         env:
           TZ_PREF:     ${{ secrets.TZ_PREF }}
@@ -34,11 +56,27 @@ jobs:
           SMTP_PASS:   ${{ secrets.SMTP_PASS }}
           GIST_ID:     ${{ secrets.GIST_ID }}
           GIST_TOKEN:  ${{ secrets.GIST_TOKEN }}
+          # New knobs your script can honor:
+          WATCH_STATE_DIR: ".vega_state"
+          ALERT_COOLDOWN_MIN: "15"     # send ENTER at most every 15m
+          CPU_CRIT: "95"               # raise to reduce false ENTERs
+          DISK_WARN: "90"
         run: python monitor_vol_hedge.py
+
+      - name: Save watchdog state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .vega_state
+          key: vega-watchdog-state
 
   morning_report:
     if: github.event.schedule == '25 14 * * 1-5' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: vega-morning
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -60,6 +98,10 @@ jobs:
   midday_report:
     if: github.event.schedule == '0 19 * * 1-5' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: vega-midday
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -81,6 +123,10 @@ jobs:
   apac_report:
     if: github.event.schedule == '0 1 * * *' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: vega-apac
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -134,7 +180,6 @@ jobs:
           msg["From"] = frm
           msg["To"] = to
           with smtplib.SMTP(os.environ["SMTP_HOST"], int(os.environ.get("SMTP_PORT","587"))) as s:
-              s.starttls()
-              s.login(os.environ["SMTP_USER"], os.environ["SMTP_PASS"])
-              s.sendmail(frm, [to], msg.as_string())
+            s.starttls(); s.login(os.environ["SMTP_USER"], os.environ["SMTP_PASS"])
+            s.sendmail(frm, [to], msg.as_string())
           PY
