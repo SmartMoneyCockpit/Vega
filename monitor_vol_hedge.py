@@ -1,5 +1,5 @@
 """
-Vega Cockpit — Volatility & Hedge Monitor (with ENTER/EXIT + cooldown + state)
+Vega Cockpit — Volatility & Hedge Monitor (with ENTER/EXIT + cooldown + state + DEBUG)
 
 Triggers (ANY):
   1) UVXY up ≥ +5% intraday vs prior close
@@ -8,10 +8,11 @@ Triggers (ANY):
   4) Breadth divergence (SPY vs RSP proxy)
   5) USDJPY intraday move ≥ 1.0% (abs)
 
-Env knobs (optional):
+Env knobs (set in Actions env/vars):
   WATCH_STATE_DIR       default ".vega_state"
   ALERT_COOLDOWN_MIN    default "15"  (minutes)
   FORCE_ALERT           "1" to force a test alert
+  DEBUG                 "1" to print extra logs
 """
 
 from __future__ import annotations
@@ -41,6 +42,11 @@ BREADTH_DELTA = 0.50  # % abs gap between SPY% and RSP% flags divergence
 RESPECT_WINDOWS = True
 
 FORCE_ALERT = os.getenv("FORCE_ALERT") == "1"
+DEBUG = os.getenv("DEBUG", "0") == "1"
+
+def dbg(msg: str):
+    if DEBUG:
+        print(f"[DEBUG] {msg}")
 
 STATE_DIR = pathlib.Path(os.getenv("WATCH_STATE_DIR", ".vega_state"))
 STATE_DIR.mkdir(parents=True, exist_ok=True)
@@ -168,11 +174,15 @@ def main():
             return
 
     d = fetch_snapshot()
+    dbg(f"snapshot: {d}")
     trigs = detect_triggers(d)
+    dbg(f"triggers: {trigs}")
 
     state = _load_state()
+    dbg(f"loaded state: {state}")
     was_mode = state.get("mode", "normal")
     now_def = is_defensive(d, trigs)
+    dbg(f"now_defensive={now_def}")
     now_ts = int(time.time())
 
     should_send_enter = False
@@ -186,6 +196,8 @@ def main():
     elif (not now_def) and was_mode == "defensive":
         should_send_exit = True
 
+    dbg(f"was_mode={was_mode}, should_send_enter={should_send_enter}, should_send_exit={should_send_exit}")
+
     if not (should_send_enter or should_send_exit or FORCE_ALERT or trigs):
         state["mode"] = "defensive" if now_def else "normal"
         _save_state(state)
@@ -197,14 +209,17 @@ def main():
 
     try:
         if should_send_enter:
+            dbg("sending ENTER alert")
             subject = "[VEGA] Defensive Mode ENTER — Volatility Monitor"
             broadcast(subject, body)
             state["last_alert"] = now_ts
         elif should_send_exit:
+            dbg("sending EXIT alert")
             subject = "[VEGA] Defensive Mode EXIT — Volatility Monitor"
             broadcast(subject, body)
             state["last_alert"] = now_ts
         elif FORCE_ALERT or trigs:
+            dbg("sending INFO alert")
             subject = "Vega Alert: Volatility/Hedge Monitor"
             broadcast(subject, body)
             state["last_alert"] = now_ts
@@ -214,6 +229,7 @@ def main():
 
     state["mode"] = "defensive" if now_def else "normal"
     _save_state(state)
+    dbg(f"saved state: {_load_state()}")
 
     gid = os.getenv("GIST_ID")
     gtok = os.getenv("GIST_TOKEN")
