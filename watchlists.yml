@@ -1,0 +1,43 @@
+# Yahoo Finance–compatible symbols.
+# If any symbol doesn't resolve, the code will skip it automatically.
+
+canada_tsx:
+  - ABX.TO       # Barrick Gold
+  - NTR.TO       # Nutrien
+  - TECK-B.TO    # Teck Resources (Class B)
+  - RY.TO        # Royal Bank of Canada
+  - TD.TO        # TD Bank
+  - SHOP.TO      # Shopify
+  - CNQ.TO       # Canadian Natural Resources
+  - SU.TO        # Suncor
+  - ENB.TO       # Enbridge
+  - BN.TO        # Brookfield
+
+mexico_bmv:
+  - WALMEX.MX    # Walmart de México
+  - AMXL.MX      # América Móvil L
+  - GMEXICOB.MX  # Grupo México B
+  - CEMEXCPO.MX  # Cemex CPO
+  - FEMSAUBD.MX  # FEMSA UBD
+  - ORBIA.MX     # Orbia (ex-Mexichem)
+  - BBAJIOO.MX   # Banco del Bajío O
+  - PINFRA.MX    # Pinfra
+  - AC.MX        # Arca Continental
+  - GENTERA.MX   # Gentera
+
+mexico_adrs:
+  - FMX          # FEMSA ADR
+  - AMX          # América Móvil ADR
+  - KOF          # Coca-Cola FEMSA ADR
+  - CX           # Cemex ADR
+  - GMBXF        # Grupo México OTC
+
+latam:
+  - PBR          # Petrobras
+  - VALE         # Vale
+  - ITUB         # Itaú Unibanco
+  - MELI         # MercadoLibre
+  - CIB          # Bancolombia
+  - BSBR         # Santander Brasil
+  - BBD          # Banco Bradesco
+  - GOL          # GOL Linhas Aéreas
