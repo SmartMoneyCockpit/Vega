@@ -2,21 +2,17 @@
 Vega Cockpit — North America End-of-Day Wrap
 Outputs:
   - Index performance (USA, Canada, Mexico, LatAm proxy)
-  - Sector rotation quick read
-  - Leaders/Laggards snapshot (top/bottom movers from a small list)
   - FX & Commodities quick wrap
+  - Leaders/Laggards snapshot from sample lists
 """
 
 from __future__ import annotations
 from typing import Dict, Any, List
 import os
 
-from utils import (
-    now_pt, pct_from_prev_close, last_price, fmt_num
-)
+from utils import now_pt, pct_from_prev_close, last_price, fmt_num
 from email_webhook import broadcast
 
-# light helpers
 def pct(tk: str) -> float | None:
     try:
         return pct_from_prev_close(tk)
@@ -32,13 +28,12 @@ def val(tk: str) -> float | None:
 def main():
     now = now_pt()
 
-    # Core indices
     data = {
         "SPY%": pct("SPY"),
         "DIA%": pct("DIA"),
         "QQQ%": pct("QQQ"),
         "^GSPTSE%": pct("^GSPTSE"),   # Canada TSX
-        "^MXX%": pct("^MXX"),         # Mexico IPC (^MXX on Yahoo)
+        "^MXX%": pct("^MXX"),         # Mexico IPC
         "^SPLAC%": pct("^SPLAC"),     # S&P Latin America 40 (proxy; may be delayed)
         "USDMXN": val("MXN=X"),
         "USDCAD": val("CAD=X"),
@@ -49,7 +44,6 @@ def main():
         "VIX": val("^VIX"),
     }
 
-    # Minimal stock lists you can expand later
     leaders_watch: List[str] = ["AAPL","MSFT","NVDA","AMZN","META","PEP","WMT","GOOGL"]
     laggards_watch: List[str] = ["TSLA","AMD","NFLX","COST","ORCL","AVGO","JPM","UNH"]
 
