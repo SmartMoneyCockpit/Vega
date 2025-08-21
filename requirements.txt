@@ -4,6 +4,7 @@ pandas==2.2.2
 numpy==1.26.4
 requests==2.32.3
 pytz==2024.1
+python-dateutil==2.9.0.post0
 pyyaml==6.0.2
 
 # Google Sheets stack
@@ -14,6 +15,8 @@ google-api-python-client==2.141.0
 
 # Market data helpers
 yfinance==0.2.40
+# If your utils import yahooquery, uncomment this:
+# yahooquery==2.3.7
 
 # Plots / Indicators / Math
 matplotlib==3.9.0
@@ -30,7 +33,7 @@ newsapi-python==0.2.7
 ib-insync==0.9.86
 eventkit==1.0.3
 
-# Vega Monitor Additions
+# Vega Monitor additions (runtime-friendly, safe to keep)
 psutil==5.9.8
 watchdog==4.0.1
 reportlab==4.2.2
