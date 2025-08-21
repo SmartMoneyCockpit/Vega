@@ -8,36 +8,33 @@ on:
     - cron: "25 14 * * 1-5"
     # NA Midday Verdict: 19:00 UTC ≈ 12:00 PM PT (Mon–Fri)
     - cron: "0 19 * * 1-5"
+    # NA End-of-Day Wrap: 20:00 UTC ≈ 1:00 PM PT (Mon–Fri)
+    - cron: "0 20 * * 1-5"
     # APAC Afternoon Report: 01:00 UTC ≈ 6:00 PM PT (prev day)
     - cron: "0 1 * * *"
   workflow_dispatch:
 
-# 1) Prevent overlapping workflow runs from spamming
+# Prevent overlapping runs from spamming
 concurrency:
   group: vega-cockpit-automation
   cancel-in-progress: true
 
-# (Optional) set timezone for date formatting inside jobs
 env:
-  TZ: ${{ secrets.TZ_PREF }}   # e.g., "America/Los_Angeles"
+  TZ: ${{ secrets.TZ_PREF }}   # e.g., America/Los_Angeles
 
 jobs:
+
   monitor:
     if: github.event.schedule == '*/15 * * * *' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # 2) Extra protection at the job level
-    concurrency:
-      group: vega-monitor
-      cancel-in-progress: true
+    concurrency: { group: vega-monitor, cancel-in-progress: true }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
+        with: { python-version: '3.11' }
       - run: pip install -r requirements-actions.txt
 
-      # 3) Persist tiny state file for ENTER/EXIT + cooldown logic
       - name: Restore watchdog state
         uses: actions/cache@v4
         with:
@@ -56,11 +53,8 @@ jobs:
           SMTP_PASS:   ${{ secrets.SMTP_PASS }}
           GIST_ID:     ${{ secrets.GIST_ID }}
           GIST_TOKEN:  ${{ secrets.GIST_TOKEN }}
-          # New knobs your script can honor:
           WATCH_STATE_DIR: ".vega_state"
-          ALERT_COOLDOWN_MIN: "15"     # send ENTER at most every 15m
-          CPU_CRIT: "95"               # raise to reduce false ENTERs
-          DISK_WARN: "90"
+          ALERT_COOLDOWN_MIN: "15"
         run: python monitor_vol_hedge.py
 
       - name: Save watchdog state
@@ -74,14 +68,11 @@ jobs:
     if: github.event.schedule == '25 14 * * 1-5' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    concurrency:
-      group: vega-morning
-      cancel-in-progress: true
+    concurrency: { group: vega-morning, cancel-in-progress: true }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
+        with: { python-version: '3.11' }
       - run: pip install -r requirements.txt
       - name: North American Morning Report
         env:
@@ -99,14 +90,11 @@ jobs:
     if: github.event.schedule == '0 19 * * 1-5' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    concurrency:
-      group: vega-midday
-      cancel-in-progress: true
+    concurrency: { group: vega-midday, cancel-in-progress: true }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
+        with: { python-version: '3.11' }
       - run: pip install -r requirements-actions.txt
       - name: North American Midday Verdict
         env:
@@ -120,18 +108,37 @@ jobs:
           SMTP_PASS:   ${{ secrets.SMTP_PASS }}
         run: python report_midday.py
 
+  eod_wrap:
+    if: github.event.schedule == '0 20 * * 1-5' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency: { group: vega-eod, cancel-in-progress: true }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - run: pip install -r requirements-actions.txt
+      - name: North American End-of-Day Wrap
+        env:
+          TZ_PREF:     ${{ secrets.TZ_PREF }}
+          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+          EMAIL_TO:    ${{ secrets.EMAIL_TO }}
+          EMAIL_FROM:  ${{ secrets.EMAIL_FROM }}
+          SMTP_HOST:   ${{ secrets.SMTP_HOST }}
+          SMTP_PORT:   ${{ secrets.SMTP_PORT }}
+          SMTP_USER:   ${{ secrets.SMTP_USER }}
+          SMTP_PASS:   ${{ secrets.SMTP_PASS }}
+        run: python report_eod.py
+
   apac_report:
     if: github.event.schedule == '0 1 * * *' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    concurrency:
-      group: vega-apac
-      cancel-in-progress: true
+    concurrency: { group: vega-apac, cancel-in-progress: true }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
+        with: { python-version: '3.11' }
       - run: pip install -r requirements.txt
       - name: Asia-Pacific Afternoon Report
         env:
@@ -146,7 +153,7 @@ jobs:
         run: python report_apac.py
 
   notify_failure:
-    needs: [monitor, morning_report, midday_report, apac_report]
+    needs: [monitor, morning_report, midday_report, eod_wrap, apac_report]
     if: failure()
     runs-on: ubuntu-latest
     steps:
@@ -159,22 +166,13 @@ jobs:
           SMTP_USER:  ${{ secrets.SMTP_USER }}
           SMTP_PASS:  ${{ secrets.SMTP_PASS }}
           RUN_URL:    https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          MONITOR_R:  ${{ needs.monitor.result }}
-          NA_R:       ${{ needs.morning_report.result }}
-          MID_R:      ${{ needs.midday_report.result }}
-          APAC_R:     ${{ needs.apac_report.result }}
         run: |
           python - <<'PY'
           import os, smtplib
           from email.mime.text import MIMEText
           to, frm = os.environ["EMAIL_TO"], os.environ["EMAIL_FROM"]
           url = os.environ["RUN_URL"]
-          parts = []
-          for key,label in [("MONITOR_R","Monitor"),("NA_R","Morning"),("MID_R","Midday"),("APAC_R","APAC")]:
-              v = os.getenv(key,"")
-              if v: parts.append(f"{label}: {v}")
-          summary = ", ".join(parts) or "A job failed."
-          body = f"⚠️ Vega GitHub Actions: a job failed\n\n{summary}\nCheck logs: {url}\n"
+          body = f"⚠️ Vega GitHub Actions: a job failed\n\nCheck logs: {url}\n"
           msg = MIMEText(body)
           msg["Subject"] = "⚠️ Vega Actions: job failure"
           msg["From"] = frm
