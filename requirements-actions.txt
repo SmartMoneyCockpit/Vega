@@ -1,4 +1,8 @@
+# Lean deps for automation runners (monitor, midday, EOD)
 yfinance==0.2.40
-pytz==2024.1
+pandas==2.2.2
+numpy==1.26.4
 requests==2.32.3
-PyYAML==6.0.2
+python-dateutil==2.9.0.post0
+pytz==2024.1
+pyyaml==6.0.2
