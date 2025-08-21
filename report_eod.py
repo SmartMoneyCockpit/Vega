@@ -1,18 +1,20 @@
 """
-Vega Cockpit — North America End-of-Day Wrap
-Outputs:
-  - Index performance (USA, Canada, Mexico, LatAm proxy)
-  - FX & Commodities quick wrap
-  - Leaders/Laggards snapshot from sample lists
+Vega Cockpit — North America End-of-Day Wrap (watchlists-enabled)
+- Index performance (USA, Canada, Mexico, LatAm proxy)
+- FX & Commodities quick wrap
+- Regional movers from watchlists.yml (Canada TSX, Mexico BMV/ADRs, LatAm)
 """
 
 from __future__ import annotations
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Tuple
+from pathlib import Path
 import os
 
+import yaml  # requires pyyaml
 from utils import now_pt, pct_from_prev_close, last_price, fmt_num
 from email_webhook import broadcast
 
+# ---------- helpers ----------
 def pct(tk: str) -> float | None:
     try:
         return pct_from_prev_close(tk)
@@ -25,9 +27,60 @@ def val(tk: str) -> float | None:
     except Exception:
         return None
 
+def load_watchlists(path: str = "watchlists.yml") -> Dict[str, List[str]]:
+    """Load YAML watchlists. Returns empty dict if missing/invalid."""
+    p = Path(path)
+    if not p.exists():
+        return {}
+    try:
+        data = yaml.safe_load(p.read_text()) or {}
+        # normalize to lists of strings
+        out = {}
+        for k, v in data.items():
+            if isinstance(v, list):
+                out[k] = [str(x).strip() for x in v if str(x).strip()]
+        return out
+    except Exception:
+        return {}
+
+def top_bottom(tickers: List[str], n: int = 5) -> Tuple[List[Tuple[str, float]], List[Tuple[str, float]]]:
+    """Return top and bottom n by % change; skips symbols that return None."""
+    vals: List[Tuple[str, float]] = []
+    for t in tickers:
+        p = pct(t)
+        if p is not None:
+            vals.append((t, p))
+    if not vals:
+        return [], []
+    vals.sort(key=lambda x: x[1], reverse=True)
+    top = vals[:n]
+    bot = vals[-n:] if len(vals) >= n else vals[-len(vals):]
+    return top, bot
+
+def section_movers(title: str, tickers: List[str], n: int = 5) -> List[str]:
+    lines: List[str] = []
+    if not tickers:
+        return lines
+    top, bot = top_bottom(tickers, n=n)
+    if not top and not bot:
+        return lines
+    lines.append(f"**{title} — Movers**")
+    if top:
+        lines.append("Top:")
+        for t, p in top:
+            lines.append(f"- {t}: {fmt_num(p)}%")
+    if bot:
+        lines.append("Bottom:")
+        for t, p in bot:
+            lines.append(f"- {t}: {fmt_num(p)}%")
+    lines.append("")  # spacer
+    return lines
+
+# ---------- main ----------
 def main():
     now = now_pt()
 
+    # Core indices & macros
     data = {
         "SPY%": pct("SPY"),
         "DIA%": pct("DIA"),
@@ -44,16 +97,14 @@ def main():
         "VIX": val("^VIX"),
     }
 
-    leaders_watch: List[str] = ["AAPL","MSFT","NVDA","AMZN","META","PEP","WMT","GOOGL"]
-    laggards_watch: List[str] = ["TSLA","AMD","NFLX","COST","ORCL","AVGO","JPM","UNH"]
+    # Load regional watchlists
+    wl = load_watchlists("watchlists.yml")
+    canada = wl.get("canada_tsx", [])
+    mexico_bmv = wl.get("mexico_bmv", [])
+    mexico_adrs = wl.get("mexico_adrs", [])
+    latam = wl.get("latam", [])
 
-    def rows(names: List[str]) -> List[str]:
-        out = []
-        for n in names:
-            p = pct(n)
-            out.append(f"- {n}: {fmt_num(p)}%")
-        return out
-
+    # Build body
     lines: List[str] = []
     lines.append("**North America — End of Day Wrap**")
     lines.append(f"**Time:** {now.strftime('%Y-%m-%d %H:%M %Z')}\n")
@@ -68,10 +119,21 @@ def main():
     lines.append(f"- Gold: {fmt_num(data['GOLD'])} | Silver: {fmt_num(data['SILVER'])} | Copper: {fmt_num(data['COPPER'])} | WTI: {fmt_num(data['WTI'])}")
     lines.append(f"- VIX: {fmt_num(data['VIX'])}\n")
 
-    lines.append("**Leaders (watchlist sample)**")
-    lines += rows(leaders_watch)
-    lines.append("\n**Laggards (watchlist sample)**")
-    lines += rows(laggards_watch)
+    # Regional movers from YAML
+    if canada or mexico_bmv or mexico_adrs or latam:
+        lines += section_movers("Canada (TSX)", canada, n=5)
+        lines += section_movers("Mexico (BMV)", mexico_bmv, n=5)
+        lines += section_movers("Mexico (ADRs/OTC)", mexico_adrs, n=5)
+        lines += section_movers("LatAm (ADRs)", latam, n=5)
+    else:
+        # Fallback if YAML missing
+        lines.append("_No watchlists.yml found — using default sample lists._\n")
+        sample_can = ["ABX.TO","NTR.TO","RY.TO","TD.TO","SHOP.TO"]
+        sample_mx  = ["WALMEX.MX","AMXL.MX","GMEXICOB.MX","CEMEXCPO.MX","FEMSAUBD.MX"]
+        sample_la  = ["PBR","VALE","ITUB","MELI","CIB"]
+        lines += section_movers("Canada (TSX)", sample_can, n=5)
+        lines += section_movers("Mexico (BMV)", sample_mx, n=5)
+        lines += section_movers("LatAm (ADRs)", sample_la, n=5)
 
     body = "\n".join(lines)
     subject = "Vega — End of Day Wrap (North America)"
