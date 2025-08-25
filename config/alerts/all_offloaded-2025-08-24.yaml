@@ -1,0 +1,57 @@
+region: APAC
+as_of: 2025-08-24
+
+policy:
+  keep_active_automations:
+    - "3697.T close_below 1545"   # only live auto kept
+  everything_else: "tracked in YAML + GitHub; promote only when needed"
+
+watchlist:
+  - ticker: 3697.T   # SHIFT
+    status: "Hold; stop on daily close < 1545"
+    alerts:
+      - type: close_below
+        level: 1545
+
+  - ticker: 7972.T   # ITOKI
+    status: "WAIT — bounce 2.43x or breakout > 2,500"
+    alerts:
+      - type: intraday_at_or_below
+        level: 2440
+      - type: close_above
+        level: 2500
+    plan:
+      entries:
+        - "bounce 2430–2445; stop 2360"
+        - "breakout close>2500; stop 2430"
+      targets: [2538, 2650, 2700]
+
+  - ticker: 6841.T   # Yokogawa
+    status: "WAIT — bounce 4.20x or breakout > 4,380"
+    alerts:
+      - type: intraday_at_or_below
+        level: 4230
+      - type: close_above
+        level: 4380
+    plan:
+      entries:
+        - "bounce 4200–4230; stop 4100"
+        - "breakout close>4380; stop 4260"
+      targets: [4500, 4650]
+
+  - ticker: 8714.T   # Senshu Ikeda
+    status: "WAIT — bounce 650–655 or ≥ 684 breakout"
+    alerts:
+      - type: intraday_at_or_below
+        level: 650
+      - type: close_at_or_above
+        level: 684
+    plan:
+      entries:
+        - "bounce 650–655; stop 642/633"
+        - "breakout close≥684; stop 660–662"
+      targets: [674, 683, 700]
+
+notes:
+  - "House rules: min 1:3 R:R; limit orders; log fills in Cockpit Journal."
+  - "FX: JPY spikes can wobble entries; don’t add into resistance."
