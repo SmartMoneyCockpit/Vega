@@ -1,11 +1,101 @@
+filename: config/alerts/na-2025-08-26.yaml
+
+```yaml
 region: NA
 as_of: 2025-08-26
+
 policy:
   keep_active_automations: []
+
 watchlist:
+  # --- Core market states ---
   - ticker: SPY
-    status: "WAIT — hedge watch"
+    status: "WAIT — hedge only if risk-off triggers"
+    alerts:
+      - type: ma_cross_down
+        ma: 20
+      - type: ma_cross_down
+        ma: 50
+      - type: percent_drawdown_from_open
+        value: 1.0
+      - type: breadth_under
+        metric: spx_pct_above_ma50
+        value: 45
+    plan:
+      entries:
+        - "Risk-off (VIX≥20 OR breadth<45 OR SPY<50dma) → consider contras"
+        - "Risk-on (reclaim 20dma & VIX<18) → unwind hedges"
+
+  - ticker: VIX
+    status: "Risk gauge"
     alerts:
       - type: close_above
-        level: 545
-notes: []
+        level: 20
+      - type: close_above
+        level: 22
+      - type: close_above
+        level: 25
+
+  # --- Contras (only when risk-off) ---
+  - ticker: SPXU
+    status: "Risk-off hedge (S&P)"
+    alerts:
+      - type: percent_gain_from_open
+        value: 1.0
+
+  - ticker: SQQQ
+    status: "Risk-off hedge (Nasdaq)"
+    alerts:
+      - type: percent_gain_from_open
+        value: 1.0
+
+  - ticker: RWM
+    status: "Risk-off hedge (Russell 2000)"
+    alerts:
+      - type: percent_gain_from_open
+        value: 1.0
+
+  # --- Metals / commodities focus ---
+  - ticker: SLV
+    status: "WAIT — momentum on USD/yields softening"
+    alerts:
+      - type: ma_cross_up
+        ma: 20
+      - type: ma_cross_up
+        ma: 50
+
+  - ticker: CPER
+    status: "WAIT — copper trend confirmation"
+    alerts:
+      - type: ma_cross_up
+        ma: 20
+      - type: ma_cross_up
+        ma: 50
+
+  # --- Canada wrappers (swing-to-investing) ---
+  - ticker: ZGRO.TO
+    status: "WAIT — add only on 50dma reclaim"
+    alerts:
+      - type: ma_cross_up
+        ma: 50
+
+  - ticker: XGRO.TO
+    status: "WAIT — add only on 50dma reclaim"
+    alerts:
+      - type: ma_cross_up
+        ma: 50
+
+  # --- Preferred Income Basket (monitor only) ---
+  - ticker: CPD.TO
+    status: "Monitor yield/trend; part of Preferred Basket"
+    alerts: []
+  - ticker: ZPR.TO
+    status: "Monitor yield/trend; part of Preferred Basket"
+    alerts: []
+  - ticker: HPR.TO
+    status: "Monitor yield/trend; part of Preferred Basket"
+    alerts: []
+
+notes:
+  - "Rules: 1:3 min R:R; ~60% POP for options when under/overpriced; no buys within 30D of earnings for single names."
+  - "Only surface contras when risk-off (VIX≥20 OR SPY<50dma OR breadth<45)."
