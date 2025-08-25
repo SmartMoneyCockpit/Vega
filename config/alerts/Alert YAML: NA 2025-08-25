@@ -3,39 +3,107 @@ filename: config/alerts/na-2025-08-25.yaml
 ```yaml
 region: NA
 as_of: 2025-08-25
+
 policy:
-  keep_active_automations: []
+  keep_active_automations: []   # we’re running ZERO live autos for NA; YAML-only
+
 watchlist:
+  # ---- Core index & risk-off framework ----
   - ticker: SPY
-    status: "WAIT — hedge watch per risk-off flip"
+    status: "WAIT — hedge bias driven by VIX + breadth; default to stock unless options >/< priced per your rule"
+    alerts:
+      - type: ma_cross_down       # 20dma risk-on → neutral
+        ma: 20
+      - type: ma_cross_down       # 50dma neutral → risk-off
+        ma: 50
+      - type: percent_drawdown_from_open   # intraday flush detector
+        value: 1.0
+      - type: breadth_under       # % of S&P above 50dma (risk-off if < 45)
+        metric: spx_pct_above_ma50
+        value: 45
+    plan:
+      entries:
+        - "If VIX≥20 OR breadth<45 → consider SPXU/SQQQ/RWM hedges; avoid new longs."
+        - "If SPY reclaims 20dma & VIX<18 → unwind hedges in tranches."
+      targets: ["Dynamic — use prior swing high/low & ATR for trails"]
+
+  - ticker: VIX
+    status: "Risk gauge"
     alerts:
       - type: close_above
-        level: 545
+        level: 20        # flip to risk-off
+      - type: close_above
+        level: 22        # escalate
+      - type: close_above
+        level: 25        # tail-risk
+
+  # ---- Contras / Hedges (only surface in risk-off) ----
+  - ticker: SPXU
+    status: "USE ONLY WHEN risk-off triggers fire (VIX≥20 or SPY<50dma)"
+    alerts:
+      - type: percent_gain_from_open
+        value: 1.0
+    plan:
+      entries:
+        - "Starter on first risk-off trigger; add only on confirmation."
+      targets: ["ATR-based trails; scale into strength, not into weakness"]
+
+  - ticker: SQQQ
+    status: "USE ONLY WHEN risk-off triggers fire; tech beta"
+    alerts:
+      - type: percent_gain_from_open
+        value: 1.0
+
+  - ticker: RWM
+    status: "USE ONLY WHEN risk-off triggers fire; small-cap stress proxy"
+    alerts:
+      - type: percent_gain_from_open
+        value: 1.0
+
+  # ---- Metals / Commodities ----
+  - ticker: SLV
+    status: "WAIT — momentum if USD eases / yields soften"
+    alerts:
+      - type: ma_cross_up
+        ma: 20
+      - type: ma_cross_up
+        ma: 50
+
+  - ticker: CPER
+    status: "WAIT — copper trend confirmation"
+    alerts:
+      - type: ma_cross_up
+        ma: 20
+      - type: ma_cross_up
+        ma: 50
+
+  # ---- Canada multi-asset wrappers (swing-to-investing) ----
+  - ticker: ZGRO.TO
+    status: "WAIT — add only on trend confirmation"
+    alerts:
+      - type: ma_cross_up
+        ma: 50
+
+  - ticker: XGRO.TO
+    status: "WAIT — add only on trend confirmation"
+    alerts:
+      - type: ma_cross_up
+        ma: 50
+
+  # ---- FX hedges (context only; cockpit display) ----
+  - ticker: USDJPY
+    status: "Context — yen spikes can wobble Japan exposure; track for regime shifts"
+    alerts:
+      - type: percent_move_from_close
+        value: 0.8
+
+  - ticker: USDMXN
+    status: "Context — FX hedge pointer for MX exposure; watch for >1% daily swings"
+    alerts:
+      - type: percent_move_from_close
+        value: 1.0
+
 notes:
-  - "Add more tickers during Morning Briefing."
-
-
-> The workflow reads the `filename:` line and the first ```yaml code block, then commits it to that path on **main** and comments back with a link.
-
----
-
-## 3) (Optional) Issue template for convenience
-Create **`.github/ISSUE_TEMPLATE/alert-yaml.md`**:
-
-```md
----
-name: Alert YAML
-about: Paste alert YAML and have Actions write it to config/alerts/
-title: "Alert YAML: <REGION DATE>"
-labels: ["alert-yaml"]
----
-
-filename: config/alerts/<region>-<YYYY-MM-DD>.yaml
-
-```yaml
-region: <REGION>
-as_of: <YYYY-MM-DD>
-policy:
-  keep_active_automations: []
-watchlist: []
-notes: []
+  - "Standing rules: 1:3 min R:R; ~60% POP options only when under/overpriced; no buys within 30 days of earnings (ETFs/FX exempt)."
+  - "Only surface contras/hedges when risk-off: VIX ≥ 20 OR SPY < 50dma OR breadth < 45."
+  - "Color-code Trade Now vs Wait and include benchmark-relative strength and breadth in reports."
