@@ -1,0 +1,11 @@
+live_automations:
+  keep:
+    - "SHIFT 3697 close_below 1545"
+    - "Daily Morning Macro Briefing"
+    - "Weekly Macro Calendar"
+  max_count: 3
+promotions:
+  limit: 2
+  file: "config/alerts/promoted.json"
+routing:
+  default: "track in YAML and Issues; promote only if necessary"
