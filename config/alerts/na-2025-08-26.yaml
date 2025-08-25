@@ -1,0 +1,11 @@
+region: NA
+as_of: 2025-08-26
+policy:
+  keep_active_automations: []
+watchlist:
+  - ticker: SPY
+    status: "WAIT — hedge watch"
+    alerts:
+      - type: close_above
+        level: 545
+notes: []
