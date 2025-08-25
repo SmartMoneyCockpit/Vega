@@ -1,0 +1,33 @@
+version: 1
+region: NA
+timezone: "America/Mazatlan"
+
+reporting:
+  morning_briefing_time_local: "06:00"   # your Daily Morning Macro Briefing
+  lunch_update_time_local:    "12:30"
+  eod_wrap_time_local:        "15:15"
+  weekly_macro_day_local:     "Sunday"   # keep Sunday prep
+
+risk_rules:
+  min_rr: 3.0
+  risk_per_trade_pct: 0.50
+  no_buys_within_earnings_days: 30
+
+options_rules:
+  pop_target: 0.60
+  dte_window: [21, 90]
+  selection_rule: "calls/call-spreads when options are underpriced; puts/put-spreads when overpriced; else stock"
+
+alerts_policy:
+  mode: "yaml-first"
+  live_max: 3
+  promotion_limit: 2
+
+risk_off_triggers:
+  - "VIX >= 20"
+  - "SPY < 50dma"
+  - "SPX breadth (%>MA50) < 45"
+
+notes:
+  - "Contras/hedges (SPXU, SQQQ, RWM) only surface when risk-off triggers fire."
+  - "Times are local to America/Mazatlan."
