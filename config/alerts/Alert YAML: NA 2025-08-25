@@ -13,3 +13,29 @@ watchlist:
         level: 545
 notes:
   - "Add more tickers during Morning Briefing."
+
+
+> The workflow reads the `filename:` line and the first ```yaml code block, then commits it to that path on **main** and comments back with a link.
+
+---
+
+## 3) (Optional) Issue template for convenience
+Create **`.github/ISSUE_TEMPLATE/alert-yaml.md`**:
+
+```md
+---
+name: Alert YAML
+about: Paste alert YAML and have Actions write it to config/alerts/
+title: "Alert YAML: <REGION DATE>"
+labels: ["alert-yaml"]
+---
+
+filename: config/alerts/<region>-<YYYY-MM-DD>.yaml
+
+```yaml
+region: <REGION>
+as_of: <YYYY-MM-DD>
+policy:
+  keep_active_automations: []
+watchlist: []
+notes: []
