@@ -1,0 +1,15 @@
+filename: config/alerts/na-2025-08-25.yaml
+
+```yaml
+region: NA
+as_of: 2025-08-25
+policy:
+  keep_active_automations: []
+watchlist:
+  - ticker: SPY
+    status: "WAIT — hedge watch per risk-off flip"
+    alerts:
+      - type: close_above
+        level: 545
+notes:
+  - "Add more tickers during Morning Briefing."
