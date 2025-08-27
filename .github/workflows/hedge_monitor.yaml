@@ -1,0 +1,38 @@
+name: Hedge Monitor (15m)
+
+on:
+  schedule:
+    - cron: "*/15 13-20 * * 1-5"  # 06:30–13:59 Phoenix
+  workflow_dispatch:
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: |
+          python - << 'PY'
+          import yaml, json, datetime as dt
+          from pathlib import Path
+          cfg = yaml.safe_load(open("config/vega_rules.yaml"))
+          # Placeholder signal evaluation — wire your data later
+          signal = {
+            "trigger_primary_ready": False,
+            "conditions": {
+              "vix_gt": cfg["hedge_rules"]["trigger_primary"]["vix_gt"],
+              "spy_below_vwap": cfg["hedge_rules"]["trigger_primary"]["spy_below_vwap"],
+              "breadth_below": cfg["hedge_rules"]["trigger_primary"]["breadth_below"]
+            },
+            "ts_utc": dt.datetime.utcnow().isoformat()+"Z"
+          }
+          Path("signals").mkdir(exist_ok=True)
+          open("signals/hedge_monitor.json","w").write(json.dumps(signal, indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hedge-monitor
+          path: signals/hedge_monitor.json
+          retention-days: 3
