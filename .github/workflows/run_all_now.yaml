@@ -1,0 +1,7 @@
+name: Run All Now
+on: workflow_dispatch
+jobs:
+  morning: { uses: ./.github/workflows/morning_report.yaml }
+  midday:  { uses: ./.github/workflows/midday_verdict.yaml }
+  apac:    { uses: ./.github/workflows/apac_afternoon.yaml }
+  eod:     { uses: ./.github/workflows/eod_snapshot.yaml }
