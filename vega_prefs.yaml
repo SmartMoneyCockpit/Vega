@@ -1,0 +1,18 @@
+# vega_prefs.yaml
+modules:
+  morning_report: true
+  apac_report: false
+  auto_hedging: true
+
+pages:
+  dashboard: true
+  trade_logger: true
+  health_tracker: true
+
+features:
+  news_feed: false
+  options_engine: true
+
+thresholds:
+  vix_defcon: 17
+  breadth_rollover: 0.4
