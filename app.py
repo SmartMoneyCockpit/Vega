@@ -1,8 +1,6 @@
 # app.py — Vega Command Center (Feature Pack 2)
-# app.py — module_stay_or_reenter
+
 from module_stay_or_reenter import render_stay_or_reenter
-render_stay_or_reenter()
-# app.py — Vega Command Center (Feature Pack 2)
 
 import os, sys, math, json, io, zipfile, time, statistics as stats
 from datetime import datetime, timedelta, timezone
@@ -1281,7 +1279,8 @@ MODULES = [
     "NA Cockpit", "APAC Cockpit", "Morning News", "Risk Lab",
     "PnL Analytics", "Backtest (Beta)",
     "Options Builder", "FX & Hedges", "Broker Import",
-    "Health Journal", "Admin / Backup", "Docs"
+    "Health Journal", "Admin / Backup", "Docs",
+    "Stay Out vs Get Back In"   # NEW TAB
 ]
 
 tabs = st.tabs(MODULES)
@@ -1312,3 +1311,5 @@ with tabs[11]:
     page_admin_backup()
 with tabs[12]:
     page_docs()
+with tabs[13]:
+    render_stay_or_reenter()   # NEW MODULE MOUNT
