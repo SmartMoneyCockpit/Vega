@@ -1,44 +1,73 @@
 from __future__ import annotations
-import json, yaml, os, datetime as dt
+import os, json
 from typing import Any, Dict
 
-_PREFS_PATH = os.environ.get("VEGA_PREFS_PATH", "config/vega_prefs.yaml")
-_VERSION_PATH = os.environ.get("VEGA_VERSION_PATH", "config/version.json")
+try:
+    import yaml  # pyyaml should be in requirements
+except Exception:  # harden if yaml isn't present
+    yaml = None
 
-class VegaPrefs:
-    def __init__(self, prefs: Dict[str, Any], version: Dict[str, Any]):
-        self._prefs = prefs or {}
-        self._version = version or {}
+# Default config file locations (overridable via env)
+DEFAULT_PREFS_PATH = os.environ.get("VEGA_PREFS_PATH", "config/vega_prefs.yaml")
+DEFAULT_VERSION_PATH = os.environ.get("VEGA_VERSION_PATH", "config/version.json")
 
-    def get(self, *keys, default=None):
-        node = self._prefs
-        for k in keys:
-            if not isinstance(node, dict) or k not in node:
-                return default
-            node = node[k]
-        return node
+def _load_yaml(path: str) -> Dict[str, Any]:
+    if not path or not os.path.exists(path) or yaml is None:
+        return {}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+        return data or {}
+    except Exception:
+        return {}
 
-    def enabled(self, *keys, default=False) -> bool:
-        val = self.get(*keys, default=default)
-        return bool(val) is True
+def _load_json(path: str) -> Dict[str, Any]:
+    if not path or not os.path.exists(path):
+        return {}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data or {}
+    except Exception:
+        return {}
 
-    @property
-    def version(self) -> str:
-        return self._version.get("version", "0.0.0")
+def _env_overrides() -> Dict[str, Any]:
+    """
+    Optional: read simple VEGA_* env vars and fold into prefs.
+    Only grabs flat key=value pairs like VEGA_REGION=USA -> {"region": "USA"}.
+    Extend as needed for your cockpit.
+    """
+    mapping = {}
+    for k, v in os.environ.items():
+        if not k.startswith("VEGA_"):
+            continue
+        key = k.removeprefix("VEGA_").lower()
+        mapping[key] = v
+    return mapping
 
-    @property
-    def last_updated(self) -> str:
-        return self._version.get("last_updated_utc", "")
+def load_prefs(
+    prefs_path: str = DEFAULT_PREFS_PATH,
+    version_path: str = DEFAULT_VERSION_PATH
+) -> Dict[str, Any]:
+    """
+    Unified preferences loader for Vega Cockpit.
+    Merge order (later wins): defaults <- YAML prefs <- version.json <- env overrides.
+    """
+    prefs: Dict[str, Any] = {}
 
-def load_prefs() -> VegaPrefs:
-    with open(_PREFS_PATH, "r", encoding="utf-8") as f:
-        prefs = yaml.safe_load(f) or {}
-    if os.path.exists(_VERSION_PATH):
-        version = json.load(open(_VERSION_PATH, "r", encoding="utf-8"))
-    else:
-        version = {
-            "version": "0.0.0",
-            "last_updated_utc": dt.datetime.utcnow().isoformat()+"Z",
-            "change_notes": "bootstrap"
-        }
-    return VegaPrefs(prefs, version)
+    # 1) YAML config (if present)
+    prefs.update(_load_yaml(prefs_path))
+
+    # 2) Version info (optional)
+    version_info = _load_json(version_path)
+    if version_info:
+        prefs["version"] = version_info
+
+    # 3) Environment overrides
+    prefs.update(_env_overrides())
+
+    # 4) Minimal safe defaults if empty
+    if "app" not in prefs:
+        prefs["app"] = {"name": "Vega Cockpit"}
+
+    return prefs
