@@ -1,5 +1,8 @@
 # app.py — Vega Command Center (Feature Pack 2)
-# Copy/paste this entire file.
+# app.py — module_stay_or_reenter
+from module_stay_or_reenter import render_stay_or_reenter
+render_stay_or_reenter()
+# app.py — Vega Command Center (Feature Pack 2)
 
 import os, sys, math, json, io, zipfile, time, statistics as stats
 from datetime import datetime, timedelta, timezone
