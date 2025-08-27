@@ -1,0 +1,33 @@
+name: Midday Verdict
+
+on:
+  schedule:
+    - cron: "0 19 * * 1-5"   # 12:00 Phoenix
+  workflow_dispatch:
+
+jobs:
+  checkpoint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: |
+          python - << 'PY'
+          import json, yaml, datetime as dt, os
+          from pathlib import Path
+          cfg = yaml.safe_load(open("config/vega_rules.yaml"))
+          Path("snapshots").mkdir(exist_ok=True)
+          out = {
+            "checkpoint": "midday",
+            "rules": cfg["hedge_rules"],
+            "color_guard": cfg["color_guard_thresholds"],
+            "ts_utc": dt.datetime.utcnow().isoformat()+"Z"
+          }
+          open("snapshots/midday_verdict.json","w").write(json.dumps(out, indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: midday-verdict
+          path: snapshots/
+          retention-days: 7
