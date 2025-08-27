@@ -1,0 +1,92 @@
+name: Add/Update Ticker (Earnings Guard)
+
+on:
+  workflow_dispatch:
+    inputs:
+      ticker:
+        description: "Ticker (e.g., BA)"
+        required: true
+      region:
+        description: "Region"
+        required: true
+        type: choice
+        options: [USA, Canada, Mexico, LatAm]
+      earnings_date:
+        description: "Earnings date (YYYY-MM-DD) — leave blank if unknown"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Update CSVs
+        run: |
+          python - << 'PY'
+          import csv, os, datetime as dt
+          from pathlib import Path
+
+          ticker=os.environ['TI'].strip().upper()
+          region=os.environ['RG'].strip()
+          ed=os.environ['ED'].strip()
+
+          Path('data').mkdir(exist_ok=True)
+          wl_path='data/watchlists.csv'
+          ec_path='data/earnings_calendar.csv'
+
+          # ensure headers if files don't exist
+          if not os.path.exists(wl_path):
+              open(wl_path,'w').write('ticker,region\n')
+          if not os.path.exists(ec_path):
+              open(ec_path,'w').write('ticker,earnings_date\n')
+
+          # write watchlists.csv (replace any existing row for ticker)
+          rows=[]
+          with open(wl_path) as f:
+              rdr=csv.DictReader(f)
+              for r in rdr:
+                  if r['ticker'].upper()!=ticker:
+                      rows.append(r)
+          rows.append({'ticker': ticker, 'region': region})
+          with open(wl_path,'w',newline='') as f:
+              w=csv.DictWriter(f, fieldnames=['ticker','region'])
+              w.writeheader()
+              for r in sorted(rows, key=lambda r:r['ticker']):
+                  w.writerow(r)
+
+          # write earnings_calendar.csv if date provided
+          if ed:
+              try:
+                  dt.date.fromisoformat(ed)
+              except Exception as e:
+                  raise SystemExit(f"Invalid earnings_date: {ed} (use YYYY-MM-DD)")
+              ec=[]
+              with open(ec_path) as f:
+                  rdr=csv.DictReader(f)
+                  for r in rdr:
+                      if r['ticker'].upper()!=ticker:
+                          ec.append(r)
+              ec.append({'ticker': ticker, 'earnings_date': ed})
+              with open(ec_path,'w',newline='') as f:
+                  w=csv.DictWriter(f, fieldnames=['ticker','earnings_date'])
+                  w.writeheader()
+                  for r in sorted(ec, key=lambda r:r['ticker']):
+                      w.writerow(r)
+          PY
+        env:
+          TI: ${{ github.event.inputs.ticker }}
+          RG: ${{ github.event.inputs.region }}
+          ED: ${{ github.event.inputs.earnings_date }}
+
+      - name: Commit & push
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "chore(earnings-guard): add/update ${{ github.event.inputs.ticker }}" || echo "No changes"
+          git push
