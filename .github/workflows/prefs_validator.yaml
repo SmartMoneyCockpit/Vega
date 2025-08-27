@@ -1,0 +1,18 @@
+name: Validate Vega Prefs
+
+on:
+  pull_request:
+    paths: ["config/vega_prefs.yaml"]
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install pyyaml
+      - name: Validate YAML
+        env: { PREFS_PATH: config/vega_prefs.yaml }
+        run: python .github/scripts/validate_prefs.py
