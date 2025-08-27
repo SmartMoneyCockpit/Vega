@@ -1,6 +1,11 @@
 name: Refactor prefs imports
 on:
-  workflow_dispatch: {}   # allows you to run manually from Actions tab
+  workflow_dispatch: {}
+
+# Needed to push a branch and open a PR
+permissions:
+  contents: write
+  pull-requests: write
 
 jobs:
   codemod:
@@ -8,26 +13,48 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref }}
+          fetch-depth: 0
 
-      - name: Replace imports
+      - name: Replace imports safely (no-fail if no matches)
+        shell: bash
         run: |
-          set -euxo pipefail
-          # 1) Exact match
-          grep -rl --include='*.py' 'from utils.prefs_bootstrap import load_prefs' . | xargs -r sed -i 's#from utils\.prefs_bootstrap import load_prefs#from utils.load_prefs import load_prefs#g'
+          set -eux
 
-          # 2) Common variants
-          grep -rl --include='*.py' 'from utils import prefs_bootstrap' . | xargs -r sed -i 's#from utils import prefs_bootstrap#from utils import load_prefs#g'
-          grep -rl --include='*.py' 'import utils.prefs_bootstrap as' . | xargs -r sed -i 's#import utils\.prefs_bootstrap as#import utils.load_prefs as#g'
-          grep -rl --include='*.py' 'from utils.prefs_bootstrap import get_prefs' . | xargs -r sed -i 's#from utils\.prefs_bootstrap import get_prefs#from utils.load_prefs import load_prefs#g'
+          # helper: run sed replacements over all *.py, but do NOT fail if there are no matches
+          replace_all() {
+            local from="$1"
+            local to="$2"
+            # Using find+sed avoids grep returning 1 when no matches
+            find . -type f -name "*.py" -print0 \
+              | xargs -0 -r sed -i "s#${from}#${to}#g"
+          }
 
-      - name: Create Pull Request
+          # Exact import
+          replace_all 'from utils\.prefs_bootstrap import load_prefs' 'from utils.load_prefs import load_prefs'
+
+          # Common variants
+          replace_all 'from utils import prefs_bootstrap' 'from utils import load_prefs'
+          replace_all 'import utils\.prefs_bootstrap as' 'import utils.load_prefs as'
+          replace_all 'from utils\.prefs_bootstrap import get_prefs' 'from utils.load_prefs import load_prefs'
+
+          # Remove the old file if present (do not fail if missing)
+          git rm -f utils/prefs_bootstrap.py || true
+
+          # Show diff for debugging
+          git status
+          git diff --staged || true
+
+          # Stage all edits (if any)
+          git add -A || true
+
+      - name: Create Pull Request (only if changes)
         uses: peter-evans/create-pull-request@v6
         with:
           branch: refactor/prefs-imports
-          commit-message: "codemod: unify prefs imports to utils.load_prefs"
+          commit-message: "codemod: unify prefs imports to utils.load_prefs; remove prefs_bootstrap.py"
           title: "Refactor: unify prefs imports to utils.load_prefs"
           body: |
-            This PR unifies all `prefs_bootstrap` imports to `utils.load_prefs`.
-            After merging, you can delete `utils/prefs_bootstrap.py`.
+            This PR unifies all imports to `utils.load_prefs` and removes `utils/prefs_bootstrap.py`.
+            - Replaces common variants (import/as/from)
+            - Safe if some patterns are not present
           delete-branch: true
