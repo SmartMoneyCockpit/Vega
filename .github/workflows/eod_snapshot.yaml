@@ -1,0 +1,32 @@
+name: EOD Snapshot
+
+on:
+  schedule:
+    - cron: "5 20 * * 1-5"  # 13:05 Phoenix
+  workflow_dispatch:
+
+jobs:
+  eod:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: |
+          python - << 'PY'
+          import json, glob, datetime as dt
+          from pathlib import Path
+          Path("snapshots").mkdir(exist_ok=True)
+          bundle = {"ts_utc": dt.datetime.utcnow().isoformat()+"Z", "files":[]}
+          for p in glob.glob("snapshots/*.json")+glob.glob("snapshots/*.md")+glob.glob("signals/*.json"):
+            try:
+              bundle["files"].append({"path": p, "content": open(p).read()[:50000]})
+            except Exception as e:
+              pass
+          open("snapshots/EOD_bundle.json","w").write(json.dumps(bundle, indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eod-bundle
+          path: snapshots/EOD_bundle.json
+          retention-days: 7
