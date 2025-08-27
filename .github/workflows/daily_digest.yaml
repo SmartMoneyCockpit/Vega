@@ -1,0 +1,29 @@
+name: Daily Digest
+on:
+  schedule: [{ cron: "15 20 * * 1-5" }]  # 13:15 Phoenix
+  workflow_dispatch:
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build digest
+        id: d
+        run: |
+          TS=$(date -u +%F)
+          echo "title=Daily Digest — $TS" >> $GITHUB_OUTPUT
+          printf "%s\n" "# Daily Digest — $TS UTC" > digest.md
+          echo "- Morning Report: artifact \`morning-report\`" >> digest.md
+          echo "- Color Guard: artifact \`color-guard\`" >> digest.md
+          echo "- PDH/PDL pivots: artifact \`pivots\`" >> digest.md
+          echo "- Exposure: artifact \`exposure\`" >> digest.md
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('digest.md','utf8');
+            await github.rest.issues.create({
+              owner: context.repo.owner, repo: context.repo.repo,
+              title: "${{ steps.d.outputs.title }}",
+              body, labels: ['daily','report']
+            });
