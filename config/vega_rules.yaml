@@ -1,0 +1,66 @@
+# config/vega_rules.yaml
+user_timezone: America/Phoenix   # No DST; UTC-7 year-round
+base_currencies:
+  primary: USD
+  cad_for_canadian: true
+
+sections_daily:
+  - macro_header
+  - benchmark_breadth_matrix
+  - session_map
+  - color_guard_alt
+  - final_risk_overlay
+
+color_guard_thresholds:
+  vix:
+    green_lt: 15
+    yellow_lt: 17      # 15–17 yellow, >=17 red
+  breadth_nyse:
+    green_gte: 60      # % advancers
+    yellow_gte: 50
+  price_trend:
+    require_spy_above_vwap: true
+    require_spy_above_pdh: true
+
+hedge_rules:
+  trigger_primary:
+    vix_gt: 17
+    spy_below_vwap: true
+    breadth_below: 45
+    add_fraction: 0.25
+    scale_to: 0.50
+    scale_condition_minutes: 120
+  trigger_secondary:
+    oil_usd_change_close_lt: -2.0   # %; avoid XLE
+    dxy_gt: 99
+    usdmxn_gt: 18.90
+    usdcad_gt: 1.39
+
+options_selection_rule:
+  target_pop: 0.60
+  dte_min: 21
+  dte_max: 90
+  overpriced_use: [puts, put_spreads]
+  underpriced_use: [calls, call_spreads]
+  neutral_use: stock
+  rr_min: 1.0/3.0 # no worse than 1:3
+
+earnings_rule:
+  no_buys_within_days: 30
+
+canada_trade_filters:
+  tariff_exposure_grade: true     # 🟢🟠🔴
+  usmca_status: true
+  smart_money_grade: true         # 📈 or 📉
+  action_plan_required: true
+
+watchlists:
+  usa: [SPY, QQQ, IWM, BA, IBKR, LLY]
+  canada: [EWC, BMO, BNS]
+  mexico: [EWW, WALMEX, GMEXICO, KIMBERA, ALFAA]
+  hedges: [SPXU, SQQQ, RWM, GLD, XLE]
+
+outputs:
+  write_json_snapshots: true
+  write_markdown_report: true
+  artifact_retain_days:
