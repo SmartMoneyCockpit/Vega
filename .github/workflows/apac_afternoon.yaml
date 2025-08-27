@@ -1,0 +1,29 @@
+name: APAC Afternoon
+
+on:
+  schedule:
+    - cron: "0 1 * * 1-5"  # 18:00 Phoenix previous day
+  workflow_dispatch:
+
+jobs:
+  apac:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: |
+          python - << 'PY'
+          import json, yaml, datetime as dt, os
+          from pathlib import Path
+          cfg = yaml.safe_load(open("config/vega_rules.yaml"))
+          Path("snapshots").mkdir(exist_ok=True)
+          open("snapshots/apac_afternoon.json","w").write(
+            json.dumps({"sections": cfg["sections_daily"], "ts_utc": dt.datetime.utcnow().isoformat()+"Z"}, indent=2)
+          )
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apac-afternoon
+          path: snapshots/
+          retention-days: 7
