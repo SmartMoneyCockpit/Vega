@@ -1,3 +1,4 @@
+from utils.prefs_bootstrap import prefs
 import streamlit as st
 from datetime import datetime
 from modules.morning_report import MorningReport
