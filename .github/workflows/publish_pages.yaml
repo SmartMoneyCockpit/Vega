@@ -1,0 +1,21 @@
+name: Publish Pages
+on:
+  schedule: [{ cron: "10 20 * * 1-5" }]
+  workflow_dispatch:
+jobs:
+  pages:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Stage site
+        run: |
+          rm -rf site && mkdir -p site/snapshots site/signals
+          [ -d snapshots ] && cp -r snapshots/* site/snapshots/ || true
+          [ -d signals ] && cp -r signals/* site/signals/ || true
+          echo "<h1>Vega Snapshots</h1>" > site/index.html
+      - name: Deploy
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site
+          publish_branch: gh-pages
