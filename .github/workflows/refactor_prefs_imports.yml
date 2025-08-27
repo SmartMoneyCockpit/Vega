@@ -1,0 +1,33 @@
+name: Refactor prefs imports
+on:
+  workflow_dispatch: {}   # allows you to run manually from Actions tab
+
+jobs:
+  codemod:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Replace imports
+        run: |
+          set -euxo pipefail
+          # 1) Exact match
+          grep -rl --include='*.py' 'from utils.prefs_bootstrap import load_prefs' . | xargs -r sed -i 's#from utils\.prefs_bootstrap import load_prefs#from utils.load_prefs import load_prefs#g'
+
+          # 2) Common variants
+          grep -rl --include='*.py' 'from utils import prefs_bootstrap' . | xargs -r sed -i 's#from utils import prefs_bootstrap#from utils import load_prefs#g'
+          grep -rl --include='*.py' 'import utils.prefs_bootstrap as' . | xargs -r sed -i 's#import utils\.prefs_bootstrap as#import utils.load_prefs as#g'
+          grep -rl --include='*.py' 'from utils.prefs_bootstrap import get_prefs' . | xargs -r sed -i 's#from utils\.prefs_bootstrap import get_prefs#from utils.load_prefs import load_prefs#g'
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: refactor/prefs-imports
+          commit-message: "codemod: unify prefs imports to utils.load_prefs"
+          title: "Refactor: unify prefs imports to utils.load_prefs"
+          body: |
+            This PR unifies all `prefs_bootstrap` imports to `utils.load_prefs`.
+            After merging, you can delete `utils/prefs_bootstrap.py`.
+          delete-branch: true
