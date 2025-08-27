@@ -1,0 +1,21 @@
+name: Rule Linter
+on:
+  schedule: [{ cron: "5 14 * * 1-5" }]
+  pull_request:
+  workflow_dispatch:
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: |
+          python - << 'PY'
+          import yaml, sys
+          cfg=yaml.safe_load(open("config/vega_rules.yaml"))
+          assert cfg["earnings_rule"]["no_buys_within_days"] >= 14
+          assert 0.5 <= cfg["options_selection_rule"]["target_pop"] <= 0.7
+          for k in ["sections_daily","hedge_rules","color_guard_thresholds"]: assert cfg.get(k) is not None
+          print("Config OK")
+          PY
