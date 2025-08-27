@@ -1,3 +1,4 @@
+from utils.prefs_bootstrap import prefs
 # app.py — Vega Command Center (Feature Pack 2)
 
 from module_stay_or_reenter import render_stay_or_reenter
