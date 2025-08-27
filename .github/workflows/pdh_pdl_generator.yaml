@@ -1,0 +1,28 @@
+name: PDH/PDL Seed
+on:
+  schedule: [{ cron: "5 13 * * 2-6" }]  # 06:05 Phoenix, Tue–Sat (after prior close)
+  workflow_dispatch:
+jobs:
+  pivots:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: |
+          python - << 'PY'
+          import csv, json, datetime as dt
+          from collections import defaultdict
+          rows=list(csv.DictReader(open("data/daily_ohlc.csv")))
+          # keep only yesterday’s rows
+          y=(dt.date.today()-dt.timedelta(days=1)).isoformat()
+          out={}
+          for r in rows:
+            if r["date"]==y:
+              t=r["ticker"].upper()
+              out[t]={"date":y,"pdh":float(r["high"]), "pdl":float(r["low"]), "pc":float(r["close"])}
+          import os; os.makedirs("snapshots", exist_ok=True)
+          open("snapshots/pivots.json","w").write(json.dumps(out, indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with: { name: pivots, path: snapshots/pivots.json, retention-days: 7 }
