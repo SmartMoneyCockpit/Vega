@@ -1,0 +1,38 @@
+name: Exposure Guard
+on:
+  schedule: [{ cron: "30 13 * * 1-5" }]  # 06:30 Phoenix (pre-open check)
+  workflow_dispatch:
+jobs:
+  exposure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: |
+          python - << 'PY'
+          import csv, json, os
+          from collections import defaultdict
+          if not os.path.exists("data/positions.csv"):
+              print("No positions.csv; skipping."); exit(0)
+          rows=list(csv.DictReader(open("data/positions.csv")))
+          total=sum(float(r["qty"])*float(r["price"]) for r in rows if r["qty"] and r["price"])
+          bx=defaultdict(float); cx=defaultdict(float); tx=defaultdict(float)
+          for r in rows:
+              v=float(r["qty"])*float(r["price"])
+              bx[r["sector"]]+=v; cx[r["country"]]+=v; tx[r["type"]]+=v
+          def pctmap(d): return {k: round(100*v/total,2) for k,v in d.items()} if total else {}
+          out={"total":total,"by_sector":pctmap(bx),"by_country":pctmap(cx),"by_type":pctmap(tx)}
+          thr={"sector":40.0,"country":70.0,"single_vs_etf":70.0}  # tweak as you like
+          warnings=[]
+          for s,p in out["by_sector"].items():
+              if p>thr["sector"]: warnings.append(f"Sector {s} = {p}% (> {thr['sector']}%)")
+          for c,p in out["by_country"].items():
+              if p>thr["country"]: warnings.append(f"Country {c} = {p}% (> {thr['country']}%)")
+          if out["by_type"].get("EQUITY",0)>thr["single_vs_etf"]:
+              warnings.append(f"Single-name exposure = {out['by_type'].get('EQUITY',0)}% (> {thr['single_vs_etf']}%)")
+          os.makedirs("snapshots", exist_ok=True)
+          open("snapshots/exposure.json","w").write(json.dumps({"exposure":out,"warnings":warnings}, indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with: { name: exposure, path: snapshots/exposure.json, retention-days: 7 }
