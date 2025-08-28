@@ -198,77 +198,126 @@ def _to_float(x, default=0.0):
 
 # ---------- Styling & UI (menus offset fix) ----------
 def vega_css(theme="Dark", accent="#10b981"):
+    """
+    App-wide CSS for Light/Dark with an accent color.
+    Paste-safe: call with normalized theme labels ("Light"/"Dark").
+    """
     MENU_OFFSET_PX = int(os.getenv("VEGA_MENU_OFFSET_PX", "12"))
-    # small guard: ensure accent is a hex color
+
+    # guard: ensure accent is a hex color
     if not isinstance(accent, str) or not accent.startswith("#"):
         accent = "#10b981"
 
+    # ---------------- LIGHT THEME ----------------
     if theme == "Light":
         return f"""
         <style>
+          :root {{
+            --vega-accent: {accent};
+            --vega-bg: #f7fafc;          /* slate-50 */
+            --vega-card: #ffffff;        /* white */
+            --vega-text: #0f172a;        /* slate-900 */
+            --vega-muted: #475569;       /* slate-600 */
+            --vega-border: #e5e7eb;      /* slate-200 */
+            --vega-input: #ffffff;
+          }}
+
           /* App shell */
           [data-testid="stAppViewContainer"] {{
-            background: #f7fafc !important;   /* light slate */
-            --vega-accent: {accent};
+            background: var(--vega-bg) !important;
+            color: var(--vega-text) !important;
           }}
           [data-testid="stHeader"] {{
-            background: #ffffff !important;
-            border-bottom: 1px solid #e5e7eb !important;
+            background: var(--vega-card) !important;
+            border-bottom: 1px solid var(--vega-border) !important;
           }}
           .block-container {{ padding-top: 1.25rem !important; }}
 
-          /* --- TEXT COLORS FOR LIGHT MODE --- */
-          html, body, [data-testid="stAppViewContainer"] * {{
-            color: #0f172a; /* slate-900 for legibility */
+          /* Sidebar */
+          [data-testid="stSidebar"] > div:first-child {{
+            background: #f1f5f9 !important;        /* slate-100 */
+            border-right: 1px solid var(--vega-border) !important;
           }}
-          /* Muted / captions (classnames can change, cover generically too) */
-          .stCaption, .stMarkdown small, .markdown-text-container small {{
-            color: #475569 !important; /* slate-600 */
+          [data-testid="stSidebar"] * {{
+            color: var(--vega-text) !important;
           }}
 
-          /* Links use accent */
-          a, .markdown-text-container a {{
-            color: var(--vega-accent) !important;
+          /* Text & captions */
+          html, body, [data-testid="stAppViewContainer"] * {{
+            color: var(--vega-text);
           }}
+          .stCaption, .stMarkdown small, .markdown-text-container small {{
+            color: var(--vega-muted) !important;
+          }}
+
+          /* Links */
+          a, .markdown-text-container a {{ color: var(--vega-accent) !important; }}
 
           /* Tabs */
           .stTabs [role="tablist"] {{
             position: sticky; top: {MENU_OFFSET_PX}px; z-index: 6;
-            background: #ffffff; margin-top: .25rem; padding: .25rem 0;
-            border-bottom: 1px solid #e5e7eb;
+            background: var(--vega-card); margin-top: .25rem; padding: .25rem 0;
+            border-bottom: 1px solid var(--vega-border);
           }}
           .stTabs [role="tab"] {{
-            color: #0f172a !important;
+            color: var(--vega-text) !important;
+            background: transparent !important;
           }}
           .stTabs [role="tab"][aria-selected="true"] {{
             border-bottom: 2px solid var(--vega-accent) !important;
           }}
 
-          /* Metrics */
-          div[data-testid="stMetricValue"] {{ color: #0f172a !important; }}
-          div[data-testid="stMetricLabel"] {{ color: #475569 !important; }}
+          /* Buttons */
+          .stButton > button {{
+            background: var(--vega-accent) !important;
+            color: #ffffff !important;
+            border: 1px solid var(--vega-accent) !important;
+            box-shadow: none !important;
+          }}
+          .stButton > button:hover {{ filter: brightness(0.92); }}
 
-          /* Dataframes (headers contrast) */
+          /* Inputs (text/select/number/textarea/color) */
+          .stTextInput input, .stSelectbox > div > div, .stNumberInput input,
+          .stTextArea textarea, .stColorPicker div[role="button"] {{
+            background: var(--vega-input) !important;
+            color: var(--vega-text) !important;
+            border: 1px solid var(--vega-border) !important;
+          }}
+
+          /* Metrics */
+          div[data-testid="stMetricValue"] {{ color: var(--vega-text) !important; }}
+          div[data-testid="stMetricLabel"] {{ color: var(--vega-muted) !important; }}
+
+          /* Tables */
           table thead tr th {{
-            color: #0f172a !important;
-            background: #ffffff !important;
+            color: var(--vega-text) !important;
+            background: var(--vega-card) !important;
+            border-bottom: 1px solid var(--vega-border) !important;
+          }}
+          table tbody tr td {{
+            border-top: 1px solid var(--vega-border) !important;
           }}
 
           /* Custom Vega elements */
           .vega-hero{{margin-top:8px;}}
           .vega-title{{font-weight:600;margin:6px 0 4px 0;}}
-          .vega-sep{{border-top:1px solid #e5e7eb; margin:10px 0;}}
+          .vega-sep{{border-top:1px solid var(--vega-border); margin:10px 0;}}
           [data-testid="stToolbar"] {{ z-index: 1; }}
         </style>
         """
+
+    # ---------------- DARK THEME ----------------
     else:
         return f"""
         <style>
+          :root {{ --vega-accent: {accent}; }}
+
           [data-testid="stAppViewContainer"] {{
             background: #0f172a !important;
-            --vega-accent: {accent};
           }}
-          [data-testid="stHeader"] {{ background: transparent !important; border-bottom: 0 !important; }}
+          [data-testid="stHeader"] {{
+            background: transparent !important; border-bottom: 0 !important;
+          }}
           .block-container {{ padding-top: 1rem !important; }}
 
           /* Tabs */
@@ -282,8 +331,15 @@ def vega_css(theme="Dark", accent="#10b981"):
             border-bottom: 2px solid var(--vega-accent) !important;
           }}
 
-          /* Links use accent in dark as well */
+          /* Links */
           a, .markdown-text-container a {{ color: var(--vega-accent) !important; }}
+
+          /* Buttons */
+          .stButton > button {{
+            background: var(--vega-accent) !important;
+            color: #0b1220 !important;
+            border: 1px solid var(--vega-accent) !important;
+          }}
 
           [data-testid="stToolbar"] {{ z-index: 1; }}
           .vega-hero{{margin-top:8px;}}
@@ -291,7 +347,6 @@ def vega_css(theme="Dark", accent="#10b981"):
           .vega-sep{{border-top:1px solid rgba(148,163,184,.25);margin:10px 0;}}
         </style>
         """
-
 
 # You can tweak this to push the sticky tab bar down a bit if it feels "too high".
 MENU_OFFSET_PX = int(os.getenv("VEGA_MENU_OFFSET_PX", "12"))
@@ -311,7 +366,6 @@ except Exception as e:
     # Last-resort fallback so the app never crashes on theme injection.
     st.warning(f"Theme injection fallback used: {e}")
     st.markdown(vega_css(DEFAULT_THEME, DEFAULT_ACCENT), unsafe_allow_html=True)
-
 
 # Global color constants (optional to keep)
 PRIMARY = "#0ea5e9"; ACCENT="#22c55e"; DANGER="#ef4444"; MUTED="#64748b"
