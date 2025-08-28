@@ -1318,7 +1318,7 @@ with tabs[11]:
     page_admin_backup()
 with tabs[12]:
     page_docs()
-with tabs[13]:with tabs[13]:
+with tabs[13]:
     # Stay Out vs. Get Back In Module
     st.markdown("### Stay Out vs. Get Back In")
     if render_stay_or_reenter is None:
