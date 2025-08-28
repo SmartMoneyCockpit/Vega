@@ -4,12 +4,8 @@
 **Last updated:** 2025-08-27  
 **Status Key:** ✅ Done · 🔄 In progress · ⏳ Planned · 🧪 Experimental · 🧯 Hotfix
 
----
-
 ## Vision
-A self-contained **trading cockpit** (Render/GitHub) with daily automation, weekly module drops, and a persistent record of approvals and changes. This file is the **official manifest** of what exists, what’s queued, and what’s next.
-
----
+A self-contained trading cockpit (Render/GitHub) with daily automation, weekly module drops, and a persistent record of approvals and changes.
 
 ## A. Core Platform
 - ✅ Streamlit import order fixed (`st.set_page_config` after import)
@@ -23,19 +19,19 @@ A self-contained **trading cockpit** (Render/GitHub) with daily automation, week
 
 ## B. Trading Modules
 - ✅ **Stay Out vs Get Back In** decision module (logging, CSV/Sheets, alerts, PDF)
-- ⏳ **PnL & Risk Breakdown Panel** (per trade/week/strategy)
-- ⏳ **AI Trade Quality Scorecard**
-- ⏳ **Backtest Mode** (simulated runs without journal impact)
-- ⏳ **Capital Exposure Guardrails** (sector/strategy limits)
+- 🔄 **PnL & Risk Breakdown Panel** (per trade/week/strategy)
+- 🔄 **AI Trade Quality Scorecard**
+- 🔄 **Auto-Journal Generator** (daily trade summaries)
+- ⏳ **Backtest Mode**
+- ⏳ **Capital Exposure Guardrails**
 - ⏳ **Auto-Hedging Engine** (SPXU/SQQQ/RWM when risk-off)
-- ⏳ **Auto-Journal Generator** (daily trade summaries)
-- ⏳ **Pattern Profiler** (frequent winner setup detector)
-- ⏳ **Global Risk Heatmap** (vol, FX, geo overlays)
+- ⏳ **Pattern Profiler**
+- ⏳ **Global Risk Heatmap**
 
 ## C. Market Dashboards
 - ⏳ VectorVest-style dashboards (USA / Canada / Mexico)
-- ⏳ NA Morning & APAC Evening reports (template + macro calendar)
-- ⏳ APAC index TV charts (RSI/SMA/EMA) save + embed
+- ⏳ NA Morning & APAC Evening reports (macro calendars)
+- ⏳ APAC index TV charts (RSI/SMA/EMA) saved + embedded
 
 ## D. Rules & Standing Policies
 - ✅ “No buys within 30 days of earnings”
@@ -47,25 +43,18 @@ A self-contained **trading cockpit** (Render/GitHub) with daily automation, week
 ## E. Alerts & Integrations
 - ✅ Email formatter for Defensive Mode (clear subject/body + thresholds + actions)
 - ✅ Robust SMTP helper with retries & validation
-- ⏳ Webhook (Discord) mirror for key flips
-
----
+- ❌ Discord/webhook alerts (not requested)
+- ✅ Module crash alerts (Email only)
 
 ## Today’s Approvals (2025-08-27)
 - ✅ Finalize **Stay Out vs Get Back In** imports/guards/theme.
 - ✅ Add **email alert formatter** & **safe_send_email** helper.
 - ✅ Create **ROADMAP.md** as the master record.
-- ⏳ Prepare **Batch Trading-#1**: PnL Panel, Scorecard, Auto-Journal.
-
----
+- 🔄 Prepare **Batch Trading-#1**: PnL Panel, Scorecard, Auto-Journal (stocks only).
 
 ## Cadence
-- **Weekly Module Drop:** Mondays
-- **Docs to update each drop:** ROADMAP.md (status), CHANGELOG.md (diff), any new config.
+- **Weekly Module Drop:** Mondays  
+- **Docs to update each drop:** ROADMAP.md, CHANGELOG.md
 
----
-
-## Ownership & Source of Truth
-- Code + roadmap live in **GitHub**.  
-- Render deploys from GitHub.  
-- If it’s not in this roadmap, it is not approved or it’s not scheduled.
+## Source of Truth
+- Code + roadmap in GitHub. Render deploys from GitHub.
