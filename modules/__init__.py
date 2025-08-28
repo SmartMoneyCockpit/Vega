@@ -1,17 +1,6 @@
-from .trade_logger import render as render_trade_logger
-from .smart_money_logic import render_smart_money_logic
-from .health_tracker import render_health_tracker
-from .daily_briefing import render_daily_briefing
-from .journal_logger import render_journal_logger
-from .strategy_builder import render_strategy_builder
-from .pdf_generator import render_pdf_generator
-from .training_tier import render_training_tier
-from .macro_micro_dashboard import render_macro_micro_dashboard
-from .bear_mode_tail_risk import render_bear_mode_tail_risk
-from .etf_dashboard import render_etf_dashboard
-from .boj_playbook import render_boj_playbook
-from .tariff_aware_screener import render_tariff_aware_screener
-from .preferred_income_tracker import render_preferred_income_tracker
-from .live_pnl_tracker import render_live_pnl_tracker
-from .spy_contra_tracker import render_spy_contra_tracker
-# 🧠
+# modules/__init__.py
+"""
+Make 'modules' a package without eager submodule imports.
+Avoids ImportError / circular imports when importing modules.* files.
+"""
+__all__ = []
