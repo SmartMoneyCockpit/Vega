@@ -198,41 +198,88 @@ st.session_state["vega_theme"] = theme_choice
 MENU_OFFSET_PX = int(os.getenv("VEGA_MENU_OFFSET_PX", "15"))
 
 def vega_css(theme="Dark"):
+    MENU_OFFSET_PX = int(os.getenv("VEGA_MENU_OFFSET_PX", "12"))
+
     if theme == "Light":
         return f"""
         <style>
-        [data-testid="stAppViewContainer"] {{ background: #f7fafc !important; }}
-        [data-testid="stHeader"] {{ background: #fff !important; border-bottom: 1px solid #e5e7eb !important; }}
-        .block-container {{ padding-top: 1.25rem !important; }}
-        .stTabs [role="tablist"] {{
-          position: sticky; top: {MENU_OFFSET_PX}px; z-index: 6;
-          background: #fff; margin-top: .25rem; padding: .25rem 0;
-          border-bottom: 1px solid #e5e7eb;
-        }}
-        [data-testid="stToolbar"] {{ z-index: 1; }}
-        .vega-hero{{margin-top:8px;}}
-        .vega-title{{font-weight:600;margin:6px 0 4px 0;}}
-        .vega-sep{{border-top:1px solid rgba(148,163,184,.25);margin:10px 0;}}
+          /* App shell */
+          [data-testid="stAppViewContainer"] {{
+            background: #f7fafc !important;   /* light slate */
+          }}
+          [data-testid="stHeader"] {{
+            background: #ffffff !important;
+            border-bottom: 1px solid #e5e7eb !important;
+          }}
+          .block-container {{ padding-top: 1.25rem !important; }}
+
+          /* --- TEXT COLORS FOR LIGHT MODE --- */
+          html, body, [data-testid="stAppViewContainer"] * {{
+            color: #0f172a; /* slate-900 for legibility */
+          }}
+          /* Muted / captions */
+          .stCaption, .st-emotion-cache-17eq0hr, .st-emotion-cache-16idsys {{
+            color: #475569 !important; /* slate-600 */
+          }}
+
+          /* Links */
+          a, .markdown-text-container a {{
+            color: #0ea5e9 !important; /* sky-500 */
+          }}
+
+          /* Tabs */
+          .stTabs [role="tablist"] {{
+            position: sticky; top: {MENU_OFFSET_PX}px; z-index: 6;
+            background: #ffffff; margin-top: .25rem; padding: .25rem 0;
+            border-bottom: 1px solid #e5e7eb;
+          }}
+          .stTabs [role="tab"] {{
+            color: #0f172a !important;
+          }}
+          .stTabs [role="tab"][aria-selected="true"] {{
+            border-bottom: 2px solid #10b981 !important;  /* emerald-500 accent */
+          }}
+
+          /* Metrics */
+          div[data-testid="stMetricValue"] {{
+            color: #0f172a !important;
+          }}
+          div[data-testid="stMetricLabel"] {{
+            color: #475569 !important;
+          }}
+
+          /* Dataframes (headers contrast) */
+          .st-emotion-cache-1djdyxw th, .st-emotion-cache-1djdyxw thead tr th {{
+            color: #0f172a !important;
+            background: #ffffff !important;
+          }}
+
+          /* Custom Vega elements */
+          .vega-hero{{margin-top:8px;}}
+          .vega-title{{font-weight:600;margin:6px 0 4px 0;}}
+          .vega-sep{{border-top:1px solid #e5e7eb; margin:10px 0;}}
+          [data-testid="stToolbar"] {{ z-index: 1; }}
         </style>
         """
     else:
         return f"""
         <style>
-        [data-testid="stAppViewContainer"] {{ background: #0f172a !important; }}
-        [data-testid="stHeader"] {{ background: transparent !important; border-bottom: 0 !important; }}
-        .block-container {{ padding-top: 1rem !important; }}
-        .stTabs [role="tablist"] {{
-          position: sticky; top: {MENU_OFFSET_PX}px; z-index: 6;
-          background: rgba(2,6,23,.92); backdrop-filter: blur(4px);
-          margin-top: .25rem; padding: .25rem 0;
-          border-bottom: 1px solid rgba(148,163,184,.20);
-        }}
-        [data-testid="stToolbar"] {{ z-index: 1; }}
-        .vega-hero{{margin-top:8px;}}
-        .vega-title{{font-weight:600;margin:6px 0 4px 0;}}
-        .vega-sep{{border-top:1px solid rgba(148,163,184,.25);margin:10px 0;}}
+          [data-testid="stAppViewContainer"] {{ background: #0f172a !important; }}
+          [data-testid="stHeader"] {{ background: transparent !important; border-bottom: 0 !important; }}
+          .block-container {{ padding-top: 1rem !important; }}
+          .stTabs [role="tablist"] {{
+            position: sticky; top: {MENU_OFFSET_PX}px; z-index: 6;
+            background: rgba(2,6,23,.92); backdrop-filter: blur(4px);
+            margin-top: .25rem; padding: .25rem 0;
+            border-bottom: 1px solid rgba(148,163,184,.20);
+          }}
+          [data-testid="stToolbar"] {{ z-index: 1; }}
+          .vega-hero{{margin-top:8px;}}
+          .vega-title{{font-weight:600;margin:6px 0 4px 0;}}
+          .vega-sep{{border-top:1px solid rgba(148,163,184,.25);margin:10px 0;}}
         </style>
         """
+
 st.markdown(vega_css(st.session_state["vega_theme"]), unsafe_allow_html=True)
 
 PRIMARY = "#0ea5e9"; ACCENT="#22c55e"; DANGER="#ef4444"; MUTED="#64748b"
