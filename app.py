@@ -188,17 +188,11 @@ def _to_float(x, default=0.0):
         return default
 
 # ---------- Styling & UI (menus offset fix) ----------
-if "vega_theme" not in st.session_state:
-    st.session_state["vega_theme"] = "Dark"
-theme_choice = st.sidebar.selectbox("Theme", ["Dark","Light"],
-                                    index=0 if st.session_state["vega_theme"]=="Dark" else 1)
-st.session_state["vega_theme"] = theme_choice
-
-# You can tweak this to push the sticky tab bar down a bit if it feels "too high".
-MENU_OFFSET_PX = int(os.getenv("VEGA_MENU_OFFSET_PX", "15"))
-
-def vega_css(theme="Dark"):
+def vega_css(theme="Dark", accent="#10b981"):
     MENU_OFFSET_PX = int(os.getenv("VEGA_MENU_OFFSET_PX", "12"))
+    # small guard: ensure accent is a hex color
+    if not isinstance(accent, str) or not accent.startswith("#"):
+        accent = "#10b981"
 
     if theme == "Light":
         return f"""
@@ -206,6 +200,7 @@ def vega_css(theme="Dark"):
           /* App shell */
           [data-testid="stAppViewContainer"] {{
             background: #f7fafc !important;   /* light slate */
+            --vega-accent: {accent};
           }}
           [data-testid="stHeader"] {{
             background: #ffffff !important;
@@ -217,14 +212,14 @@ def vega_css(theme="Dark"):
           html, body, [data-testid="stAppViewContainer"] * {{
             color: #0f172a; /* slate-900 for legibility */
           }}
-          /* Muted / captions */
-          .stCaption, .st-emotion-cache-17eq0hr, .st-emotion-cache-16idsys {{
+          /* Muted / captions (classnames can change, cover generically too) */
+          .stCaption, .stMarkdown small, .markdown-text-container small {{
             color: #475569 !important; /* slate-600 */
           }}
 
-          /* Links */
+          /* Links use accent */
           a, .markdown-text-container a {{
-            color: #0ea5e9 !important; /* sky-500 */
+            color: var(--vega-accent) !important;
           }}
 
           /* Tabs */
@@ -237,19 +232,15 @@ def vega_css(theme="Dark"):
             color: #0f172a !important;
           }}
           .stTabs [role="tab"][aria-selected="true"] {{
-            border-bottom: 2px solid #10b981 !important;  /* emerald-500 accent */
+            border-bottom: 2px solid var(--vega-accent) !important;
           }}
 
           /* Metrics */
-          div[data-testid="stMetricValue"] {{
-            color: #0f172a !important;
-          }}
-          div[data-testid="stMetricLabel"] {{
-            color: #475569 !important;
-          }}
+          div[data-testid="stMetricValue"] {{ color: #0f172a !important; }}
+          div[data-testid="stMetricLabel"] {{ color: #475569 !important; }}
 
           /* Dataframes (headers contrast) */
-          .st-emotion-cache-1djdyxw th, .st-emotion-cache-1djdyxw thead tr th {{
+          table thead tr th {{
             color: #0f172a !important;
             background: #ffffff !important;
           }}
@@ -264,15 +255,27 @@ def vega_css(theme="Dark"):
     else:
         return f"""
         <style>
-          [data-testid="stAppViewContainer"] {{ background: #0f172a !important; }}
+          [data-testid="stAppViewContainer"] {{
+            background: #0f172a !important;
+            --vega-accent: {accent};
+          }}
           [data-testid="stHeader"] {{ background: transparent !important; border-bottom: 0 !important; }}
           .block-container {{ padding-top: 1rem !important; }}
+
+          /* Tabs */
           .stTabs [role="tablist"] {{
             position: sticky; top: {MENU_OFFSET_PX}px; z-index: 6;
             background: rgba(2,6,23,.92); backdrop-filter: blur(4px);
             margin-top: .25rem; padding: .25rem 0;
             border-bottom: 1px solid rgba(148,163,184,.20);
           }}
+          .stTabs [role="tab"][aria-selected="true"] {{
+            border-bottom: 2px solid var(--vega-accent) !important;
+          }}
+
+          /* Links use accent in dark as well */
+          a, .markdown-text-container a {{ color: var(--vega-accent) !important; }}
+
           [data-testid="stToolbar"] {{ z-index: 1; }}
           .vega-hero{{margin-top:8px;}}
           .vega-title{{font-weight:600;margin:6px 0 4px 0;}}
@@ -280,8 +283,17 @@ def vega_css(theme="Dark"):
         </style>
         """
 
-st.markdown(vega_css(st.session_state["vega_theme"]), unsafe_allow_html=True)
 
+# You can tweak this to push the sticky tab bar down a bit if it feels "too high".
+MENU_OFFSET_PX = int(os.getenv("VEGA_MENU_OFFSET_PX", "12"))
+
+# Inject CSS (now passes accent through)
+st.markdown(
+    vega_css(st.session_state["vega_theme"], st.session_state["vega_accent"]),
+    unsafe_allow_html=True,
+)
+
+# Global color constants (optional to keep)
 PRIMARY = "#0ea5e9"; ACCENT="#22c55e"; DANGER="#ef4444"; MUTED="#64748b"
 
 # ---------- Config ----------
