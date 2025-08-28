@@ -9,11 +9,26 @@ from utils.load_prefs import load_prefs
 from modules.morning_report import MorningReport
 from modules.data_providers import DemoDataProvider
 
-# --- Page setup ---
+# ---------- Helpers ----------
+def call_first_available(obj, method_candidates, *, section_name: str):
+    """
+    Tries a list of possible method names on `obj` and calls the first one that exists.
+    Shows a friendly note if none exist so the page never crashes.
+    """
+    for m in method_candidates:
+        fn = getattr(obj, m, None)
+        if callable(fn):
+            return fn()
+    st.warning(
+        f"⚠️ Skipping **{section_name}** — "
+        f"none of the expected methods exist on MorningReport: {', '.join(method_candidates)}"
+    )
+
+# ---------- Page setup ----------
 st.set_page_config(page_title="Vega Morning Report", layout="wide")
 prefs = load_prefs()  # single source of truth for feature switches
 
-# --- Sidebar controls ---
+# ---------- Sidebar controls ----------
 st.sidebar.title("Vega Morning Report")
 session_date = st.sidebar.date_input("Session Date", datetime.now().date())
 regions = st.sidebar.multiselect(
@@ -46,56 +61,97 @@ show_sections = st.sidebar.multiselect(
     ],
 )
 
-# --- Data provider & report object ---
+# ---------- Data provider & report object ----------
 provider = DemoDataProvider()  # swap later for live provider
 report = MorningReport(provider=provider, regions=regions, session_date=session_date)
 
-# --- Render sections (must satisfy BOTH: sidebar selection AND prefs flag) ---
+# ---------- Render sections (must satisfy BOTH: sidebar selection AND prefs flag) ----------
 
 # Status Banner (guardrails + color guard quicklights)
 if ("Status Banner" in show_sections) and prefs.enabled("morning_report", "status_banner", default=True):
-    report.render_status_banner()
+    call_first_available(
+        report,
+        ["render_status_banner", "status_banner", "draw_status_banner", "show_status_banner"],
+        section_name="Status Banner",
+    )
 
 # Macro Header
 if ("Macro Header" in show_sections) and prefs.enabled("morning_report", "macro_header", default=True):
-    report.render_macro_header()
+    call_first_available(
+        report,
+        ["render_macro_header", "macro_header", "draw_macro_header", "show_macro_header"],
+        section_name="Macro Header",
+    )
 
 # Benchmark & Breadth Matrix
 if ("Benchmark & Breadth Matrix" in show_sections) and prefs.enabled(
     "morning_report", "benchmark_breadth_matrix", default=True
 ):
-    report.render_benchmark_and_breadth_matrix()
+    call_first_available(
+        report,
+        [
+            "render_benchmark_and_breadth_matrix",
+            "render_benchmark_breadth_matrix",
+            "benchmark_and_breadth_matrix",
+            "show_benchmark_breadth_matrix",
+        ],
+        section_name="Benchmark & Breadth Matrix",
+    )
 
 # Options & Skews (tied to strategy module availability)
 if ("Options & Skews" in show_sections) and prefs.enabled(
     "strategy_modules", "ai_trade_quality_scorecard", default=True
 ):
-    report.render_options_and_skews()
+    call_first_available(
+        report,
+        ["render_options_and_skews", "options_and_skews", "show_options_skews"],
+        section_name="Options & Skews",
+    )
 
 # Catalyst Board (tied to intelligence screener)
 if ("Catalyst Board" in show_sections) and prefs.enabled(
     "intelligence", "ai_trade_idea_screener", default=True
 ):
-    report.render_catalyst_board()
+    call_first_available(
+        report,
+        ["render_catalyst_board", "catalyst_board", "show_catalyst_board"],
+        section_name="Catalyst Board",
+    )
 
 # Session Map (Roadmap for Today)
 if ("Session Map" in show_sections) and prefs.enabled("morning_report", "session_map", default=True):
-    report.render_session_map()
+    call_first_available(
+        report,
+        ["render_session_map", "session_map", "show_session_map"],
+        section_name="Session Map",
+    )
 
 # VectorVest Alt Color Guard (Alt)
 if ("VectorVest Alt Color Guard" in show_sections) and prefs.enabled(
     "morning_report", "vectorvest_color_guard", default=True
 ):
-    report.render_color_guard_alt()
+    call_first_available(
+        report,
+        ["render_color_guard_alt", "color_guard_alt", "show_color_guard_alt"],
+        section_name="VectorVest Alt Color Guard",
+    )
 
 # Economic Calendar (Next 7 Days)
 if ("Economic Calendar" in show_sections) and prefs.enabled("morning_report", "econ_calendar", default=True):
-    report.render_econ_calendar()
+    call_first_available(
+        report,
+        ["render_econ_calendar", "econ_calendar", "show_econ_calendar"],
+        section_name="Economic Calendar",
+    )
 
 # Final Risk Overlay & Action Plan
 if ("Final Risk Overlay" in show_sections) and prefs.enabled("morning_report", "final_risk_overlay", default=True):
-    report.render_final_risk_overlay()
+    call_first_available(
+        report,
+        ["render_final_risk_overlay", "final_risk_overlay", "show_final_risk_overlay"],
+        section_name="Final Risk Overlay",
+    )
 
-# --- Footer: version stamp & module credit ---
+# ---------- Footer: version stamp & module credit ----------
 st.caption(f"Prefs v{prefs.version} • updated {prefs.last_updated}")
 st.caption("© Vega — Morning Report Module")
