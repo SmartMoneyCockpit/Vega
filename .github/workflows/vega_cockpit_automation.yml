@@ -29,6 +29,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     concurrency: { group: vega-monitor, cancel-in-progress: true }
+    env:
+      PYTHONPATH: ${{ github.workspace }}   # <-- ensure imports see repo root
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -55,7 +57,6 @@ jobs:
           GIST_TOKEN:  ${{ secrets.GIST_TOKEN }}
           WATCH_STATE_DIR: ".vega_state"
           ALERT_COOLDOWN_MIN: "15"
-          # Toggle these from GitHub → Settings → Variables → Actions
           FORCE_ALERT: ${{ vars.FORCE_ALERT }}
           DEBUG:       ${{ vars.DEBUG }}
         run: python monitor_vol_hedge.py
@@ -72,6 +73,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     concurrency: { group: vega-morning, cancel-in-progress: true }
+    env:
+      PYTHONPATH: ${{ github.workspace }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -94,6 +97,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     concurrency: { group: vega-midday, cancel-in-progress: true }
+    env:
+      PYTHONPATH: ${{ github.workspace }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -116,6 +121,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     concurrency: { group: vega-eod, cancel-in-progress: true }
+    env:
+      PYTHONPATH: ${{ github.workspace }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -138,6 +145,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     concurrency: { group: vega-apac, cancel-in-progress: true }
+    env:
+      PYTHONPATH: ${{ github.workspace }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -159,8 +168,10 @@ jobs:
     needs: [monitor, morning_report, midday_report, eod_wrap, apac_report]
     if: failure()
     runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: ${{ github.workspace }}
     steps:
-      - name: Send failure email
+      - name: Compose and send (best effort; never fail)
         env:
           EMAIL_TO:   ${{ secrets.EMAIL_TO }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
@@ -171,16 +182,32 @@ jobs:
           RUN_URL:    https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           python - <<'PY'
-          import os, smtplib
+          import os, smtplib, ssl
           from email.mime.text import MIMEText
-          to, frm = os.environ["EMAIL_TO"], os.environ["EMAIL_FROM"]
-          url = os.environ["RUN_URL"]
+
+          to  = os.getenv("EMAIL_TO")
+          frm = os.getenv("EMAIL_FROM")
+          host= os.getenv("SMTP_HOST")
+          port= int(os.getenv("SMTP_PORT") or "587")
+          usr = os.getenv("SMTP_USER")
+          pwd = os.getenv("SMTP_PASS")
+          url = os.getenv("RUN_URL")
+
+          # If email isn't configured, exit quietly so this job never fails.
+          if not all([to, frm, host, usr, pwd]):
+              print("notify_failure: email vars missing; skipping email.")
+              raise SystemExit(0)
+
           body = f"⚠️ Vega GitHub Actions: a job failed\n\nCheck logs: {url}\n"
-          msg = MIMEText(body)
+          msg = MIMEText(body, _charset="utf-8")
           msg["Subject"] = "⚠️ Vega Actions: job failure"
-          msg["From"] = frm
-          msg["To"] = to
-          with smtplib.SMTP(os.environ["SMTP_HOST"], int(os.environ.get("SMTP_PORT","587"))) as s:
-            s.starttls(); s.login(os.environ["SMTP_USER"], os.environ["SMTP_PASS"])
-            s.sendmail(frm, [to], msg.as_string())
+          msg["From"]    = frm
+          msg["To"]      = to
+
+          ctx = ssl.create_default_context()
+          with smtplib.SMTP(host, port, timeout=15) as s:
+              s.starttls(context=ctx)
+              s.login(usr, pwd)
+              s.sendmail(frm, [to], msg.as_string())
+          print("notify_failure: email sent.")
           PY
