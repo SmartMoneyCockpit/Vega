@@ -6,21 +6,6 @@ except ImportError:
     # Fallback: load directly
     from utils.load_prefs import load_prefs as prefs
 
-from module_stay_or_reenter import render_stay_or_reenter
-
-import os, sys, math, json, io, zipfile, time, statistics as stats
-from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Tuple
-import numpy as np
-import pandas as pd
-import streamlit as st
-import requests
-
-# app.py (top-level, after imports)
-from app_snippet import start_vega_monitor_if_needed
-start_vega_monitor_if_needed()
-
-
 # ---------- Streamlit page config MUST be first ----------
 st.set_page_config(page_title="Vega Command Center", layout="wide", page_icon="💹")
 
