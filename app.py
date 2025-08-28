@@ -1,3 +1,4 @@
+from utils.prefs_bootstrap import prefs
 from utils.load_prefs import load_prefs
 prefs = load_prefs()
 # app.py — Vega Command Center (Feature Pack 2)
