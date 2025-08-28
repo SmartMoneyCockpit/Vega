@@ -37,8 +37,8 @@ show_missing()
 # ---- Stay Out vs Get Back In module ----
 try:
     from module_stay_or_reenter import render_stay_or_reenter
-except Exception as e:
-    render_stay_or_reenter = None  # graceful fallback if file missing
+except Exception:
+    render_stay_or_reenter = None  # graceful fallback
 
 
 # ---- Timezone ----
