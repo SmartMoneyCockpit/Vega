@@ -66,12 +66,16 @@ except ModuleNotFoundError:
             pass
 show_missing()
 
-# ---- Stay Out vs Get Back In module ----
+# ---- Stay Out vs Get Back In module (robust import) ----
 try:
-    from module_stay_or_reenter import render_stay_or_reenter
+    # top-level file: module_stay_or_reenter.py
+    from module_stay_or_reenter import render_stay_or_reenter as _stay
 except Exception:
-    render_stay_or_reenter = None  # graceful fallback
-# ==== END: bootstrap & core imports ====
+    try:
+        # package path: modules/stay_or_reenter.py
+        from modules.stay_or_reenter import render_stay_or_reenter as _stay
+    except Exception:
+        _stay = None  # not installed
 
 # ---- Timezone ----
 from zoneinfo import ZoneInfo
@@ -1533,6 +1537,27 @@ def page_backtest_beta():
 # ---- render global banners before building tabs ----
 render_defensive_banner()
 show_startup_banner()
+
+# ---- Stay Out vs Get Back In: render or explain ----
+import os, sys
+st.header("Stay Out vs Get Back In")
+
+if _stay is None:
+    st.info("Module not found. Looking for either of these files:")
+    st.code(
+        "1) ./module_stay_or_reenter.py\n"
+        "2) ./modules/stay_or_reenter.py",
+        language="text",
+    )
+    # quick visibility into what the app sees
+    st.caption("Repo root:")
+    st.code(os.listdir("."), language="python")
+    if os.path.isdir("modules"):
+        st.caption("./modules:")
+        st.code(os.listdir("modules"), language="python")
+else:
+    # run via fail-safe so errors surface on-screen
+    run_or_report(_stay, "Stay Out vs Get Back In")
 
 # ---------- Router & Quick Nav ----------
 MODULES = [
