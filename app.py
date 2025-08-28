@@ -1,8 +1,12 @@
+# ==== START: bootstrap & core imports ====
 # ---- Preferences Bootstrap ----
 try:
+    # This should export a ready-to-use prefs object
     from utils.prefs_bootstrap import prefs
 except ImportError:
-    from utils.load_prefs import load_prefs as prefs
+    # Fallback: call load_prefs() to create the prefs object
+    from utils.load_prefs import load_prefs
+    prefs = load_prefs()
 
 # ---- Core Imports ----
 import os, sys, json, zipfile, time, statistics as stats
@@ -14,10 +18,23 @@ import pandas as pd
 import requests
 import streamlit as st  # <-- required before set_page_config
 
+# ---- Fail-safe runner for sections ----
+import traceback
+
+def run_or_report(fn, label: str):
+    """Run a section and surface any exception visibly in the UI."""
+    try:
+        if callable(fn):
+            return fn()
+        else:
+            st.warning(f"⚠️ {label}: function not available.")
+    except Exception as e:
+        st.error(f"❌ {label} failed: {e}")
+        st.code("".join(traceback.format_exc()), language="python")
+
 # ---- Initialize Vega session defaults (prevents KeyError) ----
 DEFAULT_THEME = "Dark"       # must be "Light" or "Dark" to match vega_css()
 DEFAULT_ACCENT = "#10b981"   # default green accent
-
 if "vega_theme" not in st.session_state:
     st.session_state["vega_theme"] = DEFAULT_THEME
 if "vega_accent" not in st.session_state:
@@ -30,8 +47,7 @@ st.set_page_config(page_title="Vega Command Center", layout="wide", page_icon="�
 try:
     BASE_DIR = os.path.dirname(__file__)
 except NameError:
-    # Fallback for environments where __file__ is not defined
-    BASE_DIR = os.getcwd()
+    BASE_DIR = os.getcwd()   # Fallback when __file__ is missing (some hosts)
 
 SRC_DIR = os.path.join(BASE_DIR, "src")
 if BASE_DIR not in sys.path:
@@ -55,6 +71,7 @@ try:
     from module_stay_or_reenter import render_stay_or_reenter
 except Exception:
     render_stay_or_reenter = None  # graceful fallback
+# ==== END: bootstrap & core imports ====
 
 # ---- Timezone ----
 from zoneinfo import ZoneInfo
