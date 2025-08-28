@@ -34,6 +34,13 @@ except ModuleNotFoundError:
         def show_missing(): pass
 show_missing()
 
+# ---- Stay Out vs Get Back In module ----
+try:
+    from module_stay_or_reenter import render_stay_or_reenter
+except Exception as e:
+    render_stay_or_reenter = None  # graceful fallback if file missing
+
+
 # ---- Timezone ----
 from zoneinfo import ZoneInfo
 TZ_NAME = os.getenv("VEGA_TZ", "America/Los_Angeles")
@@ -1311,5 +1318,10 @@ with tabs[11]:
     page_admin_backup()
 with tabs[12]:
     page_docs()
-with tabs[13]:
-    render_stay_or_reenter()   # NEW MODULE MOUNT
+with tabs[13]:with tabs[13]:
+    # Stay Out vs. Get Back In Module
+    st.markdown("### Stay Out vs. Get Back In")
+    if render_stay_or_reenter is None:
+        st.error("Module `module_stay_or_reenter.py` not found or failed to import.")
+    else:
+        render_stay_or_reenter()
