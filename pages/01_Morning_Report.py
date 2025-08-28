@@ -153,5 +153,29 @@ if ("Final Risk Overlay" in show_sections) and prefs.enabled("morning_report", "
     )
 
 # ---------- Footer: version stamp & module credit ----------
-st.caption(f"Prefs v{prefs.version} • updated {prefs.last_updated}")
+def _prefs_version_and_updated(_prefs_obj):
+    vdict = getattr(_prefs_obj, "_version", {}) or {}
+    pdict = getattr(_prefs_obj, "_prefs", {}) or {}
+
+    ver = (
+        getattr(_prefs_obj, "version", None)
+        or vdict.get("version")
+        or vdict.get("tag")
+        or vdict.get("semver")
+        or vdict.get("name")
+        or pdict.get("version")
+        or "unknown"
+    )
+    upd = (
+        getattr(_prefs_obj, "last_updated", None)
+        or vdict.get("last_updated")
+        or vdict.get("updated_at")
+        or pdict.get("last_updated")
+        or pdict.get("updated_at")
+        or "n/a"
+    )
+    return str(ver), str(upd)
+
+_ver, _upd = _prefs_version_and_updated(prefs)
+st.caption(f"Prefs v{_ver} • updated {_upd}")
 st.caption("© Vega — Morning Report Module")
