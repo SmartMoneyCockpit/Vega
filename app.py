@@ -12,17 +12,23 @@ from typing import Dict, List, Tuple
 import numpy as np
 import pandas as pd
 import requests
-import streamlit as st   # <-- this was missing
+import streamlit as st   # <-- required before set_page_config
 
 # ---- Streamlit page config (must come after import streamlit) ----
 st.set_page_config(page_title="Vega Command Center", layout="wide", page_icon="📊")
 
-
 # --- Make imports work with or without a /src directory ---
-BASE_DIR = os.path.dirname(__file__)
+try:
+    BASE_DIR = os.path.dirname(__file__)
+except NameError:
+    # Fallback for environments where __file__ is not defined
+    BASE_DIR = os.getcwd()
+
 SRC_DIR = os.path.join(BASE_DIR, "src")
-if BASE_DIR not in sys.path: sys.path.insert(0, BASE_DIR)
-if os.path.isdir(SRC_DIR) and SRC_DIR not in sys.path: sys.path.insert(0, SRC_DIR)
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
+if os.path.isdir(SRC_DIR) and SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
 
 # Optional dependency checker
 try:
@@ -31,7 +37,8 @@ except ModuleNotFoundError:
     try:
         from utils.deps_check import show_missing
     except ModuleNotFoundError:
-        def show_missing(): pass
+        def show_missing():  # no-op fallback
+            pass
 show_missing()
 
 # ---- Stay Out vs Get Back In module ----
@@ -40,12 +47,13 @@ try:
 except Exception:
     render_stay_or_reenter = None  # graceful fallback
 
-
 # ---- Timezone ----
 from zoneinfo import ZoneInfo
 TZ_NAME = os.getenv("VEGA_TZ", "America/Los_Angeles")
-def now(fmt: str = "%Y-%m-%d %H:%M:%S") -> str: return datetime.now(ZoneInfo(TZ_NAME)).strftime(fmt)
-def now_utc_iso() -> str: return datetime.now(timezone.utc).isoformat(timespec="seconds")
+def now(fmt: str = "%Y-%m-%d %H:%M:%S") -> str:
+    return datetime.now(ZoneInfo(TZ_NAME)).strftime(fmt)
+def now_utc_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 # ---- yfinance (optional) ----
 try:
@@ -124,6 +132,10 @@ def append_trade_log(row, tab_name: str = "NA_TradeLog"):
 APP_VER = "v1.3.0 (FP2: caching + system-check + analytics)"
 
 # ---------- UTF-8 Safe Alert Wrappers (ANCHOR:SAFE_HELPERS) ----------
+# Predefine graceful stubs so early calls won't crash if alerts module isn't imported yet.
+send_email = None
+send_webhook = None
+
 import unicodedata
 def _to_utf8(s):
     if s is None: return ""
@@ -138,16 +150,20 @@ def _sanitize_ascii(s: str) -> str:
            .replace("\\u00a0"," ").replace("\\xa0"," "))
     return unicodedata.normalize("NFKD", s).encode("ascii","ignore").decode("ascii")
 def safe_send_email(subj: str, body: str):
-    try: send_email(_to_utf8(subj), _to_utf8(body))
-    except Exception: 
+    try:
+        if send_email:  # only call if available
+            send_email(_to_utf8(subj), _to_utf8(body))
+    except Exception:
         try:
-            send_email(_sanitize_ascii(subj), _sanitize_ascii(body))
+            if send_email:
+                send_email(_sanitize_ascii(subj), _sanitize_ascii(body))
         except Exception:
             pass
 def safe_send_webhook(payload: dict):
     def _clean(v): return _sanitize_ascii(v) if isinstance(v, str) else v
     try:
-        if send_webhook: send_webhook({k:_clean(v) for k,v in payload.items()})
+        if send_webhook:
+            send_webhook({k:_clean(v) for k,v in payload.items()})
     except Exception:
         pass
 
@@ -161,7 +177,8 @@ def rows_to_df(rows):
 def df_to_rows(df): return [list(df.columns)] + df.fillna("").astype(str).values.tolist()
 def col_letter(n):
     s=""
-    while n: n,r=divmod(n-1,26); s=chr(65+r)+s
+    while n:
+        n,r=divmod(n-1,26); s=chr(65+r)+s
     return s or "A"
 def _to_float(x, default=0.0):
     try:
@@ -171,12 +188,14 @@ def _to_float(x, default=0.0):
         return default
 
 # ---------- Styling & UI (menus offset fix) ----------
-if "vega_theme" not in st.session_state: st.session_state["vega_theme"] = "Dark"
-theme_choice = st.sidebar.selectbox("Theme", ["Dark","Light"], index=0 if st.session_state["vega_theme"]=="Dark" else 1)
+if "vega_theme" not in st.session_state:
+    st.session_state["vega_theme"] = "Dark"
+theme_choice = st.sidebar.selectbox("Theme", ["Dark","Light"],
+                                    index=0 if st.session_state["vega_theme"]=="Dark" else 1)
 st.session_state["vega_theme"] = theme_choice
 
 # You can tweak this to push the sticky tab bar down a bit if it feels "too high".
-MENU_OFFSET_PX = int(os.getenv("VEGA_MENU_OFFSET_PX", "12"))
+MENU_OFFSET_PX = int(os.getenv("VEGA_MENU_OFFSET_PX", "15"))
 
 def vega_css(theme="Dark"):
     if theme == "Light":
@@ -221,11 +240,15 @@ PRIMARY = "#0ea5e9"; ACCENT="#22c55e"; DANGER="#ef4444"; MUTED="#64748b"
 # ---------- Config ----------
 CFG = {}
 for r in read_config() or []:
-    if not r: continue
-    if len(r)>=2 and r[0] and "=" not in str(r[0]): CFG[str(r[0]).strip()] = str(r[1]).strip()
+    if not r:
+        continue
+    if len(r) >= 2 and r[0] and "=" not in str(r[0]):
+        CFG[str(r[0]).strip()] = str(r[1]).strip()
     else:
         c = str(r[0]).strip()
-        if "=" in c: k,v = c.split("=",1); CFG[k.strip()] = v.strip()
+        if "=" in c:
+            k, v = c.split("=", 1)
+            CFG[k.strip()] = v.strip()
 
 POLY      = os.getenv("POLYGON_KEY")
 NEWSKEY   = os.getenv("NEWSAPI_KEY")
@@ -236,10 +259,20 @@ FEES_BASE     = float(CFG.get("FEES_BASE", "0"))
 FEES_BPS_BUY  = float(CFG.get("FEES_BPS_BUY", "0"))
 FEES_BPS_SELL = float(CFG.get("FEES_BPS_SELL", "0"))
 FEES_TAXBPS   = float(CFG.get("FEES_TAXBPS", "0"))
-APAC_COUNTRIES = [s.strip() for s in (CFG.get("APAC_COUNTRIES","JP,AU,HK,SG,IN").split(",")) if s.strip()]
+
+# Respect your rule: exclude India by default from APAC reports
+APAC_COUNTRIES = [s.strip() for s in (CFG.get("APAC_COUNTRIES","JP,AU,HK,SG").split(",")) if s.strip()]
 NA_COUNTRIES   = [s.strip() for s in (CFG.get("NA_COUNTRIES","US,CA").split(",")) if s.strip()]
-SUFFIX = {"JP": CFG.get("SUFFIX_JP",".T"),"AU": CFG.get("SUFFIX_AU",".AX"),"NZ": CFG.get("SUFFIX_NZ",".NZ"),
-          "HK": CFG.get("SUFFIX_HK",".HK"),"SG": CFG.get("SUFFIX_SG",".SI"),"IN": CFG.get("SUFFIX_IN",".NS")}
+
+SUFFIX = {
+    "JP": CFG.get("SUFFIX_JP",".T"),
+    "AU": CFG.get("SUFFIX_AU",".AX"),
+    "NZ": CFG.get("SUFFIX_NZ",".NZ"),
+    "HK": CFG.get("SUFFIX_HK",".HK"),
+    "SG": CFG.get("SUFFIX_SG",".SI"),
+    "IN": CFG.get("SUFFIX_IN",".NS"),
+}
+
 
 # ---------- Sidebar ----------
 from datetime import datetime as _dt
@@ -1290,38 +1323,72 @@ MODULES = [
     "Stay Out vs Get Back In"   # NEW TAB
 ]
 
-tabs = st.tabs(MODULES)
+def _missing(name: str):
+    st.error(f"'{name}' is unavailable in this build. Paste or import its code above, or disable the tab.")
 
-with tabs[0]:
-    page_system_check()
-with tabs[1]:
-    cockpit("North America", "NA_Watch", "NA_TradeLog", NA_COUNTRIES, region_code="NA")
-with tabs[2]:
-    cockpit("Asia-Pacific", "APAC_Watch", "APAC_TradeLog", APAC_COUNTRIES, region_code="APAC")
-with tabs[3]:
-    page_news()
-with tabs[4]:
-    page_risk_lab()
-with tabs[5]:
-    page_pnl_analytics()
-with tabs[6]:
-    page_backtest_beta()
-with tabs[7]:
-    page_options_builder()
-with tabs[8]:
-    page_fx()
-with tabs[9]:
-    page_broker_import()
-with tabs[10]:
-    page_health_min()
-with tabs[11]:
-    page_admin_backup()
-with tabs[12]:
-    page_docs()
-with tabs[13]:
-    # Stay Out vs. Get Back In Module
-    st.markdown("### Stay Out vs. Get Back In")
-    if render_stay_or_reenter is None:
-        st.error("Module `module_stay_or_reenter.py` not found or failed to import.")
-    else:
-        render_stay_or_reenter()
+# Build page lambdas with guards to prevent NameError if any function is missing
+pages = [
+    ("System Check",
+     lambda: (page_system_check() if callable(globals().get("page_system_check")) else _missing("System Check"))),
+
+    ("NA Cockpit",
+     lambda: (cockpit("North America", "NA_Watch", "NA_TradeLog", NA_COUNTRIES, region_code="NA")
+              if callable(globals().get("cockpit")) else _missing("NA Cockpit"))),
+
+    ("APAC Cockpit",
+     lambda: (cockpit("Asia-Pacific", "APAC_Watch", "APAC_TradeLog", APAC_COUNTRIES, region_code="APAC")
+              if callable(globals().get("cockpit")) else _missing("APAC Cockpit"))),
+
+    ("Morning News",
+     lambda: (page_news() if callable(globals().get("page_news")) else _missing("Morning News"))),
+
+    ("Risk Lab",
+     lambda: (page_risk_lab() if callable(globals().get("page_risk_lab")) else _missing("Risk Lab"))),
+
+    ("PnL Analytics",
+     lambda: (page_pnl_analytics() if callable(globals().get("page_pnl_analytics")) else _missing("PnL Analytics"))),
+
+    ("Backtest (Beta)",
+     lambda: (page_backtest_beta() if callable(globals().get("page_backtest_beta")) else _missing("Backtest (Beta)"))),
+
+    ("Options Builder",
+     lambda: (page_options_builder() if callable(globals().get("page_options_builder")) else _missing("Options Builder"))),
+
+    ("FX & Hedges",
+     lambda: (page_fx() if callable(globals().get("page_fx")) else _missing("FX & Hedges"))),
+
+    ("Broker Import",
+     lambda: (page_broker_import() if callable(globals().get("page_broker_import")) else _missing("Broker Import"))),
+
+    ("Health Journal",
+     lambda: (page_health_min() if callable(globals().get("page_health_min")) else _missing("Health Journal"))),
+
+    ("Admin / Backup",
+     lambda: (page_admin_backup() if callable(globals().get("page_admin_backup")) else _missing("Admin / Backup"))),
+
+    ("Docs",
+     lambda: (page_docs() if callable(globals().get("page_docs")) else _missing("Docs"))),
+
+    ("Stay Out vs Get Back In",
+     lambda: (
+         (st.markdown("### Stay Out vs. Get Back In") or render_stay_or_reenter())
+         if callable(globals().get("render_stay_or_reenter"))
+         else (st.markdown("### Stay Out vs. Get Back In") or st.error("Module `module_stay_or_reenter.py` not found or failed to import."))
+     )),
+]
+
+# Ensure tab titles match MODULES (defensive, in case someone edits one list but not the other)
+tab_titles = [t for (t, _) in pages]
+if tab_titles != MODULES:
+    # If names drift, prefer the explicit list from MODULES to control ordering/naming
+    tab_titles = MODULES
+
+tabs = st.tabs(tab_titles)
+
+# Render each page in its tab with safety net
+for i, (_, render_fn) in enumerate(pages):
+    with tabs[i]:
+        try:
+            render_fn()
+        except Exception as e:
+            st.error(f"Failed to render this tab: {e}")
