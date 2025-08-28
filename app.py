@@ -1,13 +1,22 @@
 # ---- Preferences Bootstrap ----
 try:
-    # Preferred: use shim if it exists
     from utils.prefs_bootstrap import prefs
 except ImportError:
-    # Fallback: load directly
     from utils.load_prefs import load_prefs as prefs
 
-# ---------- Streamlit page config MUST be first ----------
-st.set_page_config(page_title="Vega Command Center", layout="wide", page_icon="💹")
+# ---- Core Imports ----
+import os, sys, json, zipfile, time, statistics as stats
+from datetime import datetime, timedelta, timezone
+from typing import Dict, List, Tuple
+
+import numpy as np
+import pandas as pd
+import requests
+import streamlit as st   # <-- this was missing
+
+# ---- Streamlit page config (must come after import streamlit) ----
+st.set_page_config(page_title="Vega Command Center", layout="wide", page_icon="📊")
+
 
 # --- Make imports work with or without a /src directory ---
 BASE_DIR = os.path.dirname(__file__)
