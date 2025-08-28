@@ -202,7 +202,7 @@ def vega_css(theme="Dark", accent="#10b981"):
     App-wide CSS for Light/Dark with an accent color.
     Paste-safe: call with normalized theme labels ("Light"/"Dark").
     """
-    MENU_OFFSET_PX = int(os.getenv("VEGA_MENU_OFFSET_PX", "12"))
+    MENU_OFFSET_PX = int(os.getenv("VEGA_MENU_OFFSET_PX", "15"))
 
     # guard: ensure accent is a hex color
     if not isinstance(accent, str) or not accent.startswith("#"):
