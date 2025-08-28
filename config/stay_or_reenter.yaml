@@ -1,0 +1,45 @@
+risk:
+  min_rr: 3.0
+  earnings_blackout_days: 30
+  default_account_size: 100000
+  fixed_fraction_risk_pct: 0.01
+  max_loss_dollars: 2000
+  kelly_win_rate: 0.55
+  kelly_payoff: 1.5
+
+relative_strength:
+  benchmark: SPY
+  alt_benchmark: QQQ
+  sector_etf: ""
+
+options:
+  pop_target: 0.60
+  dte_min: 21
+  dte_max: 90
+  iv_hv_margin: 0.05
+
+breadth:
+  source: manual
+  file_path: data/breadth.json
+  url: ""
+  risk_on_threshold: 0.0
+
+alerts:
+  enabled: false
+  email:
+    smtp_host: ""
+    smtp_port: 587
+    smtp_user: ""
+    smtp_pass: ""
+    from_addr: ""
+    to_addrs: []
+
+gsheets:
+  enabled: false
+  spreadsheet: Vega Journal
+  worksheet: Decisions
+
+links:
+  breadth_dashboard: ""
+  macro_calendar: ""
+  sector_dashboard: ""
