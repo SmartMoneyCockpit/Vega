@@ -1,0 +1,31 @@
+name: "Approval: Do You Want Me To…"
+description: Capture a one-line approval so it doesn’t get lost.
+title: "[APPROVAL] <short feature or change>"
+labels: ["approval","planned"]
+body:
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      description: One sentence of what you want done.
+      placeholder: "Add PnL Panel with per-trade breakdown"
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options: ["now","next drop","backlog"]
+      default: 1
+  - type: textarea
+    id: details
+    attributes:
+      label: Details (optional)
+      description: Any constraints (deadline, scope, data sources)
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Confirm
+      options:
+        - label: "Approved. Add to ROADMAP.md."
+          required: true
