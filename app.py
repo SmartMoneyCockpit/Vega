@@ -12,10 +12,19 @@ from typing import Dict, List, Tuple
 import numpy as np
 import pandas as pd
 import requests
-import streamlit as st   # <-- required before set_page_config
+import streamlit as st  # <-- required before set_page_config
 
-# ---- Streamlit page config (must come after import streamlit) ----
-st.set_page_config(page_title="Vega Command Center", layout="wide", page_icon="📊")
+# ---- Initialize Vega session defaults (prevents KeyError) ----
+DEFAULT_THEME = "Dark"       # must be "Light" or "Dark" to match vega_css()
+DEFAULT_ACCENT = "#10b981"   # default green accent
+
+if "vega_theme" not in st.session_state:
+    st.session_state["vega_theme"] = DEFAULT_THEME
+if "vega_accent" not in st.session_state:
+    st.session_state["vega_accent"] = DEFAULT_ACCENT
+
+# ---- Streamlit page config ----
+st.set_page_config(page_title="Vega Command Center", layout="wide", page_icon="🪐")
 
 # --- Make imports work with or without a /src directory ---
 try:
@@ -287,11 +296,22 @@ def vega_css(theme="Dark", accent="#10b981"):
 # You can tweak this to push the sticky tab bar down a bit if it feels "too high".
 MENU_OFFSET_PX = int(os.getenv("VEGA_MENU_OFFSET_PX", "12"))
 
-# Inject CSS (now passes accent through)
-st.markdown(
-    vega_css(st.session_state["vega_theme"], st.session_state["vega_accent"]),
-    unsafe_allow_html=True,
-)
+# --- Inject CSS (SAFE) ---
+# Normalize values and guard against missing/invalid session keys.
+_theme  = st.session_state.get("vega_theme", DEFAULT_THEME)
+_theme  = "Light" if str(_theme).strip().lower() == "light" else "Dark"
+
+_accent = st.session_state.get("vega_accent", DEFAULT_ACCENT)
+if not isinstance(_accent, str) or not _accent.startswith("#"):
+    _accent = DEFAULT_ACCENT
+
+try:
+    st.markdown(vega_css(_theme, _accent), unsafe_allow_html=True)
+except Exception as e:
+    # Last-resort fallback so the app never crashes on theme injection.
+    st.warning(f"Theme injection fallback used: {e}")
+    st.markdown(vega_css(DEFAULT_THEME, DEFAULT_ACCENT), unsafe_allow_html=True)
+
 
 # Global color constants (optional to keep)
 PRIMARY = "#0ea5e9"; ACCENT="#22c55e"; DANGER="#ef4444"; MUTED="#64748b"
@@ -332,7 +352,6 @@ SUFFIX = {
     "IN": CFG.get("SUFFIX_IN",".NS"),
 }
 
-
 # ---------- Sidebar ----------
 from datetime import datetime as _dt
 try:
@@ -346,6 +365,35 @@ try:
 except Exception: send_email = send_webhook = None
 
 st.sidebar.header("Vega • Session Controls")
+
+# --- Theme & Accent (Sidebar Toggle) ---
+with st.sidebar.expander("Appearance", expanded=True):
+    _cur_theme  = st.session_state.get("vega_theme", DEFAULT_THEME)
+    _cur_theme  = "Light" if str(_cur_theme).strip().lower() == "light" else "Dark"
+    _cur_accent = st.session_state.get("vega_accent", DEFAULT_ACCENT)
+    if not (isinstance(_cur_accent, str) and _cur_accent.startswith("#")):
+        _cur_accent = DEFAULT_ACCENT
+
+    st.radio(
+        "Theme",
+        options=["Light", "Dark"],
+        index=0 if _cur_theme == "Light" else 1,
+        key="vega_theme",
+        horizontal=True,
+        help="Switch between light/dark layout styles."
+    )
+    st.color_picker(
+        "Accent color",
+        value=_cur_accent,
+        key="vega_accent",
+        help="Used for tabs, links, and highlights."
+    )
+
+    if st.button("Reset to defaults"):
+        st.session_state["vega_theme"]  = DEFAULT_THEME
+        st.session_state["vega_accent"] = DEFAULT_ACCENT
+        st.experimental_rerun()
+
 entered_pin = st.sidebar.text_input("Admin PIN (optional)", type="password", help="Only required if you set ADMIN_PIN in Config.")
 is_admin = (not ADMIN_PIN) or (entered_pin and entered_pin == ADMIN_PIN)
 
@@ -400,6 +448,7 @@ with st.sidebar.expander("Diagnostics"):
     except Exception:
         st.write({"local_time": _dt.now().strftime("%Y-%m-%d %H:%M:%S"),"Monitor running": st.session_state["monitor_started"],
                   "Email alerts": email_cfg,"Webhook alerts": webhook_cfg})
+
 
 # ---------- Price helpers ----------
 def price_polygon(sym: str):
