@@ -1,1 +1,50 @@
-# placeholder; real file was generated earlier
+name: Update Watchlist (Bulk)
+
+on:
+  workflow_dispatch:
+    inputs:
+      region:
+        description: "Target region (NA or APAC)"
+        default: "NA"
+        required: false
+      sheet_tab:
+        description: "Sheet tab to update (e.g., NA_Watch / APAC_Watch)"
+        default: "NA_Watch"
+        required: false
+
+jobs:
+  update_watchlist:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: update-watchlist-bulk
+      cancel-in-progress: false
+
+    env:
+      # If your scripts read config files, this points them at /config
+      VEGA_CONFIG_DIR: config
+      # Optional: pass secrets if your script needs Sheets/SMTP (remove if unused)
+      GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+      SMTP_HOST:  ${{ secrets.SMTP_HOST }}
+      SMTP_PORT:  ${{ secrets.SMTP_PORT }}
+      SMTP_USER:  ${{ secrets.SMTP_USER }}
+      SMTP_PASS:  ${{ secrets.SMTP_PASS }}
+      SMTP_FROM:  ${{ secrets.SMTP_FROM }}
+      SMTP_TO:    ${{ secrets.SMTP_TO }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements-actions.txt
+
+      - name: Run bulk watchlist updater
+        run: |
+          python scripts/update_watchlist_bulk.py \
+            --region "${{ github.event.inputs.region || 'NA' }}" \
+            --sheet-tab "${{ github.event.inputs.sheet_tab || 'NA_Watch' }}"
