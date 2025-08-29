@@ -1527,24 +1527,68 @@ show_startup_banner()
 # ---- Stay Out vs Get Back In: page function (single render inside its tab) ----
 
 def page_stay_out_get_back_in():
+    """Robust version:
+    - Always render built-in UI so the page is never blank.
+    - If an external module exists, render it *below* inside an expander.
+      We hide top-level H1/H2 inside the module block to avoid duplicate page headers.
     """
-    Stay Out vs Get Back In page.
-    - If an external module ( `_stay` or `render_stay_or_reenter` ) is present, call it and STOP.
-    - Otherwise, render the built-in UI.
-    This prevents duplicate headers/content.
-    """
-    ext = globals().get("_stay") or globals().get("render_stay_or_reenter")
-    if callable(ext):
-        try:
-            ext()  # external code should render its own header/UI
-        except Exception as e:
-            st.subheader("Stay Out vs Get Back In")
-            st.exception(e)
-            _sovsgi_builtin()
-        return
-
     st.subheader("Stay Out vs Get Back In")
     _sovsgi_builtin()
+
+    # External module output (optional)
+    ext = globals().get("_stay") or globals().get("render_stay_or_reenter")
+    if callable(ext):
+        with st.expander("Module output (external)", expanded=True):
+            # Hide only H1/H2 inside the module block (keep deeper headings visible)
+            st.markdown(
+                "<style>.sovsgi-module h1, .sovsgi-module h2 {display:none !important;}</style>",
+                unsafe_allow_html=True,
+            )
+            st.markdown('<div class="sovsgi-module">', unsafe_allow_html=True)
+            try:
+                ext()
+            except Exception as e:
+                st.exception(e)
+            st.markdown('</div>', unsafe_allow_html=True)
+
+
+def _sovsgi_builtin():
+    # Minimal, safe built-in UI
+    with st.expander("Config", expanded=False):
+        st.text_input("Decision Name", value="Re-Entry Trigger", key="so_re_name")
+        st.text_input("Ticker", value="SPY", key="so_re_ticker", help="Any supported symbol.")
+
+    st.markdown("##### Relative Strength")
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.number_input("Lookback (days)", value=20, step=1, key="so_re_lookback")
+        st.caption("vs SPY"); st.text("(no data)")
+    with c2:
+        st.caption("vs QQQ"); st.text("(see chart)")
+    with c3:
+        st.caption("vs Sector"); st.text("—")
+
+    st.markdown("##### Step 1: Status Check")
+    a, b = st.columns(2)
+    with a:
+        st.markdown("**Exit Triggers**")
+        st.checkbox("Price below stop/support", key="so_exit_1")
+        st.checkbox("MACD bear; RSI < 50", key="so_exit_2")
+        st.checkbox("OBV negative / no accumulation", key="so_exit_3")
+        st.checkbox("Breadth weak, sector lagging", key="so_exit_4")
+        st.checkbox("R:R collapsed (<1.5:1)", key="so_exit_5")
+    with b:
+        st.markdown("**Re-entry Triggers**")
+        st.checkbox("Reclaim 20/50 DMA or pattern break", key="so_re_1")
+        st.checkbox("MACD bull; RSI > 50 rising", key="so_re_2")
+        st.checkbox("OBV up + volume confirm", key="so_re_3")
+        st.checkbox("Breadth risk-on, sector leading", key="so_re_4")
+        st.checkbox("≥ 2–3:1 with defined stops/targets", key="so_re_5")
+
+    st.divider()
+    st.button("Evaluate: GET BACK IN / STAY OUT", type="primary", key="so_eval")
+
+
 
 
 def _sovsgi_builtin():
