@@ -431,7 +431,7 @@ SUFFIX = {
 from datetime import datetime as _dt
 try:
     from app_snippet import start_vega_monitor
-except Exception: 
+except Exception:
     start_vega_monitor = None
 
 try:
@@ -441,7 +441,7 @@ except Exception:
 
 try:
     from vega_monitor.alerts import send_webhook
-except Exception: 
+except Exception:
     send_webhook = None
 
 st.sidebar.header("Vega • Session Controls")
@@ -475,7 +475,7 @@ with st.sidebar.expander("Appearance", expanded=True):
         st.experimental_rerun()
 
 entered_pin = st.sidebar.text_input(
-    "Admin PIN (optional)", type="password", 
+    "Admin PIN (optional)", type="password",
     help="Only required if you set ADMIN_PIN in Config."
 )
 is_admin = (not ADMIN_PIN) or (entered_pin and entered_pin == ADMIN_PIN)
@@ -489,7 +489,7 @@ if st.sidebar.button("Setup / Repair Google Sheet"):
 
 st.sidebar.subheader("System Health (ACI)")
 email_cfg = all([
-    os.getenv("SMTP_HOST"), os.getenv("SMTP_USER"), 
+    os.getenv("SMTP_HOST"), os.getenv("SMTP_USER"),
     os.getenv("SMTP_PASS"), os.getenv("SMTP_TO")
 ])
 webhook_cfg = bool(os.getenv("VEGA_WEBHOOK_URL"))
@@ -502,17 +502,17 @@ actn=float(os.getenv("VEGA_THRESH_ACTION","0.80"))
 crit=float(os.getenv("VEGA_THRESH_CRITICAL","0.90"))
 st.sidebar.caption(f"Thresholds — Warn: {warn:.2f} · Action: {actn:.2f} · Critical: {crit:.2f}")
 
-if "monitor_started" not in st.session_state: 
+if "monitor_started" not in st.session_state:
     st.session_state["monitor_started"] = False
 
 def _start_monitor():
-    if start_vega_monitor is None: 
+    if start_vega_monitor is None:
         st.sidebar.warning("Monitor package not found yet."); return
     if not st.session_state["monitor_started"]:
         start_vega_monitor()
         st.session_state["monitor_started"] = True
         st.sidebar.success("Resource Monitor started (background).")
-    else: 
+    else:
         st.sidebar.info("Resource Monitor already running.")
 
 if st.sidebar.button("▶️ Start Resource Monitor", disabled=st.session_state["monitor_started"]):
@@ -535,9 +535,9 @@ if st.sidebar.button("🛡 Simulate Defensive Mode (Email/Webhook)"):
     try:
         subj="VEGA ALERT — Defensive Mode ENTER (SIMULATED)"
         body="This is a simulated Defensive Mode entry to verify alert formatting.\nLevels: CPU=0.92 MEM=0.81 DISK=0.77\n"
-        if send_mail: 
+        if send_mail:
             send_mail(subj, body)
-        if send_webhook: 
+        if send_webhook:
             send_webhook({"type":"defensive_mode","simulated":True,"levels":{"cpu":0.92,"mem":0.81,"disk":0.77}})
         st.sidebar.success("Simulated Defensive Mode alert sent.")
     except Exception as e:
@@ -564,8 +564,6 @@ with st.sidebar.expander("Diagnostics"):
             "Email alerts": email_cfg,
             "Webhook alerts": webhook_cfg
         })
-
-
 
 # ---------- Price helpers ----------
 def price_polygon(sym: str):
@@ -666,7 +664,7 @@ def header_map(tab_name: str) -> Dict[str,int]:
     row=read_range(f"{tab_name}!1:1"); hdr=row[0] if row else []
     return {str(h).strip(): i+1 for i,h in enumerate(hdr)}
 def list_open_lots(log_df: pd.DataFrame, symbol: str) -> List[Tuple[int,float,str,float,str]]:
-    out=[]; 
+    out=[];
     if log_df.empty: return out
     df=log_df.copy()
     for c in ("Qty","ExitQty","Price"):
@@ -886,7 +884,7 @@ def cockpit(region_name, watch_tab, log_tab, countries, region_code="NA"):
         except Exception: country="US"
         fee_tuple = match_preset_for(country, None if preset_choice=="<auto-match>" else preset_choice)
         if mode=="Single lot":
-            labels=[]; 
+            labels=[];
             for (idx, rem, side, px, ts) in lots:
                 tid = str(ldf.at[idx, "TradeID"]) if "TradeID" in ldf.columns else f"row{idx+2}"
                 labels.append(f"{tid} | {side} | remain={rem:g} @ {px:g}")
@@ -1009,7 +1007,7 @@ def page_broker_import():
     log_tab="NA_TradeLog" if region=="NA" else "APAC_TradeLog"
     ensure_tabs({log_tab: ["Timestamp","TradeID","Symbol","Side","Qty","Price","Note","ExitPrice","ExitQty","Fees","PnL","R","Tags","Audit"]})
     prof=st.selectbox("Profile", ["Custom"] + list(PROFILES.keys()))
-    f=st.file_uploader("Upload CSV", type=["csv"]); 
+    f=st.file_uploader("Upload CSV", type=["csv"]);
     if not f: return
     df=pd.read_csv(f); st.write("Columns detected:", list(df.columns))
     mapping={}
@@ -1086,7 +1084,7 @@ def news_top(country_code: str, q: str=None, page_size=10):
     try:
         base="https://newsapi.org/v2/top-headlines"; params={"apiKey": NEWSKEY, "country": country_code, "pageSize": page_size}
         if q: params["q"] = q
-        r=requests.get(base, params=params, timeout=6); 
+        r=requests.get(base, params=params, timeout=6);
         if r.status_code!=200: return []
         articles=r.json().get("articles",[])
         return [{"source":(a.get("source") or {}).get("name",""),"title":a.get("title",""),"url":a.get("url",""),"publishedAt":a.get("publishedAt","")[:19].replace("T"," ")} for a in articles]
@@ -1194,7 +1192,7 @@ def page_news():
                     for _, r in tmp.iterrows():
                         try:
                             remain = float(r.get("Remain",0) or 0)
-                            if remain <= 0: 
+                            if remain <= 0:
                                 continue
                             px = float(r.get("Price",0) or 0)
                             pr = px  # using entry as snapshot to avoid API calls
