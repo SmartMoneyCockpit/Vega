@@ -2,7 +2,7 @@ name: Cockpit Uptime Ping
 
 on:
   schedule:
-    # every 30m, at :05 / :35 (adjust as you like)
+    # every 30 minutes at :05 and :35 (adjust as needed)
     - cron: "5,35 * * * *"
   workflow_dispatch:
 
@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout (no files needed but keeps context)
+      - name: Checkout (keeps repo context)
         uses: actions/checkout@v4
 
       - name: Curl app
@@ -26,6 +26,9 @@ jobs:
         shell: bash
         run: |
           set -e
+          if [ -z "${VEGA_COCKPIT_URL}" ]; then
+            echo "VEGA_COCKPIT_URL secret is missing"; exit 1
+          fi
           STATUS="$(curl -s -o /dev/null -w "%{http_code}" "${VEGA_COCKPIT_URL}")"
           echo "code=${STATUS}" >> "$GITHUB_OUTPUT"
           echo "HTTP status: ${STATUS}"
@@ -50,13 +53,15 @@ jobs:
         uses: actions/github-script@v7
         env:
           CODE: ${{ steps.ping.outputs.code }}
+          URL: ${{ env.VEGA_COCKPIT_URL }}
         with:
           script: |
-            const code = process.env.CODE;
-            const title = `Cockpit down (${code})`;
-            const body  = `Uptime check failed at ${new Date().toISOString()} UTC\n\n` +
-                          `URL: ${{ env.VEGA_COCKPIT_URL }}\n` +
-                          `Status: ${code}`;
+            const title = `Cockpit down (${process.env.CODE})`;
+            const body  = [
+              `Uptime check failed at ${new Date().toISOString()} UTC`,
+              `URL: ${process.env.URL}`,
+              `Status: ${process.env.CODE}`
+            ].join("\n");
             await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
