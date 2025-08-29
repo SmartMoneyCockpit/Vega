@@ -1,0 +1,31 @@
+name: Earnings Guard
+on:
+  schedule: [{ cron: "0 13 * * 1-5" }]
+  workflow_dispatch:
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: |
+          python - << 'PY'
+          import csv, datetime as dt, json, os
+          from pathlib import Path
+          rules_days = 30
+          wl = list(csv.DictReader(open("data/watchlists.csv"))) if os.path.exists("data/watchlists.csv") else []
+          cal = {r["ticker"]: r["earnings_date"] for r in csv.DictReader(open("data/earnings_calendar.csv"))} if os.path.exists("data/earnings_calendar.csv") else {}
+          today = dt.date.today()
+          violations=[]
+          for row in wl:
+            t=row["ticker"]; d=cal.get(t)
+            if not d: continue
+            ed=dt.date.fromisoformat(d)
+            if 0 <= (ed - today).days <= rules_days:
+              violations.append({"ticker": t, "days_to_earnings": (ed-today).days, "earnings_date": d})
+          Path("snapshots").mkdir(exist_ok=True)
+          open("snapshots/earnings_guard.json","w").write(json.dumps({"violations":violations, "as_of": today.isoformat()}, indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with: { name: earnings-guard, path: snapshots/earnings_guard.json, retention-days: 7 }
