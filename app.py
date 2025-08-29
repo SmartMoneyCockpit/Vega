@@ -1640,6 +1640,10 @@ pages = [
 ]
 
 # Ensure tab titles match MODULES (defensive, in case someone edits one list but not the other)
+# Ensure MODULES list exists for stable tab ordering
+if 'MODULES' not in globals():
+    MODULES = [t for (t, _) in pages]
+
 tab_titles = [t for (t, _) in pages]
 if tab_titles != MODULES:
     # If names drift, prefer the explicit list from MODULES to control ordering/naming
