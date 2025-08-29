@@ -9,7 +9,7 @@ except ImportError:
     prefs = load_prefs()
 
 # ---- Core Imports ----
-import os, sys, json, zipfile, time, statistics as stats
+import os, sys, json, zipfile, time, statistics as stats, math
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Tuple
 
@@ -20,6 +20,7 @@ import streamlit as st  # <-- required before set_page_config
 
 # ---- Fail-safe runner for sections ----
 import traceback
+import io
 
 def run_or_report(fn, label: str):
     """Run a section and surface any exception visibly in the UI."""
@@ -1532,30 +1533,34 @@ def page_backtest_beta():
     except Exception as e:
         st.error(f"Backtest error: {e}")
 
+
 # ---- render global banners before building tabs ----
 render_defensive_banner()
 show_startup_banner()
 
-# ---- Stay Out vs Get Back In: render or explain ----
-import os, sys
-st.header("Stay Out vs Get Back In")
 
-if _stay is None:
-    st.info("Module not found. Looking for either of these files:")
-    st.code(
-        "1) ./module_stay_or_reenter.py\n"
-        "2) ./modules/stay_or_reenter.py",
-        language="text",
-    )
-    # quick visibility into what the app sees
-    st.caption("Repo root:")
-    st.code(os.listdir("."), language="python")
-    if os.path.isdir("modules"):
-        st.caption("./modules:")
-        st.code(os.listdir("modules"), language="python")
-else:
-    # run via fail-safe so errors surface on-screen
-    run_or_report(_stay, "Stay Out vs Get Back In")
+
+
+# ---- Stay Out vs Get Back In: page function (single render inside its tab) ----
+def page_stay_out_get_back_in():
+    st.subheader("Stay Out vs Get Back In")
+    if _stay is None:
+        st.info("Module not found. Looking for either of these files:")
+        st.code("1) ./module_stay_or_reenter.py\n2) ./modules/stay_or_reenter.py", language="text")
+        st.caption("Repo root:")
+        try:
+            st.code(os.listdir("."), language="python")
+        except Exception:
+            pass
+        if os.path.isdir("modules"):
+            st.caption("./modules:")
+            try:
+                st.code(os.listdir("modules"), language="python")
+            except Exception:
+                pass
+    else:
+        # run via fail-safe so errors surface on-screen
+        run_or_report(_stay, "Stay Out vs Get Back In")
 
 # ---------- Router & Quick Nav ----------
 MODULES = [
