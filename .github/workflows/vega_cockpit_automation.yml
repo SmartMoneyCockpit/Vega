@@ -14,13 +14,22 @@ on:
     - cron: "0 1 * * *"
   workflow_dispatch:
 
-# Prevent overlapping runs from spamming
+# No overlapping runs
 concurrency:
   group: vega-cockpit-automation
   cancel-in-progress: true
 
+# Global env (available to every job)
 env:
-  TZ: ${{ secrets.TZ_PREF }}   # e.g., America/Los_Angeles
+  TZ: ${{ secrets.TZ_PREF }}                 # e.g., America/Los_Angeles
+  PYTHONUNBUFFERED: "1"
+  # Map your existing secrets to SMTP_* so all mailers can read them
+  SMTP_HOST:  ${{ secrets.SMTP_HOST }}
+  SMTP_PORT:  ${{ secrets.SMTP_PORT }}       # "587" for STARTTLS, "465" for SSL
+  SMTP_USER:  ${{ secrets.SMTP_USER }}
+  SMTP_PASS:  ${{ secrets.SMTP_PASS }}
+  SMTP_FROM:  ${{ secrets.EMAIL_FROM }}
+  SMTP_TO:    ${{ secrets.EMAIL_TO }}
 
 jobs:
 
@@ -30,7 +39,7 @@ jobs:
     timeout-minutes: 20
     concurrency: { group: vega-monitor, cancel-in-progress: true }
     env:
-      PYTHONPATH: ${{ github.workspace }}   # <-- ensure imports see repo root
+      PYTHONPATH: ${{ github.workspace }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -47,12 +56,6 @@ jobs:
         env:
           TZ_PREF:     ${{ secrets.TZ_PREF }}
           WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
-          EMAIL_TO:    ${{ secrets.EMAIL_TO }}
-          EMAIL_FROM:  ${{ secrets.EMAIL_FROM }}
-          SMTP_HOST:   ${{ secrets.SMTP_HOST }}
-          SMTP_PORT:   ${{ secrets.SMTP_PORT }}
-          SMTP_USER:   ${{ secrets.SMTP_USER }}
-          SMTP_PASS:   ${{ secrets.SMTP_PASS }}
           GIST_ID:     ${{ secrets.GIST_ID }}
           GIST_TOKEN:  ${{ secrets.GIST_TOKEN }}
           WATCH_STATE_DIR: ".vega_state"
@@ -67,6 +70,36 @@ jobs:
         with:
           path: .vega_state
           key: vega-watchdog-state
+
+      # Per-job email on failure (inline, no imports)
+      - name: Email on job failure
+        if: ${{ failure() }}
+        env:
+          JOB_NAME: monitor
+          RUN_URL:  https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python - <<'PY'
+          import os, smtplib, ssl
+          from email.mime.text import MIMEText
+          host, port = os.getenv("SMTP_HOST"), int(os.getenv("SMTP_PORT") or "587")
+          user, pwd  = os.getenv("SMTP_USER"), os.getenv("SMTP_PASS")
+          to, frm    = os.getenv("SMTP_TO"), os.getenv("SMTP_FROM")
+          url        = os.getenv("RUN_URL")
+          subject    = f"[Vega] Job '{os.getenv('JOB_NAME')}' FAILED"
+          body       = f"One or more steps failed.\nRun: {url}\n"
+          if not all([host, port, user, pwd, to, frm]):
+              print("Email vars missing; skipping per-job failure email.")
+              raise SystemExit(0)
+          msg = MIMEText(body, _charset="utf-8")
+          msg["Subject"], msg["From"], msg["To"] = subject, frm, to
+          ctx = ssl.create_default_context()
+          with smtplib.SMTP(host, port, timeout=20) as s:
+              if port == 587:
+                  s.starttls(context=ctx)
+              s.login(user, pwd)
+              s.sendmail(frm, [to], msg.as_string())
+          print("Per-job failure email sent.")
+          PY
 
   morning_report:
     if: github.event.schedule == '25 14 * * 1-5' || github.event_name == 'workflow_dispatch'
@@ -84,13 +117,36 @@ jobs:
         env:
           TZ_PREF:     ${{ secrets.TZ_PREF }}
           WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
-          EMAIL_TO:    ${{ secrets.EMAIL_TO }}
-          EMAIL_FROM:  ${{ secrets.EMAIL_FROM }}
-          SMTP_HOST:   ${{ secrets.SMTP_HOST }}
-          SMTP_PORT:   ${{ secrets.SMTP_PORT }}
-          SMTP_USER:   ${{ secrets.SMTP_USER }}
-          SMTP_PASS:   ${{ secrets.SMTP_PASS }}
         run: python report_na.py
+
+      - name: Email on job failure
+        if: ${{ failure() }}
+        env:
+          JOB_NAME: morning_report
+          RUN_URL:  https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python - <<'PY'
+          import os, smtplib, ssl
+          from email.mime.text import MIMEText
+          host, port = os.getenv("SMTP_HOST"), int(os.getenv("SMTP_PORT") or "587")
+          user, pwd  = os.getenv("SMTP_USER"), os.getenv("SMTP_PASS")
+          to, frm    = os.getenv("SMTP_TO"), os.getenv("SMTP_FROM")
+          url        = os.getenv("RUN_URL")
+          subject    = f"[Vega] Job '{os.getenv('JOB_NAME')}' FAILED"
+          body       = f"One or more steps failed.\nRun: {url}\n"
+          if not all([host, port, user, pwd, to, frm]):
+              print("Email vars missing; skipping per-job failure email.")
+              raise SystemExit(0)
+          msg = MIMEText(body, _charset="utf-8")
+          msg["Subject"], msg["From"], msg["To"] = subject, frm, to
+          ctx = ssl.create_default_context()
+          with smtplib.SMTP(host, port, timeout=20) as s:
+              if port == 587:
+                  s.starttls(context=ctx)
+              s.login(user, pwd)
+              s.sendmail(frm, [to], msg.as_string())
+          print("Per-job failure email sent.")
+          PY
 
   midday_report:
     if: github.event.schedule == '0 19 * * 1-5' || github.event_name == 'workflow_dispatch'
@@ -108,13 +164,36 @@ jobs:
         env:
           TZ_PREF:     ${{ secrets.TZ_PREF }}
           WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
-          EMAIL_TO:    ${{ secrets.EMAIL_TO }}
-          EMAIL_FROM:  ${{ secrets.EMAIL_FROM }}
-          SMTP_HOST:   ${{ secrets.SMTP_HOST }}
-          SMTP_PORT:   ${{ secrets.SMTP_PORT }}
-          SMTP_USER:   ${{ secrets.SMTP_USER }}
-          SMTP_PASS:   ${{ secrets.SMTP_PASS }}
         run: python report_midday.py
+
+      - name: Email on job failure
+        if: ${{ failure() }}
+        env:
+          JOB_NAME: midday_report
+          RUN_URL:  https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python - <<'PY'
+          import os, smtplib, ssl
+          from email.mime.text import MIMEText
+          host, port = os.getenv("SMTP_HOST"), int(os.getenv("SMTP_PORT") or "587")
+          user, pwd  = os.getenv("SMTP_USER"), os.getenv("SMTP_PASS")
+          to, frm    = os.getenv("SMTP_TO"), os.getenv("SMTP_FROM")
+          url        = os.getenv("RUN_URL")
+          subject    = f"[Vega] Job '{os.getenv('JOB_NAME')}' FAILED"
+          body       = f"One or more steps failed.\nRun: {url}\n"
+          if not all([host, port, user, pwd, to, frm]):
+              print("Email vars missing; skipping per-job failure email.")
+              raise SystemExit(0)
+          msg = MIMEText(body, _charset="utf-8")
+          msg["Subject"], msg["From"], msg["To"] = subject, frm, to
+          ctx = ssl.create_default_context()
+          with smtplib.SMTP(host, port, timeout=20) as s:
+              if port == 587:
+                  s.starttls(context=ctx)
+              s.login(user, pwd)
+              s.sendmail(frm, [to], msg.as_string())
+          print("Per-job failure email sent.")
+          PY
 
   eod_wrap:
     if: github.event.schedule == '0 20 * * 1-5' || github.event_name == 'workflow_dispatch'
@@ -132,13 +211,36 @@ jobs:
         env:
           TZ_PREF:     ${{ secrets.TZ_PREF }}
           WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
-          EMAIL_TO:    ${{ secrets.EMAIL_TO }}
-          EMAIL_FROM:  ${{ secrets.EMAIL_FROM }}
-          SMTP_HOST:   ${{ secrets.SMTP_HOST }}
-          SMTP_PORT:   ${{ secrets.SMTP_PORT }}
-          SMTP_USER:   ${{ secrets.SMTP_USER }}
-          SMTP_PASS:   ${{ secrets.SMTP_PASS }}
         run: python report_eod.py
+
+      - name: Email on job failure
+        if: ${{ failure() }}
+        env:
+          JOB_NAME: eod_wrap
+          RUN_URL:  https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python - <<'PY'
+          import os, smtplib, ssl
+          from email.mime.text import MIMEText
+          host, port = os.getenv("SMTP_HOST"), int(os.getenv("SMTP_PORT") or "587")
+          user, pwd  = os.getenv("SMTP_USER"), os.getenv("SMTP_PASS")
+          to, frm    = os.getenv("SMTP_TO"), os.getenv("SMTP_FROM")
+          url        = os.getenv("RUN_URL")
+          subject    = f"[Vega] Job '{os.getenv('JOB_NAME')}' FAILED"
+          body       = f"One or more steps failed.\nRun: {url}\n"
+          if not all([host, port, user, pwd, to, frm]):
+              print("Email vars missing; skipping per-job failure email.")
+              raise SystemExit(0)
+          msg = MIMEText(body, _charset="utf-8")
+          msg["Subject"], msg["From"], msg["To"] = subject, frm, to
+          ctx = ssl.create_default_context()
+          with smtplib.SMTP(host, port, timeout=20) as s:
+              if port == 587:
+                  s.starttls(context=ctx)
+              s.login(user, pwd)
+              s.sendmail(frm, [to], msg.as_string())
+          print("Per-job failure email sent.")
+          PY
 
   apac_report:
     if: github.event.schedule == '0 1 * * *' || github.event_name == 'workflow_dispatch'
@@ -156,58 +258,66 @@ jobs:
         env:
           TZ_PREF:     ${{ secrets.TZ_PREF }}
           WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
-          EMAIL_TO:    ${{ secrets.EMAIL_TO }}
-          EMAIL_FROM:  ${{ secrets.EMAIL_FROM }}
-          SMTP_HOST:   ${{ secrets.SMTP_HOST }}
-          SMTP_PORT:   ${{ secrets.SMTP_PORT }}
-          SMTP_USER:   ${{ secrets.SMTP_USER }}
-          SMTP_PASS:   ${{ secrets.SMTP_PASS }}
         run: python report_apac.py
 
-  notify_failure:
-    needs: [monitor, morning_report, midday_report, eod_wrap, apac_report]
-    if: failure()
-    runs-on: ubuntu-latest
-    env:
-      PYTHONPATH: ${{ github.workspace }}
-    steps:
-      - name: Compose and send (best effort; never fail)
+      - name: Email on job failure
+        if: ${{ failure() }}
         env:
-          EMAIL_TO:   ${{ secrets.EMAIL_TO }}
-          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
-          SMTP_HOST:  ${{ secrets.SMTP_HOST }}
-          SMTP_PORT:  ${{ secrets.SMTP_PORT }}
-          SMTP_USER:  ${{ secrets.SMTP_USER }}
-          SMTP_PASS:  ${{ secrets.SMTP_PASS }}
-          RUN_URL:    https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          JOB_NAME: apac_report
+          RUN_URL:  https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           python - <<'PY'
           import os, smtplib, ssl
           from email.mime.text import MIMEText
-
-          to  = os.getenv("EMAIL_TO")
-          frm = os.getenv("EMAIL_FROM")
-          host= os.getenv("SMTP_HOST")
-          port= int(os.getenv("SMTP_PORT") or "587")
-          usr = os.getenv("SMTP_USER")
-          pwd = os.getenv("SMTP_PASS")
-          url = os.getenv("RUN_URL")
-
-          # If email isn't configured, exit quietly so this job never fails.
-          if not all([to, frm, host, usr, pwd]):
-              print("notify_failure: email vars missing; skipping email.")
+          host, port = os.getenv("SMTP_HOST"), int(os.getenv("SMTP_PORT") or "587")
+          user, pwd  = os.getenv("SMTP_USER"), os.getenv("SMTP_PASS")
+          to, frm    = os.getenv("SMTP_TO"), os.getenv("SMTP_FROM")
+          url        = os.getenv("RUN_URL")
+          subject    = f"[Vega] Job '{os.getenv('JOB_NAME')}' FAILED"
+          body       = f"One or more steps failed.\nRun: {url}\n"
+          if not all([host, port, user, pwd, to, frm]):
+              print("Email vars missing; skipping per-job failure email.")
               raise SystemExit(0)
-
-          body = f"⚠️ Vega GitHub Actions: a job failed\n\nCheck logs: {url}\n"
           msg = MIMEText(body, _charset="utf-8")
-          msg["Subject"] = "⚠️ Vega Actions: job failure"
-          msg["From"]    = frm
-          msg["To"]      = to
-
+          msg["Subject"], msg["From"], msg["To"] = subject, frm, to
           ctx = ssl.create_default_context()
-          with smtplib.SMTP(host, port, timeout=15) as s:
-              s.starttls(context=ctx)
-              s.login(usr, pwd)
+          with smtplib.SMTP(host, port, timeout=20) as s:
+              if port == 587:
+                  s.starttls(context=ctx)
+              s.login(user, pwd)
               s.sendmail(frm, [to], msg.as_string())
-          print("notify_failure: email sent.")
+          print("Per-job failure email sent.")
+          PY
+
+  notify_failure:
+    name: notify_failure
+    needs: [monitor, morning_report, midday_report, eod_wrap, apac_report]
+    if: ${{ failure() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send aggregated failure email
+        env:
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python - <<'PY'
+          import os, smtplib, ssl
+          from email.mime.text import MIMEText
+          host, port = os.getenv("SMTP_HOST"), int(os.getenv("SMTP_PORT") or "587")
+          user, pwd  = os.getenv("SMTP_USER"), os.getenv("SMTP_PASS")
+          to, frm    = os.getenv("SMTP_TO"), os.getenv("SMTP_FROM")
+          url        = os.getenv("RUN_URL")
+          if not all([host, port, user, pwd, to, frm]):
+              print("notify_failure: email vars missing; skipping.")
+              raise SystemExit(0)
+          subject = "[Vega] GitHub Actions FAILED (aggregate)"
+          body    = f"One or more jobs failed.\nRun: {url}\n"
+          msg = MIMEText(body, _charset="utf-8")
+          msg["Subject"], msg["From"], msg["To"] = subject, frm, to
+          ctx = ssl.create_default_context()
+          with smtplib.SMTP(host, port, timeout=20) as s:
+              if port == 587:
+                  s.starttls(context=ctx)
+              s.login(user, pwd)
+              s.sendmail(frm, [to], msg.as_string())
+          print("Aggregate failure email sent.")
           PY
