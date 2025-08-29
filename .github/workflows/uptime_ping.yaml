@@ -1,31 +1,66 @@
 name: Cockpit Uptime Ping
+
 on:
-  schedule: [{ cron: "*/30 13-23 * * 1-5" }]  # every 30m, 06:00–16:59 Phoenix
+  schedule:
+    # every 30m, at :05 / :35 (adjust as you like)
+    - cron: "5,35 * * * *"
   workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  VEGA_COCKPIT_URL: ${{ secrets.VEGA_COCKPIT_URL }}
+
 jobs:
   ping:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout (no files needed but keeps context)
+        uses: actions/checkout@v4
+
       - name: Curl app
-        id: c
+        id: ping
+        shell: bash
         run: |
-          URL="${{ vars.COCKPIT_URL }}"
-          code=$(curl -s -o /dev/null -w "%{http_code}" "$URL" || echo "000")
-          echo "code=$code" >> $GITHUB_OUTPUT
-          mkdir -p snapshots
-          echo "{\"url\":\"$URL\",\"http_code\":\"$code\",\"ts\":\"$(date -u +%FT%TZ)\"}" > snapshots/uptime.json
-      - uses: actions/upload-artifact@v4
-        with: { name: uptime, path: snapshots/uptime.json, retention-days: 3 }
-      - name: Open issue if down
-        if: steps.c.outputs.code != '200' && steps.c.outputs.code != '302'
+          set -e
+          STATUS="$(curl -s -o /dev/null -w "%{http_code}" "${VEGA_COCKPIT_URL}")"
+          echo "code=${STATUS}" >> "$GITHUB_OUTPUT"
+          echo "HTTP status: ${STATUS}"
+
+      - name: Save snapshot json
+        shell: bash
+        run: |
+          mkdir -p snapshot
+          printf '{ "code": "%s", "date": "%s" }\n' \
+            "${{ steps.ping.outputs.code }}" "$(date -u +%FT%TZ)" > snapshot/uptime.json
+          cat snapshot/uptime.json
+
+      - name: Upload snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: uptime.json
+          path: snapshot/uptime.json
+          retention-days: 7
+
+      - name: Open incident issue if not 200
+        if: ${{ steps.ping.outputs.code != '200' }}
         uses: actions/github-script@v7
+        env:
+          CODE: ${{ steps.ping.outputs.code }}
         with:
           script: |
+            const code = process.env.CODE;
+            const title = `Cockpit down (${code})`;
+            const body  = `Uptime check failed at ${new Date().toISOString()} UTC\n\n` +
+                          `URL: ${{ env.VEGA_COCKPIT_URL }}\n` +
+                          `Status: ${code}`;
             await github.rest.issues.create({
-              owner: context.repo.owner, repo: context.repo.repo,
-              title: `Cockpit DOWN (HTTP ${process.env.CODE})`,
-              body: `Health check failed at ${new Date().toISOString()}.`,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
               labels: ['ops','incident']
-            })
-        env: { CODE: ${{ steps.c.outputs.code }} }
+            });
