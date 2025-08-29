@@ -38,3 +38,17 @@ def now() -> str:
 # ---- (Optional) other utilities can be re-exported here to keep `from utils import X` working ----
 # from .deps_check import show_missing  # uncomment if you want this old import path to keep working
 # from .something_else import some_fn
+def put_row_prev_close(*args, **kwargs):
+    """Stub: placeholder until full logic is implemented."""
+    return None
+def last_price(symbol: str, default: float = 0.0):
+    """Stub: return a safe default last price (override later with real data)."""
+    try:
+        # if you later wire real feeds, you can look them up here
+        return float(default)
+    except Exception:
+        return 0.0
+
+def get_ea(symbol: str):
+    """Stub: 'get earnings announcement' date; empty string means unknown."""
+    return ""
