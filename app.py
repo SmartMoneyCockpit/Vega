@@ -1536,7 +1536,7 @@ def page_stay_out_get_back_in():
     _sovsgi_builtin()
 
     # External module output (optional)
-    ext = globals().get("_stay") or globals().get("render_stay_or_reenter")
+    ext = globals().get("stay_get_render")
     if callable(ext):
         with st.expander("Module output (external)", expanded=True):
             # Hide only H1/H2 inside the module block (keep deeper headings visible)
