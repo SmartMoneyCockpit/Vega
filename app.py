@@ -451,13 +451,11 @@ st.sidebar.header("Vega • Session Controls")
 
 # --- Theme & Accent (Sidebar Toggle) ---
 with st.sidebar.expander("Appearance", expanded=True):
-    _cur_theme  = st.session_state.get("vega_theme", DEFAULT_THEME)
-    _cur_accent = st.session_state.get("vega_accent", DEFAULT_ACCENT)
-    st.radio("Theme", ["Light", "Dark"], key="vega_theme", horizontal=True)
+    st.radio("Theme", ["Light", "Dark"], key="vega_theme")
     st.color_picker("Accent color", key="vega_accent")
     if st.button("Reset to defaults"):
-        st.session_state["vega_theme"] = DEFAULT_THEME
-        st.session_state["vega_accent"] = DEFAULT_ACCENT
+        st.session_state["vega_theme"] = "Dark"
+        st.session_state["vega_accent"] = "#10b981"
         st.experimental_rerun()
 
 entered_pin = st.sidebar.text_input(
@@ -1527,11 +1525,33 @@ show_startup_banner()
 
 
 # ---- Stay Out vs Get Back In: page function (single render inside its tab) ----
+
 def page_stay_out_get_back_in():
+    """
+    Stay Out vs Get Back In page.
+    - If an external module ( `_stay` or `render_stay_or_reenter` ) is present, call it and STOP.
+    - Otherwise, render the built-in UI.
+    This prevents duplicate headers/content.
+    """
+    ext = globals().get("_stay") or globals().get("render_stay_or_reenter")
+    if callable(ext):
+        try:
+            ext()  # external code should render its own header/UI
+        except Exception as e:
+            st.subheader("Stay Out vs Get Back In")
+            st.exception(e)
+            _sovsgi_builtin()
+        return
+
     st.subheader("Stay Out vs Get Back In")
+    _sovsgi_builtin()
+
+
+def _sovsgi_builtin():
+    # Minimal, safe built-in UI used only when no external module handles the page
     with st.expander("Config", expanded=False):
         st.text_input("Decision Name", value="Re-Entry Trigger", key="so_re_name")
-        st.text_input("Ticker", value="SPY", key="so_re_ticker")
+        st.text_input("Ticker", value="SPY", key="so_re_ticker", help="Any supported symbol.")
 
     st.markdown("##### Relative Strength")
     c1, c2, c3 = st.columns(3)
@@ -1563,27 +1583,7 @@ def page_stay_out_get_back_in():
     st.divider()
     st.button("Evaluate: GET BACK IN / STAY OUT", type="primary", key="so_eval")
 
-    # Optional external module hook
-    try:
-        _runner = globals().get("_stay") or globals().get("render_stay_or_reenter")
-        if callable(_runner):
-            st.markdown("---")
-            st.caption("Module output:")
-            _runner()
-        else:
-            st.info("No external module detected. Built‑in UI shown.", icon="ℹ️")
-    except Exception as e:
-        st.exception(e)
 
-# ---------- Router & Quick Nav ----------
-MODULES = [
-    "System Check",
-    "NA Cockpit", "APAC Cockpit", "Morning News", "Risk Lab",
-    "PnL Analytics", "Backtest (Beta)",
-    "Options Builder", "FX & Hedges", "Broker Import",
-    "Health Journal", "Admin / Backup", "Docs",
-    "Stay Out vs Get Back In"   # NEW TAB
-]
 
 def _missing(name: str):
     st.error(f"'{name}' is unavailable in this build. Paste or import its code above, or disable the tab.")
@@ -1631,7 +1631,12 @@ pages = [
     ("Docs",
      lambda: (page_docs() if callable(globals().get("page_docs")) else _missing("Docs"))),
 
-    ("Stay Out vs Get Back In", lambda: (page_stay_out_get_back_in() if callable(globals().get("page_stay_out_get_back_in")) else _missing("Stay Out vs Get Back In"))),
+    ("Stay Out vs Get Back In",
+     lambda: (
+         (st.markdown("### Stay Out vs. Get Back In") or render_stay_or_reenter())
+         if callable(globals().get("render_stay_or_reenter"))
+         else (st.markdown("### Stay Out vs. Get Back In") or st.error("Module `module_stay_or_reenter.py` not found or failed to import."))
+     )),
 ]
 
 # Ensure tab titles match MODULES (defensive, in case someone edits one list but not the other)
