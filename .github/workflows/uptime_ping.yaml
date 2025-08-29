@@ -62,14 +62,12 @@ jobs:
           script: |
             const code = '${{ steps.ping.outputs.code }}';
             const url = '${{ steps.resolve.outputs.url }}';
-            const title = `Cockpit down (${code})`;
-            const body = `Uptime check failed at ${new Date().toISOString()} UTC\nURL: ${url}\nStatus: ${code}`;
             await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              title,
-              body,
-              labels: ['ops', 'incident']
+              title: `Cockpit down (${code})`,
+              body: `Uptime check failed at ${new Date().toISOString()} UTC\nURL: ${url}\nStatus: ${code}`,
+              labels: ['ops','incident']
             });
 
       - name: Skip note (no URL configured)
