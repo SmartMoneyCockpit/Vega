@@ -37,8 +37,10 @@ def run_or_report(fn, label: str):
 DEFAULT_THEME = "Dark"       # must be "Light" or "Dark" to match vega_css()
 DEFAULT_ACCENT = "#10b981"   # default green accent
 if "vega_theme" not in st.session_state:
+    st.session_state["vega_theme"] = "Dark"
     # removed duplicate session_state write for vega_theme
 if "vega_accent" not in st.session_state:
+    st.session_state["vega_accent"] = "indigo"
     st.session_state["vega_accent"] = DEFAULT_ACCENT
 
 # ---- Streamlit page config ----
