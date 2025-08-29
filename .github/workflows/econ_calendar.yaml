@@ -1,26 +1,65 @@
-# One event per line. Dates are local to the event's country; output is UTC-stamped.
-# importance: low | medium | high
-- date: 2025-09-02
-  region: US
-  event: ISM Manufacturing PMI
-  importance: high
+name: Econ Calendar
 
-- date: 2025-09-03
-  region: CA
-  event: Bank of Canada Rate Decision
-  importance: high
+on:
+  schedule:
+    - cron: "0 12 * * 1-5"  # weekdays 12:00 UTC
+  workflow_dispatch:
 
-- date: 2025-09-05
-  region: US
-  event: Nonfarm Payrolls (NFP)
-  importance: high
+permissions:
+  contents: read
+  actions: read
 
-- date: 2025-09-10
-  region: MX
-  event: Mexico Inflation (CPI)
-  importance: medium
+env:
+  ECON_EVENTS: |
+    - date: 2025-09-02
+      region: US
+      event: ISM Manufacturing PMI
+      importance: high
+    - date: 2025-09-03
+      region: CA
+      event: Bank of Canada Rate Decision
+      importance: high
+    - date: 2025-09-06
+      region: US
+      event: Nonfarm Payrolls (NFP)
+      importance: high
+    - date: 2025-09-10
+      region: US
+      event: US CPI (Inflation)
+      importance: high
+    - date: 2025-09-12
+      region: MX
+      event: Mexico CPI (Inflation)
+      importance: medium
+    - date: 2025-09-12
+      region: BR
+      event: Brazil IPCA Inflation
+      importance: medium
 
-- date: 2025-09-12
-  region: BR
-  event: Brazil IPCA Inflation
-  importance: medium
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse events and save JSON
+        id: parse
+        run: |
+          python - << 'PY'
+          import os, json, yaml, pathlib
+          events = yaml.safe_load(os.environ["ECON_EVENTS"])
+          out = {"generated_at_utc": __import__("datetime").datetime.utcnow().isoformat()+"Z",
+                 "events": events}
+          pathlib.Path("snapshot").mkdir(exist_ok=True)
+          pathlib.Path("snapshot/econ_calendar.json").write_text(json.dumps(out, indent=2))
+          # expose a quick count as an output
+          with open(os.environ["GITHUB_OUTPUT"], "a") as gh:
+              print(f"count={len(events)}", file=gh)
+          PY
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: econ_calendar.json
+          path: snapshot/econ_calendar.json
+          retention-days: 14
