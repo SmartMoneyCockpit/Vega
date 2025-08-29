@@ -2,7 +2,7 @@ name: Cockpit Uptime Ping
 
 on:
   schedule:
-    - cron: "5,35 * * * *"
+    - cron: '5,35 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -15,10 +15,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Resolve URL from secret first, then from repo variable; may be empty
       - name: Resolve cockpit URL
         id: resolve
-        shell: bash
         run: |
           URL=""
           if [ -n "${{ secrets.VEGA_COCKPIT_URL }}" ]; then
@@ -26,9 +24,9 @@ jobs:
           elif [ -n "${{ vars.VEGA_COCKPIT_URL }}" ]; then
             URL="${{ vars.VEGA_COCKPIT_URL }}"
           fi
-          echo "url=${URL}" >> "$GITHUB_OUTPUT"
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
           if [ -z "$URL" ]; then
-            echo "No URL configured; set secrets.VEGA_COCKPIT_URL or vars.VEGA_COCKPIT_URL to enable ping."
+            echo "No URL configured."
           fi
 
       - name: Curl app
@@ -36,21 +34,18 @@ jobs:
         if: ${{ steps.resolve.outputs.url != '' }}
         env:
           URL: ${{ steps.resolve.outputs.url }}
-        shell: bash
         run: |
-          STATUS="$(curl -s -o /dev/null -w "%{http_code}" "${URL}")"
-          echo "code=${STATUS}" >> "$GITHUB_OUTPUT"
-          echo "HTTP status: ${STATUS}"
+          STATUS="$(curl -s -o /dev/null -w '%{http_code}' "$URL")"
+          echo "code=$STATUS" >> "$GITHUB_OUTPUT"
+          echo "HTTP status: $STATUS"
 
       - name: Save snapshot json
         if: ${{ steps.resolve.outputs.url != '' }}
-        shell: bash
         run: |
           mkdir -p snapshot
           printf '{ "code": "%s", "date": "%s", "url": "%s" }\n' \
             "${{ steps.ping.outputs.code }}" "$(date -u +%FT%TZ)" "${{ steps.resolve.outputs.url }}" \
             > snapshot/uptime.json
-          cat snapshot/uptime.json
 
       - name: Upload snapshot
         if: ${{ steps.resolve.outputs.url != '' }}
@@ -63,25 +58,20 @@ jobs:
       - name: Open incident issue if not 200
         if: ${{ steps.resolve.outputs.url != '' && steps.ping.outputs.code != '200' }}
         uses: actions/github-script@v7
-        env:
-          CODE: ${{ steps.ping.outputs.code }}
-          URL: ${{ steps.resolve.outputs.url }}
         with:
           script: |
-            const title = `Cockpit down (${process.env.CODE})`;
-            const body  = [
-              `Uptime check failed at ${new Date().toISOString()} UTC`,
-              `URL: ${process.env.URL}`,
-              `Status: ${process.env.CODE}`
-            ].join("\n");
+            const code = '${{ steps.ping.outputs.code }}';
+            const url = '${{ steps.resolve.outputs.url }}';
+            const title = `Cockpit down (${code})`;
+            const body = `Uptime check failed at ${new Date().toISOString()} UTC\nURL: ${url}\nStatus: ${code}`;
             await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
               title,
               body,
-              labels: ['ops','incident']
+              labels: ['ops', 'incident']
             });
 
       - name: Skip note (no URL configured)
         if: ${{ steps.resolve.outputs.url == '' }}
-        run: echo "Skipped ping: configure secrets.VEGA_COCKPIT_URL or vars.VEGA_COCKPIT_URL."
+        run: echo "Skipped ping: configure VEGA_COCKPIT_URL as a secret or variable."
