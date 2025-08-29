@@ -1,0 +1,46 @@
+name: Econ Calendar (Weekly)
+on:
+  schedule: [{ cron: "0 14 * * 1" }]  # Mon 07:00 Phoenix
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - name: Build next-7-days calendar JSON
+        run: |
+          python - << 'PY'
+          import yaml, json, datetime as dt, os
+          from pathlib import Path
+
+          path = "config/econ_calendar.yaml"
+          data = []
+          if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+              data = yaml.safe_load(f) or []
+
+          today = dt.date.today()
+          next7 = today + dt.timedelta(days=7)
+
+          week = [e for e in data
+                  if isinstance(e, dict)
+                  and "date" in e
+                  and today.isoformat() <= e["date"] <= next7.isoformat()]
+
+          out = {
+            "generated_utc": dt.datetime.utcnow().isoformat() + "Z",
+            "window": {"start": today.isoformat(), "end": next7.isoformat()},
+            "events": week
+          }
+
+          Path("snapshots").mkdir(exist_ok=True)
+          with open("snapshots/econ_week.json", "w", encoding="utf-8") as f:
+            json.dump(out, f, indent=2)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: econ-week
+          path: snapshots/econ_week.json
+          retention-days: 7
