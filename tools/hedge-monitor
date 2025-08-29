@@ -1,0 +1,70 @@
+#!/usr/bin/env python3
+# Hedge Monitor — zero-dependency runner
+# - Uses JSON config by default (config/stay_get.json)
+# - If PyYAML is present, will also try YAML (config/stay_get.yaml/.yml) but never fails if missing
+# - Exits 0 on success with a small status file for Actions to upload
+
+from __future__ import annotations
+import os, sys, json, time, pathlib, datetime as dt
+
+DEFAULTS = {
+    "spy_get_in": 651.39,
+    "qqq_confirm": 576.32,
+    "spy_risk1": 638.49,
+    "spy_risk2": 632.04,
+}
+
+CFG_JSON = pathlib.Path("config/stay_get.json")
+CFG_YAML = [pathlib.Path("config/stay_get.yaml"), pathlib.Path("config/stay_get.yml")]
+
+def try_load_yaml(path: pathlib.Path):
+    try:
+        import yaml  # optional
+    except Exception:
+        return None
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        return data
+    except Exception:
+        return None
+
+def load_triggers() -> dict:
+    # Prefer JSON; fall back to YAML if PyYAML exists; else defaults
+    if CFG_JSON.exists():
+        try:
+            with CFG_JSON.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+            # Validate keys; merge with defaults
+            out = DEFAULTS.copy()
+            out.update({k: float(v) for k, v in data.items() if k in DEFAULTS})
+            return out
+        except Exception:
+            pass
+    for p in CFG_YAML:
+        if p.exists():
+            data = try_load_yaml(p)
+            if isinstance(data, dict):
+                out = DEFAULTS.copy()
+                out.update({k: float(v) for k, v in data.items() if k in DEFAULTS})
+                return out
+    return DEFAULTS.copy()
+
+def main():
+    t = load_triggers()
+    # This is a placeholder logic block; integrate your market checks here.
+    # We just echo the triggers and write a status file for the GH Action log/artifact.
+    status_lines = [
+        f"[{dt.datetime.utcnow().isoformat()}Z] Hedge Monitor OK",
+        f"Triggers: spy_get_in={t['spy_get_in']}  qqq_confirm={t['qqq_confirm']}  "
+        f"spy_risk1={t['spy_risk1']}  spy_risk2={t['spy_risk2']}"
+    ]
+    out_dir = pathlib.Path("artifacts")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    status_path = out_dir / "hedge_monitor_status.txt"
+    status_path.write_text("\n".join(status_lines), encoding="utf-8")
+    print(status_path.read_text(encoding="utf-8"))
+    return 0
+
+if __name__ == "__main__":
+    sys.exit(main())
