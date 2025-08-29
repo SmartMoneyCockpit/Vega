@@ -37,7 +37,7 @@ def run_or_report(fn, label: str):
 DEFAULT_THEME = "Dark"       # must be "Light" or "Dark" to match vega_css()
 DEFAULT_ACCENT = "#10b981"   # default green accent
 if "vega_theme" not in st.session_state:
-    st.session_state["vega_theme"] = DEFAULT_THEME
+    # removed duplicate session_state write for vega_theme
 if "vega_accent" not in st.session_state:
     st.session_state["vega_accent"] = DEFAULT_ACCENT
 
@@ -471,7 +471,7 @@ with st.sidebar.expander("Appearance", expanded=True):
     )
 
     if st.button("Reset to defaults"):
-        st.session_state["vega_theme"]  = DEFAULT_THEME
+        # removed duplicate session_state write for vega_theme
         st.session_state["vega_accent"] = DEFAULT_ACCENT
         st.experimental_rerun()
 
@@ -1542,25 +1542,54 @@ show_startup_banner()
 
 
 # ---- Stay Out vs Get Back In: page function (single render inside its tab) ----
+
 def page_stay_out_get_back_in():
     st.subheader("Stay Out vs Get Back In")
-    if _stay is None:
-        st.info("Module not found. Looking for either of these files:")
-        st.code("1) ./module_stay_or_reenter.py\n2) ./modules/stay_or_reenter.py", language="text")
-        st.caption("Repo root:")
-        try:
-            st.code(os.listdir("."), language="python")
-        except Exception:
-            pass
-        if os.path.isdir("modules"):
-            st.caption("./modules:")
-            try:
-                st.code(os.listdir("modules"), language="python")
-            except Exception:
-                pass
-    else:
-        # run via fail-safe so errors surface on-screen
-        run_or_report(_stay, "Stay Out vs Get Back In")
+
+    with st.expander("Config", expanded=False):
+        st.text_input("Decision Name", value="Re-Entry Trigger", key="so_re_name")
+        st.text_input("Ticker", value="SPY", key="so_re_ticker", help="Any tradable symbol supported by your data.")
+
+    st.markdown("##### Relative Strength")
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.number_input("Lookback (days)", value=20, step=1, key="so_re_lookback")
+        st.caption("vs SPY"); st.text("(no data)")
+    with c2:
+        st.caption("vs QQQ"); st.text("(see chart)")
+    with c3:
+        st.caption("vs Sector"); st.text("—")
+
+    st.markdown("##### Step 1: Status Check")
+    a, b = st.columns(2)
+    with a:
+        st.markdown("**Exit Triggers**")
+        st.checkbox("Price below stop/support", key="so_exit_1")
+        st.checkbox("MACD bear; RSI < 50", key="so_exit_2")
+        st.checkbox("OBV negative / no accumulation", key="so_exit_3")
+        st.checkbox("Breadth weak, sector lagging", key="so_exit_4")
+        st.checkbox("R:R collapsed (<1.5:1)", key="so_exit_5")
+    with b:
+        st.markdown("**Re-entry Triggers**")
+        st.checkbox("Reclaim 20/50 DMA or pattern break", key="so_re_1")
+        st.checkbox("MACD bull; RSI > 50 rising", key="so_re_2")
+        st.checkbox("OBV up + volume confirm", key="so_re_3")
+        st.checkbox("Breadth risk-on, sector leading", key="so_re_4")
+        st.checkbox("≥2–3:1 with defined stops/targets", key="so_re_5")
+
+    st.divider()
+    st.button("Evaluate: GET BACK IN / STAY OUT", type="primary", key="so_eval")
+
+    # Optional hook to external module
+    try:
+        _runner = globals().get("_stay") or globals().get("render_stay_or_reenter")
+        if callable(_runner):
+            st.markdown("---")
+            st.caption("Module output:")
+            _runner()
+    except Exception as e:
+        st.exception(e)
+
 
 # ---------- Router & Quick Nav ----------
 MODULES = [
