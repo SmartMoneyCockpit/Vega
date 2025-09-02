@@ -27,7 +27,13 @@ import numpy as np
 import pandas as pd
 import requests
 import yfinance as yf
-import yaml
+try:
+    import yaml
+except Exception:
+    class _YamlShim:
+        def safe_load(self, *a, **k):
+            return {}
+    yaml = _YamlShim()
 
 # ----------------------------
 # Paths / constants
