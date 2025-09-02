@@ -2,11 +2,9 @@
 # Small helper toolkit used by Vega workflows.
 
 from __future__ import annotations
-
-from datetime import datetime
-from typing import Optional
+from datetime import datetime, time
+from typing import Optional, Iterable
 from zoneinfo import ZoneInfo
-
 
 # ===================== Time helpers =====================
 
@@ -21,6 +19,31 @@ def now_pt() -> datetime:
 # Back-compat alias some scripts still use
 get_now = now
 
+# ===================== Trading window helper =====================
+
+def in_us_window(
+    ts: Optional[datetime] = None,
+    tz: str = "America/Phoenix",
+    start: str = "06:30",   # local open (your rule)
+    end: str = "13:00",     # local close (your rule)
+    weekdays: Iterable[int] = (0, 1, 2, 3, 4),
+) -> bool:
+    """
+    Return True if local time is within the US trading window [start, end)
+    on a weekday (Mon=0 ... Sun=6). Holidays not considered here.
+    """
+    z = ZoneInfo(tz)
+    if ts is None:
+        tloc = now(tz)
+    else:
+        tloc = ts.astimezone(z) if ts.tzinfo else ts.replace(tzinfo=z)
+
+    sh, sm = (int(x) for x in start.split(":", 1))
+    eh, em = (int(x) for x in end.split(":", 1))
+    open_t  = time(sh, sm)
+    close_t = time(eh, em)
+
+    return (tloc.weekday() in set(weekdays)) and (open_t <= tloc.time() < close_t)
 
 # ===================== Format helpers =====================
 
@@ -40,7 +63,6 @@ def fmt_num(x: Optional[float], digits: int = 2) -> str:
 # Back-compat alias some old scripts expect
 fmt_out = fmt_pct
 
-
 # ===================== Light market data =====================
 
 def _yf():
@@ -52,10 +74,7 @@ def _yf():
         return None
 
 def last_price(ticker: str) -> Optional[float]:
-    """
-    Return the latest close for a ticker (float), or None on failure.
-    Uses yfinance; callers should handle None.
-    """
+    """Return the latest close for a ticker (float), or None on failure."""
     yf = _yf()
     if yf is None:
         return None
@@ -66,10 +85,7 @@ def last_price(ticker: str) -> Optional[float]:
         return None
 
 def get_from_prev_close(ticker: str) -> Optional[float]:
-    """
-    Fractional change vs previous close (e.g., 0.0123 == +1.23%),
-    or None if unavailable.
-    """
+    """Fractional change vs previous close (0.0123 = +1.23%), or None."""
     yf = _yf()
     if yf is None:
         return None
@@ -80,10 +96,9 @@ def get_from_prev_close(ticker: str) -> Optional[float]:
     except Exception:
         return None
 
-
-# What we export
 __all__ = [
     "now", "now_pt", "get_now",
+    "in_us_window",
     "fmt_pct", "fmt_num", "fmt_out",
     "last_price", "get_from_prev_close",
 ]
