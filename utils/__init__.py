@@ -19,54 +19,73 @@ def now_pt() -> datetime:
 # Back-compat alias some scripts still use
 get_now = now
 
-# ===================== Trading window helper =====================
+# ===================== Trading-window helpers =====================
+
+def _in_window(
+    ts: Optional[datetime],
+    tz: str,
+    start: str,
+    end: str,
+    weekdays: Iterable[int],
+) -> bool:
+    z = ZoneInfo(tz)
+    tloc = (ts.astimezone(z) if (ts and ts.tzinfo) else
+            (ts.replace(tzinfo=z) if ts else datetime.now(z)))
+    sh, sm = (int(x) for x in start.split(":", 1))
+    eh, em = (int(x) for x in end.split(":", 1))
+    open_t, close_t = time(sh, sm), time(eh, em)
+    return (tloc.weekday() in set(weekdays)) and (open_t <= tloc.time() < close_t)
 
 def in_us_window(
     ts: Optional[datetime] = None,
     tz: str = "America/Phoenix",
-    start: str = "06:30",   # local open (your rule)
-    end: str = "13:00",     # local close (your rule)
+    start: str = "06:30",  # your US session open (local)
+    end: str = "13:00",    # your US session close (local)
     weekdays: Iterable[int] = (0, 1, 2, 3, 4),
 ) -> bool:
-    """
-    Return True if local time is within the US trading window [start, end)
-    on a weekday (Mon=0 ... Sun=6). Holidays not considered here.
-    """
-    z = ZoneInfo(tz)
-    if ts is None:
-        tloc = now(tz)
-    else:
-        tloc = ts.astimezone(z) if ts.tzinfo else ts.replace(tzinfo=z)
+    """US trading window check (defaults to Phoenix times)."""
+    return _in_window(ts, tz, start, end, weekdays)
 
-    sh, sm = (int(x) for x in start.split(":", 1))
-    eh, em = (int(x) for x in end.split(":", 1))
-    open_t  = time(sh, sm)
-    close_t = time(eh, em)
+# --- Compatibility aliases used by older scripts ---
+def in_us_mx_window(
+    ts: Optional[datetime] = None,
+    tz: str = "America/Phoenix",
+    start: str = "06:30",
+    end: str = "13:00",
+    weekdays: Iterable[int] = (0, 1, 2, 3, 4),
+) -> bool:
+    """Alias to in_us_window (kept for backward compatibility)."""
+    return in_us_window(ts, tz, start, end, weekdays)
 
-    return (tloc.weekday() in set(weekdays)) and (open_t <= tloc.time() < close_t)
+def in_us_mxc_window(
+    ts: Optional[datetime] = None,
+    tz: str = "America/Phoenix",
+    start: str = "06:30",
+    end: str = "13:00",
+    weekdays: Iterable[int] = (0, 1, 2, 3, 4),
+) -> bool:
+    """Alias to in_us_window (kept for backward compatibility)."""
+    return in_us_window(ts, tz, start, end, weekdays)
 
-# ===================== Format helpers =====================
+# ===================== Formatting helpers =====================
 
 def fmt_pct(x: Optional[float], digits: int = 2) -> str:
-    """Format a fraction (0.0123) as +1.23%. None -> '—'."""
     if x is None:
         return "—"
     sign = "+" if x >= 0 else ""
     return f"{sign}{x * 100:.{digits}f}%"
 
 def fmt_num(x: Optional[float], digits: int = 2) -> str:
-    """Format a number with fixed decimals. None -> '—'."""
     if x is None:
         return "—"
     return f"{x:.{digits}f}"
 
-# Back-compat alias some old scripts expect
+# Back-compat alias
 fmt_out = fmt_pct
 
 # ===================== Light market data =====================
 
 def _yf():
-    """Lazy import yfinance so simply importing utils doesn't require it."""
     try:
         import yfinance as yf  # type: ignore
         return yf
@@ -74,7 +93,6 @@ def _yf():
         return None
 
 def last_price(ticker: str) -> Optional[float]:
-    """Return the latest close for a ticker (float), or None on failure."""
     yf = _yf()
     if yf is None:
         return None
@@ -85,7 +103,6 @@ def last_price(ticker: str) -> Optional[float]:
         return None
 
 def get_from_prev_close(ticker: str) -> Optional[float]:
-    """Fractional change vs previous close (0.0123 = +1.23%), or None."""
     yf = _yf()
     if yf is None:
         return None
@@ -98,7 +115,7 @@ def get_from_prev_close(ticker: str) -> Optional[float]:
 
 __all__ = [
     "now", "now_pt", "get_now",
-    "in_us_window",
+    "in_us_window", "in_us_mx_window", "in_us_mxc_window",
     "fmt_pct", "fmt_num", "fmt_out",
     "last_price", "get_from_prev_close",
 ]
