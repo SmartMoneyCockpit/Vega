@@ -1,29 +1,71 @@
 name: Guardrail Ping
+
 on:
-  schedule: [{ cron: "*/30 13-20 * * 1-5" }]
+  schedule:
+    - cron: "*/30 13-20 * * 1-5"  # every 30 min, 06:00–13:59 Phoenix (UTC-7)
   workflow_dispatch:
+
 jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
-        with: { python-version: "3.11" }
-      - run: |
-          python - << 'PY'
-          import json, yaml, os, datetime as dt
-          cfg=yaml.safe_load(open("config/vega_rules.yaml"))
-          tel={"dxy":98.5,"usdmxn":18.7,"usdcad":1.385,"vix":16.0}
-          if os.path.exists("data/telemetry.json"): tel.update(json.load(open("data/telemetry.json")))
-          trig = {
-            "tighten_fx": tel["dxy"]>cfg["hedge_rules"]["trigger_secondary"]["dxy_gt"] or
-                          tel["usdmxn"]>cfg["hedge_rules"]["trigger_secondary"]["usdmxn_gt"] or
-                          tel["usdcad"]>cfg["hedge_rules"]["trigger_secondary"]["usdcad_gt"],
-            "vix_red": tel["vix"]>cfg["hedge_rules"]["trigger_primary"]["vix_gt"],
-            "ts": dt.datetime.utcnow().isoformat()+"Z"
+        with:
+          python-version: "3.11"
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyyaml==6.0.1
+
+      - name: Build guardrail status
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from datetime import datetime, timezone
+          import yaml
+
+          # Load config (if present)
+          cfg_path = Path("config/vega_rules.yaml")
+          cfg = yaml.safe_load(cfg_path.read_text()) if cfg_path.exists() else {}
+          h = cfg.get("hedge_rules", {})
+          sec = h.get("trigger_secondary", {})
+          pri = h.get("trigger_primary", {})
+
+          # Load telemetry (if present)
+          tel_path = Path("data/telemetry.json")
+          tel = {}
+          if tel_path.exists():
+            try:
+              tel = json.loads(tel_path.read_text())
+            except Exception:
+              tel = {}
+
+          # Guardrail triggers
+          tighten_fx = (
+            (tel.get("dxy", -1e9)    >= sec.get("dxy_gt", 1e9)) or
+            (tel.get("usdmxn", -1e9) >= sec.get("usdmxn_gt", 1e9)) or
+            (tel.get("usdcad", -1e9) >= sec.get("usdcad_gt", 1e9))
+          )
+          vix_red = tel.get("vix", -1e9) >= pri.get("vix_gt", 1e9)
+
+          out = {
+            "tighten_fx": tighten_fx,
+            "vix_red": vix_red,
+            "ts": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
           }
-          os.makedirs("signals", exist_ok=True)
-          open("signals/guardrails.json","w").write(json.dumps(trig, indent=2))
+
+          outdir = Path("signals"); outdir.mkdir(exist_ok=True)
+          (outdir / "guardrails.json").write_text(json.dumps(out, indent=2))
+          print("wrote signals/guardrails.json")
           PY
-      - uses: actions/upload-artifact@v4
-        with: { name: guardrails, path: signals/guardrails.json, retention-days: 3 }
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: guardrails
+          path: signals/guardrails.json
+          retention-days: 3
