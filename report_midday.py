@@ -1,67 +1,127 @@
-# Vega — North American Midday Verdict
-from utils import now_pt, pct_from_prev_close, last_price, fmt_num
-from email_webhook import broadcast
+# Vega • North American Midday Verdict
+# -----------------------------------
+# Copy this file to repo root as: report_midday.py
+# The script:
+#  - Pulls % change from previous close for SPY/QQQ/IWM/DIA/RSP/VIX
+#  - Produces a short "midday verdict" with volatility + breadth notes
+#  - Sends via email_webhook.broadcast() if available, otherwise prints
 
-UVXY_TRIG = 5.0
-SVIX_TRIG = -3.0
-VIX_DEFENSIVE = 20.0
-VIX_CALM = 15.0
-BREADTH_DELTA = 0.50  # SPY vs RSP divergence threshold (pct pts)
+from __future__ import annotations
 
-def pct(t):
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+# -------- Time helper (works with either utils.now or utils.get_now) --------
+try:
+    from utils import now as _now  # preferred new name
+except Exception:
     try:
-        return pct_from_prev_close(t)
+        from utils import get_now as _now  # backward-compat
     except Exception:
-        return None
+        def _now(tz: str = "America/Phoenix"):
+            return datetime.now(ZoneInfo(tz))
+now = _now
 
-now = now_pt()
+# -------- Data/format helpers (use utils if present, else light fallbacks) ---
+try:
+    from utils import get_from_prev_close, last_price, fmt_pct  # type: ignore
+except Exception:
+    import yfinance as yf
 
-# Snapshot
-data = {
-    "SPY": pct("SPY"),
-    "QQQ": pct("QQQ"),
-    "IWM": pct("IWM"),
-    "RSP": pct("RSP"),         # equal-weight S&P (breadth proxy)
-    "UVXY": pct("UVXY"),
-    "SVIX": pct("SVIX"),
-    "^VIX": last_price("^VIX"),
-}
+    def last_price(ticker: str) -> float | None:
+        try:
+            h = yf.Ticker(ticker).history(period="2d")["Close"]
+            return float(h.iloc[-1])
+        except Exception:
+            return None
 
-# Volatility tone
-uvxy, svix, vix = data["UVXY"], data["SVIX"], data["^VIX"]
-vol_note = "Neutral"
-if uvxy is not None and uvxy >= UVXY_TRIG: vol_note = "Vol spike"
-elif svix is not None and svix <= SVIX_TRIG: vol_note = "Vol-of-vol stress"
-elif vix is not None and vix < VIX_CALM: vol_note = "Calm"
-elif vix is not None and vix > VIX_DEFENSIVE: vol_note = "Defensive"
+    def get_from_prev_close(ticker: str) -> float | None:
+        """Return fractional % change vs previous close (0.0123 = +1.23%)."""
+        try:
+            h = yf.Ticker(ticker).history(period="2d")["Close"]
+            prev, cur = float(h.iloc[-2]), float(h.iloc[-1])
+            return (cur - prev) / prev
+        except Exception:
+            return None
 
-# Breadth (SPY vs RSP)
-spy, rsp = data["SPY"], data["RSP"]
-breadth_note = "n/a"
-if spy is not None and rsp is not None:
-    sign_diverge = (spy > 0 and rsp < 0) or (spy < 0 and rsp > 0)
-    gap_diverge = abs(spy - rsp) > BREADTH_DELTA
-    breadth_note = "Diverging" if (sign_diverge or gap_diverge) else "Aligned"
+    def fmt_pct(x: float | None) -> str:
+        if x is None:
+            return "—"
+        return f"{x*100:+.2f}%"
 
-# Verdict
-verdict = "🟡 Wait / stock-specific — mixed signals."
-if vix is not None and vix > VIX_DEFENSIVE:
-    verdict = "🔴 Defensive — keep hedges (SPXU/SQQQ/RWM), trim beta."
-elif uvxy is not None and uvxy >= UVXY_TRIG or (svix is not None and svix <= SVIX_TRIG):
-    verdict = "🟡/🔴 Caution — volatility rising; avoid new cap-weighted adds."
-elif breadth_note == "Aligned" and vix is not None and vix < VIX_CALM:
-    verdict = "🟢 Tradable (light) — breadth aligned & vol calm."
+# -------- Optional outbound (email_webhook). Falls back to print -------------
+try:
+    from email_webhook import broadcast  # type: ignore
+except Exception:
+    def broadcast(subject: str, body: str) -> None:  # pragma: no cover
+        print(f"\n=== {subject} ===\n{body}\n")
 
-# Compose
-lines = []
-lines.append(f"# 🕛 North American Midday Verdict\n**Time:** {now.strftime('%a, %b %d %H:%M %Z')}\n")
-lines.append(f"**Verdict:** {verdict}")
-lines.append("\n**Snapshot**")
-lines.append(f"- SPY %: {fmt_num(data['SPY'])} | QQQ %: {fmt_num(data['QQQ'])} | IWM %: {fmt_num(data['IWM'])}")
-lines.append(f"- RSP % (breadth proxy): {fmt_num(data['RSP'])} → {breadth_note}")
-lines.append(f"- VIX: {fmt_num(vix)}  |  UVXY %: {fmt_num(uvxy)}  |  SVIX %: {fmt_num(svix)}")
-lines.append("\n**Note:** Breadth uses SPY vs RSP; adjust Δ threshold in code if needed.")
-text = "\n".join(lines)
+# =============================== Tunables ===================================
+# You can adjust these or move them to config later if you want.
+VIX_DEFENSIVE_LVL = 20.0          # VIX >= this → "defensive"
+SPY_VIX_DIVERGENCE = 1.50         # percentage-point gap: VIX% - SPY% >= this
+BREADTH_WEAK_GAP = -0.20 / 100.0  # RSP% - SPY% ≤ this → breadth weak
 
-print(text)
-broadcast("NA Midday Verdict", text)
+TICKERS = ["SPY", "QQQ", "IWM", "DIA", "RSP", "VIX"]
+
+# ============================== Core Logic ==================================
+def pct(tkr: str) -> float | None:
+    return get_from_prev_close(tkr)
+
+def collect() -> dict[str, float | None]:
+    return {t: pct(t) for t in TICKERS}
+
+def build_verdict(data: dict[str, float | None]) -> tuple[str, list[str]]:
+    notes: list[str] = []
+
+    spy = data.get("SPY")
+    vix = data.get("VIX")
+    rsp = data.get("RSP")
+
+    # --- Volatility lens
+    vol_note = "neutral"
+    if vix is not None and vix * 100.0 >= VIX_DEFENSIVE_LVL:
+        vol_note = "defensive"
+    elif vix is not None and spy is not None and (vix * 100.0 - spy * 100.0) >= SPY_VIX_DIVERGENCE:
+        vol_note = "risk-off stress"
+
+    notes.append(f"Volatility: VIX {fmt_pct(vix)} → {vol_note}")
+
+    # --- Breadth lens (RSP ~ equal-weight S&P)
+    breadth_note = "n/a"
+    if rsp is not None and spy is not None:
+        gap = rsp - spy
+        breadth_note = "weak" if gap <= BREADTH_WEAK_GAP else "aligned"
+        notes.append(f"Breadth: RSP–SPY gap {fmt_pct(gap)} → {breadth_note}")
+    else:
+        notes.append("Breadth: (insufficient data)")
+
+    # --- Verdict
+    verdict = "⚠️ Defensive" if vol_note in {"defensive", "risk-off stress"} else "✅ Aligned / Neutral"
+    return verdict, notes
+
+def compose_text(verdict: str, notes: list[str], data: dict[str, float | None]) -> str:
+    tz = "America/Phoenix"
+    ts = now(tz).strftime("%a, %b %d %I:%M %p %Z")
+    lines: list[str] = []
+    lines.append(f"{ts} • North America Midday Verdict")
+    lines.append("")
+    lines.append(f"Verdict: **{verdict}**")
+    lines.append("")
+    lines.extend(notes)
+    lines.append("")
+    lines.append("Indices:")
+    for k in ["SPY", "QQQ", "IWM", "DIA", "RSP", "VIX"]:
+        lines.append(f"  • {k}: {fmt_pct(data.get(k))}")
+    return "\n".join(lines)
+
+def main() -> int:
+    data = collect()
+    verdict, notes = build_verdict(data)
+    text = compose_text(verdict, notes, data)
+    print(text)
+    broadcast("NA Midday Verdict", text)
+    return 0
+
+if __name__ == "__main__":
+    raise SystemExit(main())
