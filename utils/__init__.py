@@ -1,86 +1,89 @@
 # utils/__init__.py
-# small helpers re-exported; lets helpers be imported like "from utils import now_utc"
+# Small helper toolkit used by Vega workflows.
 
 from __future__ import annotations
-import os
-from datetime import datetime, timezone, timedelta
 
-try:
-    from zoneinfo import ZoneInfo   # Python 3.9+
-except Exception:
-    from backports.zoneinfo import ZoneInfo  # type: ignore
+from datetime import datetime
+from typing import Optional
+from zoneinfo import ZoneInfo
 
-# ----------------------------------------------------------------------
-# Default timezone handling
-# ----------------------------------------------------------------------
-TZ_NAME = os.getenv("VEGA_TZ", "America/Los_Angeles")
 
-def _tzinfo() -> ZoneInfo:
+# ===================== Time helpers =====================
+
+def now(tz: str = "America/Phoenix") -> datetime:
+    """Timezone-aware 'now' (defaults to Phoenix, UTC-7 year-round)."""
+    return datetime.now(ZoneInfo(tz))
+
+def now_pt() -> datetime:
+    """Explicit Phoenix-time helper (legacy callers import this)."""
+    return now("America/Phoenix")
+
+# Back-compat alias some scripts still use
+get_now = now
+
+
+# ===================== Format helpers =====================
+
+def fmt_pct(x: Optional[float], digits: int = 2) -> str:
+    """Format a fraction (0.0123) as +1.23%. None -> '—'."""
+    if x is None:
+        return "—"
+    sign = "+" if x >= 0 else ""
+    return f"{sign}{x * 100:.{digits}f}%"
+
+def fmt_num(x: Optional[float], digits: int = 2) -> str:
+    """Format a number with fixed decimals. None -> '—'."""
+    if x is None:
+        return "—"
+    return f"{x:.{digits}f}"
+
+# Back-compat alias some old scripts expect
+fmt_out = fmt_pct
+
+
+# ===================== Light market data =====================
+
+def _yf():
+    """Lazy import yfinance so simply importing utils doesn't require it."""
     try:
-        return ZoneInfo(TZ_NAME)
+        import yfinance as yf  # type: ignore
+        return yf
     except Exception:
-        return ZoneInfo("America/Los_Angeles") if ZoneInfo else timezone.utc
+        return None
 
-# ----------------------------------------------------------------------
-# Time helpers
-# ----------------------------------------------------------------------
-def now_utc() -> datetime:
-    return datetime.now(timezone.utc)
-
-def now_utc_str() -> str:
-    return now_utc().strftime("%Y-%m-%dT%H:%M:%SZ")
-
-def now_local() -> datetime:
-    return datetime.now(_tzinfo())
-
-def now_local_str() -> str:
-    return now_local().strftime("%Y-%m-%d %H:%M:%S")
-
-# ----------------------------------------------------------------------
-# North America cash-session window helper
-# ----------------------------------------------------------------------
-WEEKDAYS_NA = {0, 1, 2, 3, 4}  # Mon–Fri
-
-def as_na_window(
-    now: datetime | None = None,
-    tz_name: str | None = None,
-    open_h: int = 6, open_m: int = 30,     # 06:30 local
-    close_h: int = 13, close_m: int = 0,   # 13:00 local
-    pre_minutes: int = 15,                 # buffer before open
-    post_minutes: int = 30                 # buffer after close
-) -> bool:
+def last_price(ticker: str) -> Optional[float]:
     """
-    Return True if the current time is inside the North American
-    cash-session window (including pre/post buffers).
-    Defaults to America/Los_Angeles unless tz_name is provided.
+    Return the latest close for a ticker (float), or None on failure.
+    Uses yfinance; callers should handle None.
     """
-    _tz = ZoneInfo((tz_name or TZ_NAME) or "America/Los_Angeles")
-    _now = (now.astimezone(_tz) if now else datetime.now(_tz))
-    if _now.weekday() not in WEEKDAYS_NA:
-        return False
-    open_t  = _now.replace(hour=open_h,  minute=open_m,  second=0, microsecond=0)
-    close_t = _now.replace(hour=close_h, minute=close_m, second=0, microsecond=0)
-    start = open_t - timedelta(minutes=pre_minutes)
-    end   = close_t + timedelta(minutes=post_minutes)
-    return start <= _now <= end
+    yf = _yf()
+    if yf is None:
+        return None
+    try:
+        h = yf.Ticker(ticker).history(period="2d")["Close"]
+        return float(h.iloc[-1])
+    except Exception:
+        return None
 
-# ----------------------------------------------------------------------
-# Placeholder / misc utilities
-# ----------------------------------------------------------------------
-def get_symbol(symbol: str, default: float = 0.0) -> float:
+def get_from_prev_close(ticker: str) -> Optional[float]:
     """
-    Placeholder: always returns default.
-    Override with real market data later.
+    Fractional change vs previous close (e.g., 0.0123 == +1.23%),
+    or None if unavailable.
     """
-    return default
+    yf = _yf()
+    if yf is None:
+        return None
+    try:
+        h = yf.Ticker(ticker).history(period="2d")["Close"]
+        prev, cur = float(h.iloc[-2]), float(h.iloc[-1])
+        return (cur - prev) / prev
+    except Exception:
+        return None
 
-# ----------------------------------------------------------------------
-# Exports
-# ----------------------------------------------------------------------
+
+# What we export
 __all__ = [
-    "TZ_NAME",
-    "now_utc", "now_utc_str",
-    "now_local", "now_local_str",
-    "as_na_window",
-    "get_symbol",
+    "now", "now_pt", "get_now",
+    "fmt_pct", "fmt_num", "fmt_out",
+    "last_price", "get_from_prev_close",
 ]
