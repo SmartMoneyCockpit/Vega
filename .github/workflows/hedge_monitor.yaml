@@ -2,7 +2,7 @@ name: Hedge Monitor (15m)
 
 on:
   schedule:
-    - cron: "*/15 13-20 * * 1-5"  # 06:30–13:59 Phoenix
+    - cron: "*/15 13-20 * * 1-5"  # 06:00–13:59 Phoenix (UTC-7)
   workflow_dispatch:
 
 jobs:
@@ -11,13 +11,29 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
-        with: { python-version: "3.11" }
-      - run: |
+        with:
+          python-version: "3.11"
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyyaml==6.0.1
+
+      - name: Build signal
+        run: |
           python - << 'PY'
-          import yaml, json, datetime as dt
+          import json, datetime as dt
           from pathlib import Path
-          cfg = yaml.safe_load(open("config/vega_rules.yaml"))
+          import yaml
+
+          cfg_path = Path("config/vega_rules.yaml")
+          if not cfg_path.exists():
+              raise SystemExit(f"ERROR: missing {cfg_path}")
+
+          cfg = yaml.safe_load(cfg_path.read_text())
+
           # Placeholder signal evaluation — wire your data later
           signal = {
             "trigger_primary_ready": False,
@@ -26,11 +42,14 @@ jobs:
               "spy_below_vwap": cfg["hedge_rules"]["trigger_primary"]["spy_below_vwap"],
               "breadth_below": cfg["hedge_rules"]["trigger_primary"]["breadth_below"]
             },
-            "ts_utc": dt.datetime.utcnow().isoformat()+"Z"
+            "ts_utc": dt.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
           }
+
           Path("signals").mkdir(exist_ok=True)
-          open("signals/hedge_monitor.json","w").write(json.dumps(signal, indent=2))
+          Path("signals/hedge_monitor.json").write_text(json.dumps(signal, indent=2))
+          print("wrote signals/hedge_monitor.json")
           PY
+
       - uses: actions/upload-artifact@v4
         with:
           name: hedge-monitor
