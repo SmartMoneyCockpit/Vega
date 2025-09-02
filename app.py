@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 import requests
 import streamlit as st  # <-- required before set_page_config
+from sogbi_hotfix_snippet import page_stay_out_get_back_in
 
 # ---- Fail-safe runner for sections ----
 import traceback
@@ -1675,12 +1676,7 @@ pages = [
     ("Docs",
      lambda: (page_docs() if callable(globals().get("page_docs")) else _missing("Docs"))),
 
-    ("Stay Out vs Get Back In",
-     lambda: (
-         (st.markdown("### Stay Out vs. Get Back In") or render_stay_or_reenter())
-         if callable(globals().get("render_stay_or_reenter"))
-         else (st.markdown("### Stay Out vs. Get Back In") or st.error("Module `module_stay_or_reenter.py` not found or failed to import."))
-     )),
+    ("Stay Out vs Get Back In", lambda: page_stay_out_get_back_in()),
 ]
 
 # Ensure tab titles match MODULES (defensive, in case someone edits one list but not the other)

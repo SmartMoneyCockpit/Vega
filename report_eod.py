@@ -9,8 +9,13 @@ from __future__ import annotations
 from typing import Dict, Any, List, Tuple
 from pathlib import Path
 import os
-
-import yaml  # requires pyyaml
+try:
+    import yaml
+except Exception:
+    class _YamlShim:
+        def safe_load(self, *a, **k):
+            return {}
+    yaml = _YamlShim()  # requires pyyaml
 from utils import now_pt, pct_from_prev_close, last_price, fmt_num
 from email_webhook import broadcast
 
