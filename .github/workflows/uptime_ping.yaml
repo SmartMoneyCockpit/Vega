@@ -61,7 +61,7 @@ jobs:
         with:
           script: |
             const code = '${{ steps.ping.outputs.code }}';
-            const url = '${{ steps.resolve.outputs.url }}';
+            const url  = '${{ steps.resolve.outputs.url }}';
             await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
