@@ -72,4 +72,5 @@ jobs:
 
       - name: Skip note (no URL configured)
         if: ${{ steps.resolve.outputs.url == '' }}
-        run: echo "Skipped ping: configure VEGA_COCKPIT_URL as a secret or variable."
+        run: |
+          echo "Skipped ping: configure VEGA_COCKPIT_URL as a secret or variable."
