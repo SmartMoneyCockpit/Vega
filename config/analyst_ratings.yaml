@@ -1,0 +1,5 @@
+policy:
+  mode_2: ["Strong Buy", "Buy"]
+  mode_3: ["Strong Buy", "Buy", "Neutral"]
+defaults:
+  mode: 2

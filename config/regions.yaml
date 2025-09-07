@@ -1,0 +1,17 @@
+regions:
+  US:   {currency: USD, min_price_local: 5,   min_avg_vol_30d: 100000, min_dollar_turnover: 2000000,  market_cap_min: 200000000}
+  CA:   {currency: CAD, min_price_local: 5,   min_avg_vol_30d: 25000,  min_dollar_turnover: 500000,    market_cap_min: 75000000}
+  TSXV: {currency: CAD, min_price_local: 1,   min_avg_vol_30d: 25000,  min_dollar_turnover: 200000,    market_cap_min: 25000000}
+  MX:   {currency: MXN, min_price_local: 100, min_avg_vol_30d: 10000,  min_dollar_turnover: 300000,    market_cap_min: 50000000}
+  JP:   {currency: JPY, min_price_local: 300, min_avg_vol_30d: 50000,  min_dollar_turnover: 1000000,   market_cap_min: 100000000}
+  AU:   {currency: AUD, min_price_local: 1,   min_avg_vol_30d: 30000,  min_dollar_turnover: 400000,    market_cap_min: 50000000}
+  HK:   {currency: HKD, min_price_local: 5,   min_avg_vol_30d: 50000,  min_dollar_turnover: 600000,    market_cap_min: 100000000}
+  UK:   {currency: GBP, min_price_local: 1,   min_avg_vol_30d: 50000,  min_dollar_turnover: 600000,    market_cap_min: 100000000}
+  EU:   {currency: EUR, min_price_local: 1,   min_avg_vol_30d: 50000,  min_dollar_turnover: 600000,    market_cap_min: 100000000}
+
+pass_through_rules:
+  # Allow sub-cap names if exceptionally liquid (region-aware)
+  US:   {min_dollar_turnover: 5000000, max_spread_pct: 0.75}
+  CA:   {min_dollar_turnover: 750000,  max_spread_pct: 1.00}
+  TSXV: {min_dollar_turnover: 300000,  max_spread_pct: 1.20}
+  MX:   {min_dollar_turnover: 400000,  max_spread_pct: 1.50}

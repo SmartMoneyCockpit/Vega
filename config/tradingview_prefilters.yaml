@@ -1,0 +1,53 @@
+defaults:
+  optionable_only: true
+  exclude_otc: true
+  exclude_adrs: true
+  analyst_rating_mode: 2
+
+profiles:
+  CanadaXUP:
+    region: CA
+    price_min: 10
+    rsi14_range: [30, 60]
+    beta_1y_max: 1.0
+    avg_vol_30d_min: 100000
+    analyst_rating_mode: 2
+
+  Ruler_Stocks_NA:
+    region: US
+    rel_volume_now_min: 1.2
+    sma_relations: ["sma20 > sma50", "sma50 > sma200"]
+    rsi14_min: 40
+    macd_level_min: 0
+    perf_1w_min: -0.05
+    perf_1m_min: 0.00
+    perf_3m_min: 0.05
+    avg_vol_30d_min: 100000
+    analyst_rating_mode: 2
+
+  SmartMoney_NA_Level2:
+    region: US
+    price_min: 5
+    eps_dil_growth_ttm_yoy_min: 0.05
+    rsi14_range: [30, 70]
+    avg_vol_30d_min: 100000
+    pe_range: [5, 50]
+    rel_volume_now_min: 1.0
+    perf_1m_min: -0.10
+    perf_3m_min: -0.20
+    peg_ttm_max: 3.0
+    roe_ttm_min: 0.05
+    analyst_rating_mode: 2
+
+  USA_UP_Performance:
+    region: US
+    price_min: 10
+    avg_vol_30d_min: 100000
+    perf_ytd_min: 0
+    perf_6m_min: 0
+    perf_3m_min: 0
+    perf_1m_min: 0
+    rsi14_range: [30, 60]
+    eps_dil_growth_ttm_yoy_min: 0
+    pe_min: 0
+    analyst_rating_mode: 2
