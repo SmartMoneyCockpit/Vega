@@ -1,14 +1,14 @@
-import os, sys, json, argparse
+import os, sys, argparse
 from pathlib import Path
 import requests
 
 WWW = "https://www.tradingview.com"
 
-SESSION       = os.getenv("TV_SESSION", "").strip()
-SESSION_SIGN  = os.getenv("TV_SESSION_SIGN", "").strip()
-DEVICE        = os.getenv("TV_DEVICE", "").strip()
+SESSION      = os.getenv("TV_SESSION", "").strip()
+SESSION_SIGN = os.getenv("TV_SESSION_SIGN", "").strip()
+DEVICE       = os.getenv("TV_DEVICE", "").strip()   # value of device_t or device_id cookie
 
-def session():
+def new_session():
     s = requests.Session()
     s.headers.update({
         "User-Agent": "Mozilla/5.0",
@@ -18,66 +18,82 @@ def session():
         "X-Requested-With": "XMLHttpRequest",
     })
     if not SESSION:
-        raise SystemExit("Missing TV_SESSION env var.")
+        sys.exit("Missing TV_SESSION env var.")
+    # cookies
     s.cookies.set("sessionid", SESSION, domain=".tradingview.com", path="/", secure=True)
     if SESSION_SIGN:
         s.cookies.set("sessionid_sign", SESSION_SIGN, domain=".tradingview.com", path="/", secure=True)
     if DEVICE:
+        # some accounts expose device_t, some device_id — set both
+        s.cookies.set("device_t", DEVICE, domain=".tradingview.com", path="/", secure=True)
         s.cookies.set("device_id", DEVICE, domain=".tradingview.com", path="/", secure=True)
     return s
 
-def get_www(s, path):
-    """GET on www only; never follow redirects to mm.*"""
-    r = s.get(WWW + path, allow_redirects=False)
-    # If we ever get redirected to mm.*, re-try on www
-    if r.is_redirect:
-        return s.get(WWW + path, allow_redirects=False)
+def req(s, method, path, json=None):
+    """Always hit www; never follow redirects to mm.*"""
+    url = WWW + path
+    r = s.request(method, url, json=json, allow_redirects=False)
+    print(f"[tv_push] {method} {path} -> {r.status_code}")
     return r
 
-def post_www(s, path, json_payload):
-    r = s.post(WWW + path, json=json_payload, allow_redirects=False)
-    if r.is_redirect:
-        return s.post(WWW + path, json=json_payload, allow_redirects=False)
-    return r
+def list_watchlists(s):
+    for path in ("/api/v1/symbols_list/", "/api/v1/symbols_list/?personal=1"):
+        r = req(s, "GET", path)
+        if r.status_code == 200:
+            return r.json()
+    sys.exit(f"Could not list watchlists on www; last status={r.status_code} body={r.text[:200]}")
 
-def delete_www(s, path, json_payload):
-    r = s.delete(WWW + path, json=json_payload, allow_redirects=False)
-    if r.is_redirect:
-        return s.delete(WWW + path, json=json_payload, allow_redirects=False)
-    return r
+def resolve_list_id(s, name):
+    lists = list_watchlists(s)
+    for item in lists:
+        if item.get("name") == name:
+            return item.get("id")
+    print("[tv_push] Available lists (first 10):", [it.get("name") for it in lists][:10])
+    sys.exit(f"Watchlist '{name}' not found")
 
 def load_candidates(region):
     p = Path(__file__).resolve().parents[1] / "outputs" / f"candidates_{region}.txt"
+    p.parent.mkdir(parents=True, exist_ok=True)
     if not p.exists():
-        p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text("AAPL\nMSFT\nNVDA\n", encoding="utf-8")
     return [ln.strip() for ln in p.read_text(encoding="utf-8").splitlines() if ln.strip()]
 
-def list_watchlists(s):
-    # Some accounts prefer the query param; try both on WWW
-    for path in ("/api/v1/symbols_list/", "/api/v1/symbols_list/?personal=1"):
-        r = get_www(s, path)
-        if r.status_code == 200:
-            return r.json()
-    raise SystemExit(f"Could not list watchlists on www; last status={r.status_code}, body={r.text[:200]}")
-
-def resolve_list_id(s, list_name):
-    lists = list_watchlists(s)
-    for item in lists:
-        if item.get("name") == list_name:
-            return item.get("id")
-    names = [it.get("name") for it in lists]
-    raise SystemExit(f"Watchlist '{list_name}' not found. Available (first 10): {names[:10]}")
-
-def clear_and_add(s, list_id, symbols):
-    r = get_www(s, f"/api/v1/symbols_list/{list_id}/")
+def update_list(s, list_id, symbols):
+    # fetch & clear existing
+    r = req(s, "GET", f"/api/v1/symbols_list/{list_id}/")
     if r.status_code == 200:
-        data = r.json()
-        for sym in [x.get("symbol","") for x in data.get("symbols", [])]:
-            try:
-                delete_www(s, f"/api/v1/symbols_list/{list_id}/symbols/", {"symbol": sym})
-            except Exception: pass
+        try:
+            existing = [x.get("symbol","") for x in r.json().get("symbols", [])]
+        except Exception:
+            existing = []
+        for sym in existing:
+            _ = req(s, "DELETE", f"/api/v1/symbols_list/{list_id}/symbols/", json={"symbol": sym})
+    # add new
     for sym in symbols:
-        resp = post_www(s, f"/api/v1/symbols_list/{list_id}/symbols/", {"symbol": sym})
+        resp = req(s, "POST", f"/api/v1/symbols_list/{list_id}/symbols/", json={"symbol": sym})
         if resp.status_code >= 300:
-            print(f"[tv_push] Warn add {sym} -> {resp.status_code]()
+            print(f"[tv_push] Warn add {sym} -> {resp.status_code}: {resp.text[:200]}")
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--region", default="US")
+    ap.add_argument("--list", default="candidates", choices=["candidates","monitor"])
+    args = ap.parse_args()
+
+    region = args.region.upper()
+    env_key = "TV_WATCHLIST_CANDIDATES_" + region if args.list == "candidates" else "TV_WATCHLIST_MONITOR_" + region
+    list_name = os.getenv(env_key, "").strip()
+    if not list_name:
+        sys.exit(f"Missing env var {env_key}")
+
+    syms = load_candidates(region)
+    print(f"[tv_push] Loaded {len(syms)} symbols for {region}: {syms[:10]}{' …' if len(syms)>10 else ''}")
+
+    s = new_session()
+    list_id = resolve_list_id(s, list_name)
+    print(f"[tv_push] Resolved '{list_name}' -> id {list_id}")
+    update_list(s, list_id, syms)
+    print("[tv_push] Done updating TradingView watchlist.")
+
+if __name__ == "__main__":
+    main()
