@@ -1,12 +1,14 @@
+# === TV PUSH v3-www-only ===
 import os, sys, argparse
 from pathlib import Path
 import requests
 
-WWW = "https://www.tradingview.com"
+VERSION = "TV_PUSH_V3"
 
+WWW = "https://www.tradingview.com"
 SESSION      = os.getenv("TV_SESSION", "").strip()
 SESSION_SIGN = os.getenv("TV_SESSION_SIGN", "").strip()
-DEVICE       = os.getenv("TV_DEVICE", "").strip()   # value from cookie device_t or device_id
+DEVICE       = os.getenv("TV_DEVICE", "").strip()   # value of device_t or device_id cookie
 
 def new_session():
     s = requests.Session()
@@ -19,19 +21,18 @@ def new_session():
     })
     if not SESSION:
         sys.exit("Missing TV_SESSION env var.")
-    # cookies
     s.cookies.set("sessionid", SESSION, domain=".tradingview.com", path="/", secure=True)
     if SESSION_SIGN:
         s.cookies.set("sessionid_sign", SESSION_SIGN, domain=".tradingview.com", path="/", secure=True)
     if DEVICE:
-        s.cookies.set("device_t", DEVICE,  domain=".tradingview.com", path="/", secure=True)
+        s.cookies.set("device_t",  DEVICE, domain=".tradingview.com", path="/", secure=True)
         s.cookies.set("device_id", DEVICE, domain=".tradingview.com", path="/", secure=True)
     return s
 
 def req(s, method, path, json=None):
     url = WWW + path
-    r = s.request(method, url, json=json, allow_redirects=False)  # never follow to mm.*
-    print("[tv_push] {} {} -> {}".format(method, path, r.status_code))
+    r = s.request(method, url, json=json, allow_redirects=False)  # refuse mm.* redirect
+    print("[{}] {} {} -> {}".format(VERSION, method, path, r.status_code))
     return r
 
 def list_watchlists(s):
@@ -46,7 +47,7 @@ def resolve_list_id(s, name):
     for item in lists:
         if item.get("name") == name:
             return item.get("id")
-    print("[tv_push] Available lists (first 10):", [it.get("name") for it in lists][:10])
+    print("[{}] Available (first 10): {}".format(VERSION, [it.get("name") for it in lists][:10]))
     sys.exit("Watchlist '{}' not found".format(name))
 
 def load_candidates(region):
@@ -68,9 +69,10 @@ def update_list(s, list_id, symbols):
     for sym in symbols:
         resp = req(s, "POST", "/api/v1/symbols_list/{}/symbols/".format(list_id), json={"symbol": sym})
         if resp.status_code >= 300:
-            print("[tv_push] Warn add {} -> {}: {}".format(sym, resp.status_code, resp.text[:200]))
+            print("[{}] Warn add {} -> {}: {}".format(VERSION, sym, resp.status_code, resp.text[:200]))
 
 def main():
+    print("[{}] starting".format(VERSION))
     ap = argparse.ArgumentParser()
     ap.add_argument("--region", default="US")
     ap.add_argument("--list", default="candidates", choices=["candidates","monitor"])
@@ -83,15 +85,15 @@ def main():
         sys.exit("Missing env var {}".format(env_key))
 
     syms = load_candidates(region)
-    print("[tv_push] Loaded {} symbols for {}: {}{}".format(
-        len(syms), region, syms[:10], " …" if len(syms) > 10 else "")
+    print("[{}] Loaded {} symbols for {}: {}{}".format(
+        VERSION, len(syms), region, syms[:10], " …" if len(syms) > 10 else "")
     )
 
     s = new_session()
     list_id = resolve_list_id(s, list_name)
-    print("[tv_push] Resolved '{}' -> id {}".format(list_name, list_id))
+    print("[{}] Resolved '{}' -> id {}".format(VERSION, list_name, list_id))
     update_list(s, list_id, syms)
-    print("[tv_push] Done updating TradingView watchlist.")
+    print("[{}] Done".format(VERSION))
 
 if __name__ == "__main__":
     main()
