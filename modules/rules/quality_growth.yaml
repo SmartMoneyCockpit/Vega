@@ -1,0 +1,11 @@
+name: Quality Growth (Ruler + Premier)
+liquidity: {use_region_defaults: true}
+filters:
+  - {field: grt, op: ">=", value: 0.14}
+  - {field: rs,  op: ">=", value: 1.4}
+  - {field: price, op: ">=", value_from: "region.min_price_local"}
+  - {exclude: [etf, inverse_etf]}
+  - {optional_field: market_cap, op: ">=", value_from: "region.market_cap_min"}  # can be toggled
+rank_formula: "rs * grt"
+sort: ["rank_formula_desc", "vst_desc"]
+top_n: 200

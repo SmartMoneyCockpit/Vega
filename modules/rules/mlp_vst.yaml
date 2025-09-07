@@ -1,0 +1,11 @@
+name: MLP + VST
+liquidity: {use_region_defaults: true}
+filters:
+  - {watchlist: "Master Limited Partnerships", op: "in"}
+  - {field: dividend_yield_pct, op: ">=", value: 4.0}
+  - {field: rs,  op: ">=", value: 1.0}
+  - {field: price, op: ">=", value_from: "region.min_price_local"}
+sort: ["vst_times_ysg_desc"]
+derived:
+  vst_times_ysg: "vst * ysg"
+top_n: 200

@@ -1,0 +1,13 @@
+name: Optionable Dividend 2x4s
+liquidity: {use_region_defaults: true}
+filters:
+  - {field: optionable, op: "==", value: true}
+  - {field: dividend_yield_pct, op: ">=", value: 2.0}
+  - {field: dividend_yield_growth_pct, op: ">=", value: 4.0}
+  - {field: rs,  op: ">=", value: 1.0}
+  - {field: ysg, op: ">=", value: 1.0}
+  - {exclude: [etf, inverse_etf, otc]}
+sort: ["vst_times_ysg_desc"]
+derived:
+  vst_times_ysg: "vst * ysg"
+top_n: 200

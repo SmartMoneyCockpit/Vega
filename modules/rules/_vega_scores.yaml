@@ -1,0 +1,24 @@
+# VV-like scoring proxies (scaled to 0–2)
+scoring:
+  rt:        # short-term momentum/impulse
+    inputs: [roc_1, roc_5, roc_10, macd_signal_distance, adx_14]
+    scale_to: [0, 2]
+
+  rs:        # quality + lower volatility
+    inputs: [stdev_63, maxdd_126, beta_252, roe_ttm, fcf_margin_ttm]
+    invert:  [stdev_63, maxdd_126, beta_252]
+    scale_to: [0, 2]
+
+  rv:        # value & yield
+    inputs:  [fcf_yield_ttm, earnings_yield_ntm, shareholder_yield_ttm, sector_pe_premium]
+    weights: [1.0, 1.0, 0.5, -0.5]
+    scale_to: [0, 2]
+
+  ci:        # trend persistence / comfort
+    inputs: [r2_100, ulcer_100, pct_above_200dma]
+    invert: [ulcer_100]
+    scale_to: [0, 2]
+
+  vst:
+    formula: "0.4*rt + 0.3*rs + 0.3*rv"
+    scale_to: [0, 2]

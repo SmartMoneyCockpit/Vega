@@ -1,0 +1,20 @@
+name: Worry-Free Winners
+liquidity: {use_region_defaults: true}
+modes:
+  with_ma:
+    filters:
+      - {field: price, op: ">=", value_from: "region.min_price_local"}
+      - {field: price, op: "<=", value: 100}
+      - {indicator: "ma_relation", params: {a: 50, b: 150, rel: ">"}}  # 50dma > 150dma
+      - {field: dividend_payer, op: "==", value: true}
+      - {field: rec, op: "in", value: ["Buy"]}
+      - {exclude: [etf, inverse_etf]}
+    sort: ["rs_desc", "vst_desc"]
+  no_ma:
+    filters:
+      - {field: price, op: ">=", value_from: "region.min_price_local"}
+      - {field: dividend_yield_pct, op: "<", value: 100}
+      - {field: rec, op: "in", value: ["Buy"]}
+      - {exclude: [etf, inverse_etf]}
+    sort: ["rs_desc", "vst_desc"]
+top_n: 200

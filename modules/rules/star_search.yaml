@@ -1,0 +1,10 @@
+name: Star Search
+liquidity: {use_region_defaults: true}
+filters:
+  - {indicator: "dpo_cross_zero", params: {length: 20}, lookback_days: 1, direction: "up"}
+  - {indicator: "bollinger_cross_upper", params: {length: 20, stdev: 2}, lookback_days: 2}
+  - {field: price, op: ">=", value: 5}
+  - {field: avg_vol_30d, op: ">=", value: 500000}
+  - {exclude: [etf, inverse_etf]}
+sort: ["vst_desc"]
+top_n: 200

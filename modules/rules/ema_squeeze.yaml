@@ -1,0 +1,19 @@
+name: EMA Squeeze (5-8-13)
+liquidity: {use_region_defaults: true}
+modes:
+  base:
+    filters:
+      - {indicator: "ema_cross", params: {fast: 5, slow: 8}, lookback_days: 5, both_rising: true}
+      - {indicator: "ema_cross", params: {fast: 8, slow: 13}, lookback_days: 5, both_rising: true}
+      - {field: rt_delta_3d, op: ">", value: 0}
+      - {exclude: [etf, inverse_etf]}
+    sort: ["vst_desc"]
+  plus50:
+    filters:
+      - {indicator: "ema_cross", params: {fast: 5, slow: 8}, lookback_days: 5, both_rising: true}
+      - {indicator: "ema_cross", params: {fast: 8, slow: 13}, lookback_days: 5, both_rising: true}
+      - {indicator: "ema_cross", params: {fast: 1, slow: 50}, lookback_days: 1, both_rising: null}
+      - {field: rt_delta_3d, op: ">", value: 0}
+      - {exclude: [etf, inverse_etf]}
+    sort: ["vst_desc"]
+top_n: 200

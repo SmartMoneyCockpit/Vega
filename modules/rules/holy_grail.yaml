@@ -1,0 +1,11 @@
+name: Holy Grail
+liquidity: {use_region_defaults: true}
+filters:
+  - {indicator: "adx", params: {length: 14}, op: "max_last_n>=", value: 30, lookback_days: 10}
+  - {indicator: "price_to_ma_band", params: {ma: "ema", length: 20, lower: 0.98, upper: 1.02}, op: "any", lookback_days: 3}
+  - {indicator: "cross", params: {a: "close", b: "ema20"}, op: "bullish_within", lookback_days: 1}
+  - {field: rs, op: ">=", value: 1.2}
+  - {field: price, op: ">=", value_from: "region.min_price_local"}
+  - {exclude: [etf, inverse_etf]}
+sort: ["vst_desc", "rt_desc", "ci_desc"]
+top_n: 200

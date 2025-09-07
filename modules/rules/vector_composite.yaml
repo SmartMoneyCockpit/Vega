@@ -1,0 +1,13 @@
+name: Vector Composite
+liquidity: {use_region_defaults: true}
+filters:
+  - {field: vst, op: ">=", value: 1.2}
+  - {field: rt,  op: ">=", value: 1.2}
+  - {field: rs,  op: ">=", value: 1.2}
+  - {field: rv,  op: ">=", value: 0.9}
+  - {field: eps_ttm, op: ">=", value: 0}
+  - {field: grt, op: ">=", value: 0.12}   # 12%+ growth rate
+  - {field: optionable, op: "==", value: true}
+  - {exclude: [etf, inverse_etf, warrant, right, unit, preferred, adr, otc]}
+sort: ["vst_desc", "rt_desc", "ci_desc"]
+top_n: 200

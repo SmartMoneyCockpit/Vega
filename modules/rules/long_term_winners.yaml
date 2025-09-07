@@ -1,0 +1,9 @@
+name: Long-Term Winners (Family)
+liquidity: {use_region_defaults: true}
+filters:
+  - {indicator: "ma_cross", params: {fast: 10, slow: 65}, lookback_days: 5, both_rising: true}
+  - {field: rec, op: "in", value: ["Buy"]}
+  - {field: price, op: ">=", value: 10}
+  - {exclude: [etf, inverse_etf]}
+sort: ["rs_desc", "vst_desc"]
+top_n: 200

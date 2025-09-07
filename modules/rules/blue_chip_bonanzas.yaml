@@ -1,0 +1,11 @@
+name: Blue Chip Bonanzas
+liquidity: {use_region_defaults: true}
+filters:
+  - {field: price, op: ">=", value_from: "region.min_price_local"}
+  - {field: dividend_yield_pct, op: ">", value: 0}  # dividend present
+  - {field: avg_vol_30d, op: ">=", value_from: "region.min_avg_vol_30d"}
+  - {watchlist: "Blue Chip Bargains", op: "in"}      # optional; if absent, fall back to cap filters
+sort: ["ysg_over_ci_desc", "vst_desc"]
+derived:
+  ysg_over_ci: "ysg / max(ci, 0.01)"
+top_n: 200

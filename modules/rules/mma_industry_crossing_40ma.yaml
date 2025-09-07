@@ -1,0 +1,8 @@
+name: MMA Industry Crossing 40MA
+liquidity: {use_region_defaults: true}
+filters:
+  - {indicator: "ma_relation", params: {a: 1,  b: 40, rel: ">"}}  # stock > 40dma
+  - {indicator: "industry_ma_relation", params: {a: 1, b: 40, rel: "<"}}  # industry < 40dma
+  - {exclude: [etf, inverse_etf]}
+sort: ["vst_desc"]
+top_n: 200

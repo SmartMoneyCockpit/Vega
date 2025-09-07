@@ -1,0 +1,10 @@
+name: Don's Dividend Dandies
+liquidity: {use_region_defaults: true}
+filters:
+  - {field: price, op: ">=", value_from: "region.min_price_local"}
+  - {field: avg_vol_30d, op: ">=", value_from: "region.min_avg_vol_30d"}
+  - {field: rec, op: "in", value: ["Buy"]}
+  - {field: eps_delta_13w_pct, op: ">=", value: 10}
+  - {exclude: [etf, inverse_etf]}
+sort: ["vst_desc"]
+top_n: 200

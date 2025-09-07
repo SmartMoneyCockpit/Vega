@@ -1,0 +1,9 @@
+name: Blue Chip Dividend Payers
+liquidity: {use_region_defaults: true}
+filters:
+  - {watchlist_any: ["DJ Industrials", "DJ Transportation", "DJ Utilities", "S&P500"]}
+  - {field: dividend_yield_pct, op: ">=", value: 3.0}
+  - {field: dividend_safety_proxy, op: ">=", value: 50}  # proxy built from payout & earnings stability
+  - {exclude: [etf, inverse_etf]}
+sort: ["grt_desc", "dividend_growth_desc", "ci_desc"]
+top_n: 200
