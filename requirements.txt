@@ -40,3 +40,4 @@ reportlab==4.2.2
 openpyxl==3.1.5
 APScheduler==3.10.4
 fpdf2>=2.7.9
+# ib_insync  # enable later if you want live API

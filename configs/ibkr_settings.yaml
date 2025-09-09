@@ -1,0 +1,4 @@
+host: ${IBKR_HOST:-127.0.0.1}
+port: ${IBKR_PORT:-7497}
+client_id: ${IBKR_CLIENT_ID:-1}
+use_delayed_data: true

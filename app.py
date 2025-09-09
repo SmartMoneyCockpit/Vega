@@ -1698,3 +1698,30 @@ for i, (_, render_fn) in enumerate(pages):
             render_fn()
         except Exception as e:
             st.error(f"Failed to render this tab: {e}")
+
+
+
+# ---- Vega Breadth Panel (auto-added) ----
+try:
+    import streamlit as st
+    from modules.breadth_panel import build_breadth_dataframe
+    from utils.snapshot_export import export_dataframe_to_csv_bytes
+    st.markdown("## Breadth Panel")
+    df = build_breadth_dataframe()
+    st.dataframe(df, use_container_width=True)
+    fname, data = export_dataframe_to_csv_bytes(df, prefix="breadth_panel")
+    st.download_button("Export Breadth CSV", data=data, file_name=fname, mime="text/csv")
+except Exception as _vega_bp_err:
+    pass
+# ---- End Vega Breadth Panel ----
+
+
+try:
+    import streamlit as st
+    from utils.ibkr_client import get_client
+    if get_client:
+        st.caption("IBKR Connection: ready (stub) — switch from TradingView complete")
+    else:
+        st.caption("IBKR Connection: not loaded")
+except Exception:
+    pass

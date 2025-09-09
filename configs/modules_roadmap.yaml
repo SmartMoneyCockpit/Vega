@@ -1,0 +1,9 @@
+backlog:
+  - Integrate IBKR data client (delayed feed OK) for screening list ingestion
+  - Streamlit Grid + Breadth Panel (basic placeholder + hooks)
+  - One-click CSV snapshot export for morning panel (vault-ready)
+  - Offload heavy stock tasks to server (GitHub Actions/Render)
+  - Auto-hedging engine hooks (SPXU/SQQQ/RWM) – gated on risk-off regime
+  - Canadian tariff filter + USMCA status in reviews
+  - Earnings 30-day exclusion autoscanner
+  - Trade Now vs Wait status + benchmarks RS and breadth overlays
