@@ -1,0 +1,58 @@
+name: Auto-Apply Vega Delta
+on:
+  push:
+    paths:
+      - 'drops/**/*.zip'
+      - 'drops/**/*.txt'
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Find latest delta
+        id: find
+        run: |
+          last_zip=$(ls -t drops/*.zip | head -n 1)
+          echo "zip=$last_zip" >> $GITHUB_OUTPUT
+          if ls drops/*.txt 1> /dev/null 2>&1; then
+            last_txt=$(ls -t drops/*.txt | head -n 1)
+            echo "txt=$last_txt" >> $GITHUB_OUTPUT
+          else
+            echo "txt=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Apply delta
+        run: |
+          python - << 'PY'
+          import zipfile, os, shutil, pathlib
+          repo = pathlib.Path(".").resolve()
+          delta = pathlib.Path("${{ steps.find.outputs.zip }}")
+          dl = "${{ steps.find.outputs.txt }}"
+          with zipfile.ZipFile(delta, "r") as z:
+              z.extractall(repo)
+          if dl:
+              lines = pathlib.Path(dl).read_text(encoding="utf-8").splitlines()
+              for line in lines:
+                  line = line.strip()
+                  if not line or line.startswith("#"):
+                      continue
+                  target = repo / line
+                  if target.is_file():
+                      target.unlink(missing_ok=True)
+                  elif target.is_dir():
+                      shutil.rmtree(target, ignore_errors=True)
+          PY
+
+      - name: Commit changes
+        run: |
+          git config user.name "vega-bot"
+          git config user.email "vega-bot@users.noreply.github.com"
+          git add -A
+          git commit -m "Auto-apply delta from ${{ steps.find.outputs.zip }}" || echo "No changes"
+          git push
