@@ -1,8 +1,37 @@
-
-sheets:
-  trades: "COCKPIT"
-  trades_tab: "TradeLog"
-  health_tab: "HealthLog"
-email:
-  send_pdf: false
-  address: ""
+version: final_build_1
+perf:
+  offload_enabled: true
+  lean_mode: true
+  cache_warmers: true
+  cold_start_target_secs: 3
+automation:
+  daily_breadth_export: true
+  auto_journal: true
+  hedge_engine: true
+  guardrails_alerts: true
+  daily_full_report_pdf: true
+  daily_full_report_pdf_time_pt: "07:50"
+dashboards:
+  vectorvest_live: true
+  etf_tactical_live: true
+  apac_tv_embeds: false
+  ibkr_live_charts: true
+exports:
+  enable_one_click: true
+  output_dir: vault/exports
+canada_filters:
+  enabled: true
+  tariff_grade_required: true
+  usmca_status_required: true
+  smart_money_grade_required: true
+  action_plan_required: true
+options_helper:
+  enabled: true
+  pop_target: 0.60
+  dte_min: 21
+  dte_max: 90
+  rr_min: 3.0
+rules:
+  no_buys_within_earnings_days: 30
+timestamps:
+  timezone: America/Los_Angeles
