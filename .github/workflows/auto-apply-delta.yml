@@ -1,46 +1,85 @@
 name: Auto-Apply Vega Delta
+
 on:
   push:
     paths:
       - 'drops/**/*.zip'
       - 'drops/**/*.txt'
+  workflow_dispatch:
+    inputs:
+      zip:
+        description: 'Optional: path to a specific delta zip (e.g., drops/Vega-delta-master.zip)'
+        required: false
+      delete_list:
+        description: 'Optional: path to a delete list (e.g., drops/Vega-files-to-delete.txt)'
+        required: false
+
 jobs:
   apply:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Find latest delta
-        id: find
+      - name: Show drops folder (debug)
         run: |
-          last_zip=$(ls -t drops/*.zip | head -n 1)
-          echo "zip=$last_zip" >> $GITHUB_OUTPUT
-          if ls drops/*.txt 1> /dev/null 2>&1; then
-            last_txt=$(ls -t drops/*.txt | head -n 1)
-            echo "txt=$last_txt" >> $GITHUB_OUTPUT
-          else
-            echo "txt=" >> $GITHUB_OUTPUT
-          fi
+          echo "Branch: $GITHUB_REF  SHA: $GITHUB_SHA"
+          ls -lah || true
+          echo "---- drops ----"
+          ls -lah drops || true
 
-      - name: Apply delta
+      - name: Resolve delta files
+        id: resolve
         run: |
+          set -euo pipefail
+          ZIP_INPUT="${{ github.event.inputs.zip || '' }}"
+          TXT_INPUT="${{ github.event.inputs.delete_list || '' }}"
+          if [ -n "$ZIP_INPUT" ] && [ -f "$ZIP_INPUT" ]; then
+            ZIP="$ZIP_INPUT"
+          else
+            # Pick newest zip in drops/ if not provided
+            ZIP="$(ls -1t drops/*.zip 2>/dev/null | head -n 1 || true)"
+          fi
+          if [ -z "$ZIP" ]; then
+            echo "No delta zip found in drops/. Upload one and re-run."
+            exit 1
+          fi
+          # Optional delete list
+          if [ -n "$TXT_INPUT" ] && [ -f "$TXT_INPUT" ]; then
+            TXT="$TXT_INPUT"
+          else
+            TXT="$(ls -1t drops/*.txt 2>/dev/null | head -n 1 || true)"
+          fi
+          echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
+          echo "txt=$TXT"  >> "$GITHUB_OUTPUT"
+          echo "Using ZIP: $ZIP"
+          [ -n "$TXT" ] && echo "Using TXT: $TXT" || echo "No delete list provided."
+
+      - name: Apply delta (unzip & delete)
+        run: |
+          set -euo pipefail
           python - << 'PY'
-          import zipfile, os, shutil, pathlib
+          import zipfile, os, shutil, pathlib, sys
           repo = pathlib.Path(".").resolve()
-          delta = pathlib.Path("${{ steps.find.outputs.zip }}")
-          dl = "${{ steps.find.outputs.txt }}"
+          delta = pathlib.Path("${{ steps.resolve.outputs.zip }}")
+          dl    = "${{ steps.resolve.outputs.txt }}"
+          print(f"Applying delta: {delta}")
           with zipfile.ZipFile(delta, "r") as z:
               z.extractall(repo)
           if dl:
+              print(f"Applying delete list: {dl}")
               lines = pathlib.Path(dl).read_text(encoding="utf-8").splitlines()
               for line in lines:
-                  line = line.strip()
-                  if not line or line.startswith("#"):
+                  line=line.strip()
+                  if not line or line.startswith("#"): 
                       continue
                   target = repo / line
                   if target.is_file():
@@ -51,8 +90,9 @@ jobs:
 
       - name: Commit changes
         run: |
-          git config user.name "vega-bot"
+          git config user.name  "vega-bot"
           git config user.email "vega-bot@users.noreply.github.com"
           git add -A
-          git commit -m "Auto-apply delta from ${{ steps.find.outputs.zip }}" || echo "No changes"
+          git status
+          git commit -m "Auto-apply delta from ${{ steps.resolve.outputs.zip }}" || echo "No changes to commit"
           git push
