@@ -1,7 +1,10 @@
-from utils.prefs_bootstrap import prefs
 import os, json
 import streamlit as st
 from datetime import datetime, timezone
+try:
+    from utils.prefs_bootstrap import prefs  # optional legacy import
+except Exception:
+    pass
 
 st.set_page_config(page_title="Vega Cockpit — Final Build", layout="wide")
 
@@ -49,6 +52,10 @@ with st.sidebar:
         region_pick = st.radio("Region", [
             "Canada Filters"
         ], index=0)
+    with st.expander("Legacy (v1.x) Pages", expanded=False):
+        st.caption("Links to any Streamlit pages found in ./pages or ./ui")
+        from modules import legacy_pages
+        legacy_pages.render()
 
 from modules import breadth_panel, vectorvest_panel, etf_tactical_panel, guardrails_gauges, ibkr_charts, apac_dashboard, one_click_report
 from modules import options_helper, trade_scorecard, backtest_mode, pattern_profiler, canada_filters
@@ -84,4 +91,4 @@ if region_pick == "Canada Filters":
     canada_filters.render()
 
 st.sidebar.markdown("---")
-st.sidebar.caption("Build: FINAL | {} UTC".format(datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')))
+st.sidebar.caption("Build: FINAL+LEGACY | {} UTC".format(datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')))
