@@ -1,3 +1,4 @@
+from utils.prefs_bootstrap import prefs
 import os, json
 import streamlit as st
 from datetime import datetime, timezone
