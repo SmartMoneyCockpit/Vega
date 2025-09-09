@@ -8,10 +8,10 @@ on:
   workflow_dispatch:
     inputs:
       zip:
-        description: 'Optional: path to a specific delta zip (e.g., drops/Vega-delta-master.zip)'
+        description: 'Optional: drops/<file>.zip'
         required: false
       delete_list:
-        description: 'Optional: path to a delete list (e.g., drops/Vega-files-to-delete.txt)'
+        description: 'Optional: drops/<file>.txt'
         required: false
 
 jobs:
@@ -19,80 +19,72 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Show drops folder (debug)
-        run: |
-          echo "Branch: $GITHUB_REF  SHA: $GITHUB_SHA"
-          ls -lah || true
-          echo "---- drops ----"
-          ls -lah drops || true
-
-      - name: Resolve delta files
+      - name: Resolve latest ZIP
         id: resolve
+        shell: bash
         run: |
           set -euo pipefail
-          ZIP_INPUT="${{ github.event.inputs.zip || '' }}"
-          TXT_INPUT="${{ github.event.inputs.delete_list || '' }}"
-          if [ -n "$ZIP_INPUT" ] && [ -f "$ZIP_INPUT" ]; then
-            ZIP="$ZIP_INPUT"
-          else
-            # Pick newest zip in drops/ if not provided
-            ZIP="$(ls -1t drops/*.zip 2>/dev/null | head -n 1 || true)"
+          ZIP="${{ github.event.inputs.zip }}"
+          TXT="${{ github.event.inputs.delete_list }}"
+          if [ -z "$ZIP" ]; then
+            ZIP=$(ls -1t drops/*.zip 2>/dev/null | head -n 1 || true)
           fi
           if [ -z "$ZIP" ]; then
-            echo "No delta zip found in drops/. Upload one and re-run."
-            exit 1
-          fi
-          # Optional delete list
-          if [ -n "$TXT_INPUT" ] && [ -f "$TXT_INPUT" ]; then
-            TXT="$TXT_INPUT"
-          else
-            TXT="$(ls -1t drops/*.txt 2>/dev/null | head -n 1 || true)"
+            echo "No delta zip found in drops/"; exit 1
           fi
           echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
-          echo "txt=$TXT"  >> "$GITHUB_OUTPUT"
+          if [ -z "$TXT" ]; then
+            TXT=$(ls -1t drops/*.txt 2>/dev/null | head -n 1 || true)
+          fi
+          echo "txt=$TXT" >> "$GITHUB_OUTPUT"
           echo "Using ZIP: $ZIP"
-          [ -n "$TXT" ] && echo "Using TXT: $TXT" || echo "No delete list provided."
+          [ -n "$TXT" ] && echo "Using TXT: $TXT" || echo "No delete list."
 
-      - name: Apply delta (unzip & delete)
+      - name: Mirror repo from delta
+        shell: bash
         run: |
           set -euo pipefail
           python - << 'PY'
-          import zipfile, os, shutil, pathlib, sys
+          import zipfile, os, shutil, pathlib
           repo = pathlib.Path(".").resolve()
           delta = pathlib.Path("${{ steps.resolve.outputs.zip }}")
-          dl    = "${{ steps.resolve.outputs.txt }}"
-          print(f"Applying delta: {delta}")
-          with zipfile.ZipFile(delta, "r") as z:
-              z.extractall(repo)
-          if dl:
-              print(f"Applying delete list: {dl}")
-              lines = pathlib.Path(dl).read_text(encoding="utf-8").splitlines()
-              for line in lines:
-                  line=line.strip()
-                  if not line or line.startswith("#"): 
-                      continue
-                  target = repo / line
-                  if target.is_file():
-                      target.unlink(missing_ok=True)
-                  elif target.is_dir():
-                      shutil.rmtree(target, ignore_errors=True)
+          # 1) Extract zip into a temp dir
+          tmp = repo / "_delta_extract"
+          if tmp.exists(): shutil.rmtree(tmp)
+          tmp.mkdir()
+          with zipfile.ZipFile(delta, "r") as z: z.extractall(tmp)
+          # 2) Mirror: delete anything in repo root that is not in tmp
+          def relset(root):
+            out=set()
+            for p in root.rglob("*"):
+              if p.is_file():
+                out.add(p.relative_to(root).as_posix())
+            return out
+          src = relset(tmp)
+          dst = relset(repo)
+          # prune git internals & drops
+          dst = {p for p in dst if not (p.startswith(".git/") or p.startswith("drops/") or p.startswith(".github/"))}
+          # delete extras
+          for p in sorted(dst - src):
+            target = repo / p
+            target.parent.mkdir(parents=True, exist_ok=True)
+            try:
+              target.unlink()
+            except IsADirectoryError:
+              shutil.rmtree(target, ignore_errors=True)
+          # 3) copy/overwrite from tmp -> repo
+          for p in sorted(src):
+            srcp = tmp / p; dstp = repo / p
+            dstp.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(srcp, dstp)
           PY
 
-      - name: Commit changes
-        run: |
-          git config user.name  "vega-bot"
-          git config user.email "vega-bot@users.noreply.github.com"
-          git add -A
-          git status
-          git commit -m "Auto-apply delta from ${{ steps.resolve.outputs.zip }}" || echo "No changes to commit"
-          git push
+      - name: Optional delete list
+        if: ${{ steps.resolve.outputs.txt != ''
