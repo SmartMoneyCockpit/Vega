@@ -1,0 +1,35 @@
+name: vega-offloaded-tasks
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "25 14 * * 1-5"   # 7:25 AM PT pre-warm
+    - cron: "50 14 * * 1-5"   # 7:50 AM PT daily report
+    - cron: "00 19 * * 1-5"   # Midday
+    - cron: "00 01 * * 2-6"   # APAC afternoon
+jobs:
+  build-cache-and-reports:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-actions.txt
+      - name: Generate caches
+        run: |
+          python scripts/generate_breadth_cache.py
+          python scripts/generate_vectorvest_cache.py
+          python scripts/generate_etf_tactical_cache.py
+          python scripts/generate_guardrails_cache.py
+      - name: Export PDFs
+        run: |
+          python scripts/export_breadth_snapshot.py
+          python scripts/export_daily_report.py
+      - name: Upload vault
+        uses: actions/upload-artifact@v4
+        with:
+          name: vega-vault
+          path: vault/**
