@@ -1,11 +1,20 @@
 # utils/mailer.py
-import os
+import os, unicodedata, re
 from typing import Optional, Sequence
 import requests
 
+VERIFIED_SENDER = "blainedares@gmail.com"  # your verified Single Sender
+
 def _env(k: str) -> str:
     v = os.environ.get(k)
-    return v.strip() if isinstance(v, str) else ""
+    return v if isinstance(v, str) else ""
+
+def _clean_email(s: str) -> str:
+    # Normalize unicode, drop non-ASCII zero-width/etc, strip spaces, lower-case
+    s = unicodedata.normalize("NFKC", (s or ""))
+    s = "".join(ch for ch in s if ord(ch) < 128)
+    s = re.sub(r"\s+", "", s).strip().lower()
+    return s
 
 def send_email(
     subject: str,
@@ -14,14 +23,20 @@ def send_email(
     to: Optional[Sequence[str]] = None,
     from_addr: Optional[str] = None,
 ) -> None:
-    api_key = _env("SENDGRID_API_KEY")
-    frm     = (from_addr or _env("EMAIL_FROM")).lower()
-    tos     = list(to) if to else [x.strip() for x in _env("EMAIL_TO").split(",") if x.strip()]
-    if not (api_key and frm and tos):
-        raise RuntimeError("Missing SENDGRID_API_KEY/EMAIL_FROM/EMAIL_TO")
+    api_key = _clean_email(_env("SENDGRID_API_KEY"))
+    # Clean envs
+    env_from = _clean_email(_env("EMAIL_FROM"))
+    to_list = list(to) if to else [
+        _clean_email(x) for x in _env("EMAIL_TO").split(",") if _clean_email(x)
+    ]
+    if not (api_key and to_list):
+        raise RuntimeError("Missing SENDGRID_API_KEY or EMAIL_TO")
+
+    # Force FROM to your verified sender (eliminates any mismatch)
+    frm = VERIFIED_SENDER
 
     data = {
-        "personalizations": [{"to": [{"email": e} for e in tos]}],
+        "personalizations": [{"to": [{"email": e} for e in to_list]}],
         "from": {"email": frm},
         "subject": subject,
         "content": [{"type": "text/plain", "value": text_body}],
