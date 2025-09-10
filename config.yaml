@@ -1,3 +1,6 @@
+# config.yaml
+app:
+  dev_mode: false   # set true only when you need to open old scripts
 version: final_build_1
 perf:
   offload_enabled: true
