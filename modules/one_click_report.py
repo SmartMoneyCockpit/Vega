@@ -22,6 +22,10 @@ def render():
     else:
         st.info("No report yet. GitHub Action will generate it automatically.")
 
+    # Recipient override (falls back to VEGA_EMAIL_TO if left blank)
+    default_rcpt = os.getenv("VEGA_EMAIL_TO", "")
+    rcpt = st.text_input("Recipient (optional, overrides VEGA_EMAIL_TO)", default_rcpt)
+
     col1, col2 = st.columns(2)
 
     with col1:
@@ -29,11 +33,11 @@ def render():
             try:
                 from tools.emailer import send_email
                 send_email(
+                    to_addrs=rcpt or None,
                     subject="Vega test email",
                     html_body="<h3>Vega test</h3><p>If you see this, SMTP creds are good.</p>",
-                    # to_addrs=["your@email.com"],  # optional; else uses VEGA_EMAIL_TO
                 )
-                st.success("Test email sent ✅")
+                st.success(f"Test email sent ✅ to {rcpt or default_rcpt or '(no default set)'}")
             except Exception as e:
                 st.error(f"Email failed: {e}")
 
@@ -43,10 +47,11 @@ def render():
             try:
                 from tools.emailer import send_email
                 send_email(
+                    to_addrs=rcpt or None,
                     subject="Vega – Daily Report",
                     html_body=f"<p>Attached: {os.path.basename(latest)}</p>",
-                    attachments=[latest],
+                    attachments=[latest] if latest else None,
                 )
-                st.success("Report emailed ✅")
+                st.success(f"Report emailed ✅ to {rcpt or default_rcpt or '(no default set)'}")
             except Exception as e:
                 st.error(f"Email failed: {e}")
