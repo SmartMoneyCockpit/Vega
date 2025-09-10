@@ -2,7 +2,7 @@
 import os, smtplib, mimetypes, time
 from email.message import EmailMessage
 
-# Read MAIL_* first; if absent, fall back to VEGA_EMAIL_*
+# Prefer MAIL_*; fall back to your existing VEGA_EMAIL_* on Render
 HOST = os.getenv("MAIL_HOST") or os.getenv("VEGA_EMAIL_HOST") or "smtp.gmail.com"
 PORT = int(os.getenv("MAIL_PORT") or os.getenv("VEGA_EMAIL_PORT") or "587")
 USER = os.getenv("MAIL_USER") or os.getenv("VEGA_EMAIL_USER")
@@ -10,7 +10,6 @@ PASS = os.getenv("MAIL_APP_PASSWORD") or os.getenv("VEGA_EMAIL_PASS")
 FROM = os.getenv("MAIL_FROM") or (USER and f"Vega Cockpit <{USER}>")
 DEFAULT_TO = os.getenv("VEGA_EMAIL_TO")
 
-# Optional tuning (safe defaults)
 MAX_RETRIES = int(os.getenv("MAIL_MAX_RETRIES", "1"))
 RETRY_BASE = float(os.getenv("MAIL_RETRY_BASE_S", "1.0"))
 
@@ -40,7 +39,9 @@ def send_email(to_addrs=None, subject="", html_body="", attachments=None, cc=Non
         ctype, _ = mimetypes.guess_type(path)
         maintype, subtype = (ctype or "application/octet-stream").split("/", 1)
         with open(path, "rb") as f:
-            msg.add_attachment(f.read(), maintype=maintype, subtype=subtype, filename=os.path.basename(path))
+            msg.add_attachment(
+                f.read(), maintype=maintype, subtype=subtype, filename=os.path.basename(path)
+            )
 
     last_err = None
     for attempt in range(1, MAX_RETRIES + 1):
