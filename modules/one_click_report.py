@@ -1,4 +1,6 @@
 # modules/one_click_report.py
+from tools.emailer import smtp_diag
+st.caption(f"SMTP diag: {smtp_diag()}")
 import os, glob
 import streamlit as st
 
