@@ -2,8 +2,18 @@ name: Morning Report (NA)
 
 on:
   schedule:
-    - cron: "25 14 * * 1-5"   # 07:25 Phoenix
+    - cron: "25 14 * * 1-5"   # 07:25 Phoenix (UTC-7)
   workflow_dispatch:
+
+concurrency:
+  group: morning-report
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  TZ: America/Los_Angeles     # for human-readable timestamps
 
 jobs:
   build:
@@ -11,34 +21,139 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
-        with: { python-version: "3.11" }
+        with:
+          python-version: "3.11"
+
       - name: Install deps
         run: |
           python -m pip install --upgrade pip
-          pip install streamlit pandas pyyaml
-      - name: Generate Morning Report JSON + Markdown
+          pip install pyyaml reportlab
+          mkdir -p vault/exports vault/reports vault/snapshots vault/cache snapshots
+
+      - name: Generate Morning Report JSON + Markdown + PDF
         run: |
-          python - << 'PY'
-          import json, yaml, os, datetime as dt
+          python - <<'PY'
+          import os, json, datetime as dt
+          from zoneinfo import ZoneInfo
           from pathlib import Path
-          cfg = yaml.safe_load(open("config/vega_rules.yaml"))
-          now_utc = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+          from reportlab.lib.pagesizes import LETTER
+          from reportlab.pdfgen import canvas
+          import yaml
+
+          # dirs
+          Path("vault/exports").mkdir(parents=True, exist_ok=True)
+          Path("snapshots").mkdir(parents=True, exist_ok=True)
+
+          # optional config
+          cfg = {}
+          for p in ("config.yaml","configs/vega_rules.yaml","config/vega_rules.yaml"):
+              if Path(p).exists():
+                  try:
+                      cfg = yaml.safe_load(open(p, "r", encoding="utf-8")) or {}
+                      break
+                  except Exception:
+                      pass
+
+          # timestamps
+          now_utc = dt.datetime.now(dt.timezone.utc)
+          tz = os.getenv("TZ","America/Los_Angeles")
+          now_local = now_utc.astimezone(ZoneInfo(tz))
+          date_str = now_local.strftime("%Y-%m-%d")
+
+          # JSON
           out = {
-            "generated_at_utc": now_utc,
-            "sections": cfg["sections_daily"],
-            "notes": "Morning NA report scaffold; fill with your provider later."
+              "generated_at_utc":   now_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
+              "generated_at_local": now_local.strftime("%Y-%m-%d %H:%M %Z"),
+              "notes": "Morning NA report scaffold; wire provider data in app/CI.",
+              "version": (cfg.get("app") or {}).get("version","final_build"),
           }
-          Path("snapshots").mkdir(exist_ok=True)
-          open("snapshots/morning_report.json","w").write(json.dumps(out, indent=2))
-          md = f"# Morning Report — {now_utc}\n\nSections: " + ", ".join(cfg["sections_daily"])
-          open("snapshots/morning_report.md","w").write(md)
+          with open("snapshots/morning_report.json","w",encoding="utf-8") as f:
+              json.dump(out,f,indent=2)
+
+          # Markdown
+          with open("snapshots/morning_report.md","w",encoding="utf-8") as f:
+              f.write(f"# Morning Report (NA) — {now_local:%Y-%m-%d %H:%M %Z}\n\n")
+              f.write(f"- Generated UTC: {out['generated_at_utc']}\n")
+              f.write("- Sections: scaffold\n")
+
+          # PDF (simple one-pager)
+          pdf_path = Path(f"vault/exports/daily-report-{date_str}.pdf")
+          c = canvas.Canvas(str(pdf_path), pagesize=LETTER)
+          W,H = LETTER
+          y = H - 72
+          c.setFont("Helvetica-Bold",16)
+          c.drawString(72,y, "Vega – Morning Report (NA)")
+          y -= 22
+          c.setFont("Helvetica",10)
+          c.drawString(72,y, f"Generated (local): {out['generated_at_local']}")
+          y -= 14
+          c.drawString(72,y, f"Generated (UTC):   {out['generated_at_utc']}")
+          y -= 28
+          c.setFont("Helvetica-Bold",12)
+          c.drawString(72,y, "Notes")
+          y -= 16
+          c.setFont("Helvetica",10)
+          c.drawString(90,y, "Scaffold only — integrate provider data in the app/CI.")
+          c.showPage()
+          c.save()
+          print(f"PDF_WRITTEN={pdf_path}")
           PY
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: morning-report
-          path: snapshots/
-          retention-days: ${{ fromJSON(steps.meta.outputs.retain || '7') }}
-      - id: meta
-        run: echo "retain=${{ github.ref == 'refs/heads/main' && '7' || '3' }}" >> $GITHUB_OUTPUT
+          path: |
+            snapshots/morning_report.json
+            snapshots/morning_report.md
+            vault/exports/daily-report-*.pdf
+          retention-days: 7
+
+      - name: Email latest daily PDF
+        env:
+          VEGA_EMAIL_HOST: smtp.gmail.com
+          VEGA_EMAIL_PORT: 465
+          VEGA_EMAIL_USER: blainedares@gmail.com
+          VEGA_EMAIL_PASS: svhkptwyvlobdzvj
+          VEGA_EMAIL_TO:   blainedares@gmail.com
+          PYTHONPATH: .
+        run: |
+          python - <<'PY'
+          import glob, os
+          from tools.emailer import send_email
+          pdfs = sorted(glob.glob('vault/exports/daily-report-*.pdf'))
+          if not pdfs:
+              raise SystemExit("No PDF found in vault/exports")
+          latest = pdfs[-1]
+          send_email(
+              subject="Vega – Daily Report (NA)",
+              html_body=f"<p>Attached: {os.path.basename(latest)}</p>",
+              attachments=[latest],
+          )
+          print("EMAIL_OK")
+          PY
+
+  notify_failure:
+    needs: [build]
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Email failure notice
+        env:
+          VEGA_EMAIL_HOST: smtp.gmail.com
+          VEGA_EMAIL_PORT: 465
+          VEGA_EMAIL_USER: blainedares@gmail.com
+          VEGA_EMAIL_PASS: svhkptwyvlobdzvj
+          VEGA_EMAIL_TO:   blainedares@gmail.com
+          PYTHONPATH: .
+        run: |
+          python - <<'PY'
+          from tools.emailer import send_email
+          send_email(
+            subject="Vega – Morning Report FAILED",
+            html_body="<p>The morning workflow failed. Check Actions logs.</p>",
+          )
+          print("FAIL_EMAIL_SENT")
+          PY
