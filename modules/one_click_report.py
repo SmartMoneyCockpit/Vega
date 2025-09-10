@@ -1,45 +1,52 @@
-# tools/emailer.py
-import os, smtplib, mimetypes, time
-from email.message import EmailMessage
+# modules/one_click_report.py
+import os, glob
+import streamlit as st
 
-HOST = os.getenv("MAIL_HOST") or os.getenv("VEGA_EMAIL_HOST") or "smtp.gmail.com"
-PORT = int(os.getenv("MAIL_PORT") or os.getenv("VEGA_EMAIL_PORT") or "587")
-USER = os.getenv("MAIL_USER") or os.getenv("VEGA_EMAIL_USER")
-PASS = os.getenv("MAIL_APP_PASSWORD") or os.getenv("VEGA_EMAIL_PASS")
-FROM = os.getenv("MAIL_FROM") or (USER and f"Vega Cockpit <{USER}>")
-DEFAULT_TO = os.getenv("VEGA_EMAIL_TO")
+def _ensure_dirs():
+    for d in ["vault/exports", "vault/snapshots", "vault/reports", "vault/cache"]:
+        os.makedirs(d, exist_ok=True)
 
-MAX_RETRIES = int(os.getenv("MAIL_MAX_RETRIES", "1"))
-RETRY_BASE = float(os.getenv("MAIL_RETRY_BASE_S", "1.0"))
+def _latest_daily_pdf():
+    pdfs = sorted(glob.glob("vault/exports/daily-report-*.pdf"))
+    return pdfs[-1] if pdfs else None
 
-def send_email(to_addrs=None, subject="", html_body="", attachments=None, cc=None, bcc=None):
-    if to_addrs is None:
-        to_addrs = [DEFAULT_TO] if DEFAULT_TO else []
-    if isinstance(to_addrs, str):
-        to_addrs = [to_addrs]
+def render():
+    _ensure_dirs()
 
-    msg = EmailMessage()
-    msg["Subject"] = subject
-    msg["From"] = FROM or USER
-    msg["To"] = ", ".join([a for a in to_addrs if a])
-    if cc:
-        cc_list = cc if isinstance(cc, list) else [cc]
-        msg["Cc"] = ", ".join(cc_list)
-        to_addrs += cc_list
-    if bcc:
-        bcc_list = bcc if isinstance(bcc, list) else [bcc]
-        to_addrs += bcc_list
+    st.header("One-Click Full Daily Report")
+    st.write("Server creates a combined PDF each morning into `/vault/exports`.")
 
-    msg.set_content("HTML email. Please view in an HTML-capable client.")
-    msg.add_alternative(html_body or "<p>(no body)</p>", subtype="html")
+    latest = _latest_daily_pdf()
+    if latest:
+        st.success(f"Latest report: **{os.path.basename(latest)}**")
+    else:
+        st.info("No report yet. GitHub Action will generate it automatically.")
 
-    for path in (attachments or []):
-        ctype, _ = mimetypes.guess_type(path)
-        maintype, subtype = (ctype or "application/octet-stream").split("/", 1)
-        with open(path, "rb") as f:
-            msg.add_attachment(f.read(), maintype=maintype, subtype=subtype, filename=os.path.basename(path))
+    col1, col2 = st.columns(2)
 
-    last_err = None
-    for attempt in range(1, MAX_RETRIES + 1):
-        try:
-            with smtplib.SMTP(HOST, PORT, timeout=30) as s
+    with col1:
+        if st.button("Send test email (no attachment)"):
+            try:
+                from tools.emailer import send_email
+                send_email(
+                    subject="Vega test email",
+                    html_body="<h3>Vega test</h3><p>If you see this, SMTP creds are good.</p>",
+                    # to_addrs=["your@email.com"],  # optional; else uses VEGA_EMAIL_TO
+                )
+                st.success("Test email sent ✅")
+            except Exception as e:
+                st.error(f"Email failed: {e}")
+
+    with col2:
+        disabled = latest is None
+        if st.button("Email latest daily PDF", disabled=disabled):
+            try:
+                from tools.emailer import send_email
+                send_email(
+                    subject="Vega – Daily Report",
+                    html_body=f"<p>Attached: {os.path.basename(latest)}</p>",
+                    attachments=[latest],
+                )
+                st.success("Report emailed ✅")
+            except Exception as e:
+                st.error(f"Email failed: {e}")
