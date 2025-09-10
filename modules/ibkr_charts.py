@@ -1,14 +1,16 @@
-import os, json
+# modules/ibkr_charts.py
 import streamlit as st
+from tools.ibkr_client import get_ib, status
 
 def render():
-    st.header("IBKR Charts (Live if configured, else cached)")
-    host = os.getenv("IBKR_HOST","")
-    port = os.getenv("IBKR_PORT","")
-    client_id = os.getenv("IBKR_CLIENT_ID","")
-    if not (host and port and client_id):
-        st.warning("IBKR not configured. Set IBKR_HOST / IBKR_PORT / IBKR_CLIENT_ID in Render. Showing placeholder.")
-        st.code("Fallback: cached chart images or basic placeholders here.")
-    else:
-        st.success("IBKR env vars detected — this panel will request live charts in server workflows.")
-        st.code("Server-side workflow pulls data from IBKR; UI displays generated snapshots.")
+    st.header("IBKR Charts")
+    st.caption(f"IBKR status: {status()}")
+    ib = get_ib()
+    if not ib:
+        st.info("IBKR not connected (safe fallback). Start TWS/Gateway and set IB_HOST/IB_PORT/IB_CLIENT_ID if needed.")
+        return
+    try:
+        server_time = ib.reqCurrentTime()
+        st.success(f"Connected. IB Server time: {server_time}")
+    except Exception as e:
+        st.warning(f"Connected but request failed: {e}")

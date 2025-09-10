@@ -1,0 +1,8 @@
+CHANGELOG (Delta)
+
+- Added tools/emailer.py with SSL/STARTTLS, diag, multi-recipient, archive BCC.
+- Replaced modules/one_click_report.py with recipient override + test/send/resend.
+- Added tools/ibkr_client.py and updated modules/ibkr_charts.py to use it (asyncio-safe).
+- Added tools/breadth.py and updated modules/breadth_panel.py to always render (cache/fallback).
+- Added .github/workflows/morning_report.yaml (secrets-based) with PDF generation + email.
+- Added .github/workflows/morning_report_INLINE.yaml.example for quick inline testing.
