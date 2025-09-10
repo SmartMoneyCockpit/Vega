@@ -1,8 +1,7 @@
 # modules/one_click_report.py
-from tools.emailer import smtp_diag
-st.caption(f"SMTP diag: {smtp_diag()}")
 import os, glob
 import streamlit as st
+from tools.emailer import smtp_diag, send_email  # import once
 
 def _ensure_dirs():
     for d in ["vault/exports", "vault/snapshots", "vault/reports", "vault/cache"]:
@@ -17,6 +16,9 @@ def render():
 
     st.header("One-Click Full Daily Report")
     st.write("Server creates a combined PDF each morning into `/vault/exports`.")
+
+    # SMTP diagnostics (no secrets)
+    st.caption(f"SMTP diag: {smtp_diag()}")
 
     latest = _latest_daily_pdf()
     if latest:
@@ -33,7 +35,6 @@ def render():
     with col1:
         if st.button("Send test email (no attachment)"):
             try:
-                from tools.emailer import send_email
                 send_email(
                     to_addrs=rcpt or None,
                     subject="Vega test email",
@@ -47,7 +48,6 @@ def render():
         disabled = latest is None
         if st.button("Email latest daily PDF", disabled=disabled):
             try:
-                from tools.emailer import send_email
                 send_email(
                     to_addrs=rcpt or None,
                     subject="Vega – Daily Report",
