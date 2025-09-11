@@ -1,0 +1,35 @@
+# Price levels
+- id: FHI_reclaim
+  type: price_cross
+  ticker: FHI
+  exchange: TSX
+  direction: above
+  level: 51.50
+  rearm:
+    type: band_exit_then_recross
+    band_below: 51.00
+
+- id: QQQ_breakout_20d
+  type: breakout_close
+  ticker: QQQ
+  period: 20
+  confirm:
+    breadth: true
+
+# Regime flip
+- id: risk_off_vix20
+  type: regime
+  metric: VIX
+  direction: above
+  level: 20
+  rearm:
+    metric: VIX
+    direction: below
+    level: 18
+    min_sessions: 2
+
+# News keywords (from approved feeds)
+- id: material_news
+  type: news_keyword
+  tickers: [SPY, QQQ, FHI, XIU.TO, ZPR.TO]
+  keywords: [guidance, downgrade, recall, M&A, acquisition, investigation]
