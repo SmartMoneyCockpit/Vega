@@ -1,0 +1,22 @@
+name: alerts-worker
+on:
+  schedule:
+    - cron: "*/5 13-22 * * 1-5"   # every 5m during market hours UTC
+  workflow_dispatch: {}
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install -r requirements-actions.txt
+      - env:
+          ALERTS_EMAIL_MODE: ${{ secrets.ALERTS_EMAIL_MODE }}
+          ALERTS_REARM: ${{ secrets.ALERTS_REARM }}
+          ALERTS_SUPPRESS_NOCHANGE: ${{ secrets.ALERTS_SUPPRESS_NOCHANGE }}
+          DIGEST_MODE: ${{ secrets.DIGEST_MODE }}
+          DIGEST_LOOKBACK: ${{ secrets.DIGEST_LOOKBACK }}
+          ALERTS_SENDER: ${{ secrets.ALERTS_SENDER }}
+          ALERTS_TO: ${{ secrets.ALERTS_TO }}
+        run: python -m alerts.worker
