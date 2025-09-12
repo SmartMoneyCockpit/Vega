@@ -1,0 +1,12 @@
+exchanges:
+  - name: USA
+    indices: [ "^GSPC", "^IXIC", "^DJI", "^RUT" ]
+    etfs: [ "SPY", "QQQ", "DIA", "IWM" ]
+  - name: Canada
+    indices: [ "^GSPTSE" ]
+    etfs: [ "XIC.TO", "ZSP.TO" ]
+  - name: Mexico
+    indices: [ "^MXX" ]
+    etfs: [ "EWW" ]
+fx_pairs: [ "USDCAD=X", "USDMXN=X" ]
+commodities: [ "CL=F", "NG=F", "GC=F", "SI=F", "HG=F" ]
