@@ -1,0 +1,15 @@
+exchanges:
+  - name: Japan
+    indices: [ "^N225" ]
+    etfs: [ "EWJ", "DXJ" ]
+  - name: Australia
+    indices: [ "^AXJO" ]
+    etfs: [ "EWA" ]
+  - name: China / HK
+    indices: [ "000300.SS", "^HSI" ]
+    etfs: [ "FXI", "MCHI", "EWH" ]
+  - name: South Korea
+    indices: [ "^KS11" ]
+    etfs: [ "EWY" ]
+fx_pairs: [ "USDJPY=X", "AUDUSD=X", "USDCNY=X", "USDHKD=X" ]
+commodities: [ "CL=F", "BZ=F", "GC=F", "SI=F" ]
