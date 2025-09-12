@@ -15,7 +15,7 @@ copy_merge() {
   elif command -v cp >/dev/null 2>&1; then
     cp -a "$SRC"/. .
   else
-    # Python fallback (one-liner, no here-doc)
+    # Python fallback (no here-docs)
     python -c "import os,shutil,sys
 src=sys.argv[1]
 for root,dirs,files in os.walk(src):
@@ -27,30 +27,49 @@ for root,dirs,files in os.walk(src):
   fi
 }
 
-unpack_if_needed() {
-  if ls $ZIP_PATTERN 1>/dev/null 2>&1; then
-    echo "Found ZIP — unpacking..."
-    tmpdir=\"$(mktemp -d)\"
-    # Pick newest ZIP if multiple
-    zipfile=\"$(ls -1t $ZIP_PATTERN | head -n1)\"
-    echo "Using $zipfile"
+sanitize() {
+  # Trim trailing CR/LF from a path
+  local p="$1"
+  p="${p%$'\n'}"
+  p="${p%$'\r'}"
+  printf '%s' "$p"
+}
 
-    # Portable unzip (no system 'unzip' needed)
+unpack_if_needed() {
+  shopt -s nullglob dotglob
+  local matches=( $ZIP_PATTERN )
+  if ((${#matches[@]})); then
+    echo "Found ZIP(s) — unpacking..."
+    local zipfile
+    # pick newest; then sanitize CR/LF
+    zipfile="$(ls -1t $ZIP_PATTERN | head -n1 || true)"
+    zipfile="$(sanitize "$zipfile")"
+    if [ ! -f "$zipfile" ]; then
+      echo "Selected ZIP not found after listing: '$zipfile'"
+      ls -la
+      exit 1
+    fi
+    echo "Using: $zipfile"
+
+    local tmpdir
+    tmpdir="$(mktemp -d)"
+
+    # Portable unzip
     python -m zipfile -e "$zipfile" "$tmpdir"
 
-    shopt -s dotglob
-    # If the zip has a single top-level folder, merge its contents; else merge all
+    # If a single top-level folder, merge its contents; else merge all
+    local top_dirs top_files
     top_dirs=$(find "$tmpdir" -mindepth 1 -maxdepth 1 -type d | wc -l || true)
     top_files=$(find "$tmpdir" -maxdepth 1 -type f | wc -l || true)
     if [ "${top_dirs:-0}" -eq 1 ] && [ "${top_files:-0}" -eq 0 ]; then
+      local inner
       inner="$(find "$tmpdir" -mindepth 1 -maxdepth 1 -type d)"
       copy_merge "$inner"
     else
       copy_merge "$tmpdir"
     fi
 
-    rm -rf "$tmpdir"
-    rm -f "$zipfile"
+    rm -rf "$tmpdir" "$zipfile"
     echo "Unpack complete."
   else
     echo "No ZIP found, skipping unpack."
