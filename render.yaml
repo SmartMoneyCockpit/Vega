@@ -4,8 +4,8 @@ services:
     name: vega-cockpit-mvp
     env: python
     plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: streamlit run app.py --server.port $PORT --server.address 0.0.0.0
+buildCommand: "bash scripts/bootstrap.sh build"
+startCommand: "bash scripts/bootstrap.sh start"
     envVars:
       - key: GOOGLE_SHEET_ID
         value: 1Nv77XYP99hXiAf0X2R37IC6OEZdiE7M5krtgPBUNAhE
