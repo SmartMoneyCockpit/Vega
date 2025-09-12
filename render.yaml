@@ -1,23 +1,28 @@
-
 services:
   - type: web
     name: vega-cockpit-mvp
     env: python
     plan: free
-buildCommand: "bash scripts/bootstrap.sh build"
-startCommand: "bash scripts/bootstrap.sh start"
+    buildCommand: "bash scripts/bootstrap.sh build"
+    startCommand: "bash scripts/bootstrap.sh start"
     envVars:
       - key: GOOGLE_SHEET_ID
-        value: 1Nv77XYP99hXiAf0X2R37IC6OEZdiE7M5krtgPBUNAhE
+        value: 1NN7YYP9X9JkAfCX827fJCG6QZE1E7M5KtrgPBUNaNE
       - key: GOOGLE_SHEET_WATCHLIST_TAB
-        value: Watch List
+        value: Watch_List
       - key: GOOGLE_SHEET_LOG_TAB
         value: TradeLog
       - key: POLYGON_KEY
-        sync: false
+        value: YOUR_POLYGON_KEY
       - key: RR_TARGET
         value: "2.0"
       - key: ALERT_PCT
         value: "1.5"
       - key: REFRESH_SECS
         value: "60"
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: STREAMLIT_SERVER_HEADLESS
+        value: "true"
+      - key: STREAMLIT_BROWSER_GATHER_USAGE_STATS
+        value: "false"
