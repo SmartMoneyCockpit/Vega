@@ -1,15 +1,19 @@
 exchanges:
   - name: London (LSE)
-    indices: [ "^FTSE" ]
-    etfs: [ "EZU", "IEUR" ]
+    indices: ["^FTSE"]
+    etfs: ["EWU", "EZU"]
+
   - name: Frankfurt (Xetra)
-    indices: [ "^GDAXI" ]
-    etfs: [ "EWG", "DAX" ]
+    indices: ["^GDAXI"]
+    etfs: ["EWG", "DAX"]
+
   - name: Paris (Euronext)
-    indices: [ "^FCHI" ]
-    etfs: [ "EWQ" ]
+    indices: ["^FCHI"]
+    etfs: ["EWQ"]
+
   - name: Europe Broad
-    indices: [ "^STOXX50E" ]
-    etfs: [ "VGK", "FEZ" ]
-fx_pairs: [ "EURUSD=X", "GBPUSD=X", "USDCHF=X" ]
-commodities: [ "CL=F", "BZ=F", "GC=F", "SI=F" ]
+    indices: ["^STOXX50E"]
+    etfs: ["VGK", "FEZ"]
+
+fx_pairs: ["EURUSD=X", "GBPUSD=X", "USDCHF=X"]
+commodities: ["CL=F", "BZ=F", "GC=F", "SI=F"]
