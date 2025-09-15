@@ -1,0 +1,76 @@
+{
+  "generated_at": "2025-09-15T04:40:49.591064Z",
+  "source_zip": "Vega-handoff-2025-09-15.zip",
+  "files": [
+    {
+      "path": ".env.example",
+      "size": 612,
+      "sha256": "38dbfa54bb2fe997ffd509be17e9bd2f2dc06ea0b7236dfe75995bb77e212e50"
+    },
+    {
+      "path": ".github/workflows/ci-smoke.yml",
+      "size": 638,
+      "sha256": "895136dd5ec45973da6e7b3a07a85af39f8dfc08393da43dbf1b8b405ee89ac6"
+    },
+    {
+      "path": ".github/workflows/deploy-render.yml",
+      "size": 443,
+      "sha256": "fd1187e695de991430a148bd864ad351d15e59775c3c3649e1d9583bd3fa8ab1"
+    },
+    {
+      "path": "INVENTORY.txt",
+      "size": 746,
+      "sha256": "f043503a9286d6195ea6fe6337e026551900f85e60c2fb932a93703ee387ac09"
+    },
+    {
+      "path": "Procfile",
+      "size": 69,
+      "sha256": "dca2c79362ea9a118781e9fd06b1e66630a6f582ffe11c32a700a6c3c2c5be87"
+    },
+    {
+      "path": "README-handoff.md",
+      "size": 1689,
+      "sha256": "42af49748ce3357786fcc9d153338f5e7077f22791c12ba871be677ca6fa92f4"
+    },
+    {
+      "path": "Vega-main/.github/workflows/ci.yaml",
+      "size": 943,
+      "sha256": "77576968e69e7befd646d84abfb98cccdebb1623170c492e5bab1aabcb20b84e"
+    },
+    {
+      "path": "Vega-main/.github/workflows/nightly_jobs.yaml",
+      "size": 499,
+      "sha256": "251a08b8170d3ec2e0376e1bb1f5dcb75490785289d7de18d78bf5ec810d365f"
+    },
+    {
+      "path": "Vega-main/.github/workflows/render_deploy.yaml",
+      "size": 901,
+      "sha256": "6a683fb899c9515c94b4b7ff2d4ada16e7fd212ddb153e5c93e0be61de381c72"
+    },
+    {
+      "path": "Vega-main/GITHUB_SETUP.md",
+      "size": 669,
+      "sha256": "5274ac5c2d0e5deeaaa3ea07cba6ed0b2d675db94d97f5c2383dcd31c430f5ad"
+    },
+    {
+      "path": "Vega-main/Procfile",
+      "size": 71,
+      "sha256": "f5dbbfd0e493bb2c203427dea43233b0b757b738765ac3ef7d4ac24cbf7b9e2a"
+    },
+    {
+      "path": "Vega-main/scripts/post_deploy_validate.py",
+      "size": 554,
+      "sha256": "15e21ed4094e79f0fa2cde84b633ea35f11f0bda513d1c12950e5c195a873b01"
+    },
+    {
+      "path": "render.yaml",
+      "size": 369,
+      "sha256": "9060c376c46752f8fe68ff0908cd4257dd4d44ef44d4979cb9c77036ea0658c3"
+    },
+    {
+      "path": "scripts/smoke_check.py",
+      "size": 479,
+      "sha256": "e2b6fadf235750574e7a0682931c360d109a5256c4520645e7950f4cfd4624dc"
+    }
+  ]
+}
