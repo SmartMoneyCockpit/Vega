@@ -14,7 +14,8 @@ REQ = ["SENDGRID_API_KEY","ALERTS_TO","ALERTS_FROM","POLYGON_API_KEY","TRADINGVI
 
 def need(keys):
     miss = [k for k in keys if not os.getenv(k)]
-    if miss: raise RuntimeError(f"Missing required env: {miss}")
+    if miss: 
+        raise RuntimeError(f"Missing required env: {miss}")
 
 def sector_allowlist():
     raw = (os.getenv("SECTOR_ALLOWLIST") or "").strip()
@@ -49,7 +50,11 @@ def main():
 
     try:
         need(REQ)
-        client = EmailClient(os.environ["SENDGRID_API_KEY"], os.environ["ALERTS_FROM"], os.environ["ALERTS_TO"])
+        client = EmailClient(
+            os.environ["SENDGRID_API_KEY"], 
+            os.environ["ALERTS_FROM"], 
+            os.environ["ALERTS_TO"]
+        )
     except Exception:
         LOG.exception("Startup failed")
         return 2
