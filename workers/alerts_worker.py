@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from email_client import EmailClient
+from workers.email_client import EmailClient
 from workers.providers.polygon_client import Polygon
 from workers.providers.csv_sources import load_tradingview_universe, load_earnings_calendar
 from workers.providers.yfinance_sector import SectorResolver
