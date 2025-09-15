@@ -4,17 +4,53 @@ on:
   workflow_dispatch:
   push:
     branches: [ main ]
+    # Only fire automatically when app-relevant files change
     paths:
       - "app.py"
+      - "src/**"
       - "requirements.txt"
-      - ".render/**"
+      - "requirements-actions.txt"
       - "render.yaml"
+      - ".render/**"
+      - "frontend/**"
 
 jobs:
   render-deploy:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
+
+      # Extra guard for manual triggers: skip if only docs/images changed
+      - name: Check changed files (manual guard)
+        id: ch
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            git fetch --depth=2 origin ${{ github.ref }}
+            base=$(git rev-parse HEAD^ || echo "")
+            if [ -n "$base" ]; then
+              changes=$(git diff --name-only "$base"...HEAD || true)
+            else
+              changes=$(git ls-files)
+            fi
+            echo "Changed files:"
+            echo "$changes"
+            echo "$changes" | grep -Ev '^(docs/|README|README\.md|.*\.md|.*\.png|.*\.jpg|.*\.jpeg|.*\.gif|.github/ISSUE_TEMPLATE/|.github/pull_request_template\.md)$' >/tmp/deploy_list || true
+            if [ ! -s /tmp/deploy_list ]; then
+              echo "only_docs=true" >> $GITHUB_OUTPUT
+            else
+              echo "only_docs=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "only_docs=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Stop if only docs/images changed
+        if: steps.ch.outputs.only_docs == 'true'
+        run: |
+          echo "No deploy: only docs/images changed."
+          exit 0
+
       - name: Trigger Render deploy
         env:
           RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
