@@ -1,0 +1,33 @@
+exchanges:
+  - name: London (LSE)
+    indices: ["^FTSE"]
+    etfs: ["EWU", "EZU"]
+  - name: Frankfurt (Xetra)
+    indices: ["^GDAXI"]
+    etfs: ["EWG", "DAX"]
+  - name: Paris (Euronext)
+    indices: ["^FCHI"]
+    etfs: ["EWQ"]
+  - name: Europe Broad
+    indices: ["^STOXX50E"]
+    etfs: ["VGK", "FEZ"]
+
+fx_pairs: ["EURUSD=X", "GBPUSD=X", "USDCHF=X"]
+commodities: ["CL=F", "BZ=F", "GC=F", "SI=F"]
+
+ui:
+  enable_us: true
+  enable_canada: true
+  enable_mexico: true
+  enable_europe: true
+  enable_apac: true
+
+providers:
+  order: ["ibkr", "tradingview", "polygon"]
+
+indicators:
+  rsi: { length: 14 }
+  ema: [10, 20, 40, 50, 100, 200]
+  sma: [50, 200]
+  hull: { length: 55 }
+  guppy: { fast: [3,5,8,10,12,15], slow: [30,35,40,45,50,60] }
