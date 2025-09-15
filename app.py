@@ -1,5 +1,3 @@
-from utils.prefs_bootstrap import prefs
-from __future__ import annotations
 import streamlit as st
 import pandas as pd
 from src.config_schema import load_config
@@ -52,3 +50,4 @@ if "Europe" in regions:
             df = apply_pack(df, cfg.indicators.model_dump())
             fig = price_with_ma(df, title=s)
             (col1 if i % 2 == 0 else col2).plotly_chart(fig, use_container_width=True)
+
