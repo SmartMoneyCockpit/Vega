@@ -1,7 +1,7 @@
 # vega_first_scan.py
 # First end-to-end scan: Watchlist (Sheets) -> IBKR quotes -> Log (Sheets)
 
-import os, sys, time, datetime as dt
+import os, sys, time, datetime as dt, argparse
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -19,9 +19,14 @@ import sheets_client as sc
 # ---- IBKR ----
 from ib_insync import IB, Stock
 
+# CLI flags
+parser = argparse.ArgumentParser()
+parser.add_argument("--no-ib", action="store_true", help="Skip IBKR connection (Sheets-only dry run)")
+args = parser.parse_args()
+SKIP_IB = args.no_ib or os.getenv("IB_SKIP", "0") == "1"
+
 def parse_contract(symbol: str):
     s = symbol.strip().upper()
-    # Basic symbol parsing with simple market suffix handling
     if s.endswith(".TO"):
         return Stock(s.replace(".TO", ""), "SMART", "CAD")
     elif s.endswith(".MX"):
@@ -33,16 +38,12 @@ def read_watchlist_tickers(tab: str):
     rows = sc.read_range(f"{tab}!A1:Z2000")  # expect headers in row 1
     if not rows:
         return []
-
     headers = [h.strip() for h in rows[0]]
-    # Prefer a column literally named "Ticker"
     if "Ticker" in headers:
         idx = headers.index("Ticker")
         data_rows = rows[1:]
         syms = [r[idx].strip() for r in data_rows if len(r) > idx and r[idx].strip()]
-        return list(dict.fromkeys(syms))  # de-dup, keep order
-
-    # Fallback: first column
+        return list(dict.fromkeys(syms))
     syms = [r[0].strip() for r in rows[1:] if r and r[0].strip()]
     return list(dict.fromkeys(syms))
 
@@ -55,8 +56,21 @@ def main():
 
     print(f"Found {len(tickers)} tickers:", ", ".join(tickers[:20]) + ("..." if len(tickers) > 20 else ""))
 
-    # Ensure log tab exists and has headers
-    sc.ensure_tab(LOG_TAB, ["Timestamp","TradeID","Symbol","Side","Qty","Price","Note","ExitPrice","ExitQty","Fees","PnL","R","Tags","Audit"])
+    sc.ensure_tab(LOG_TAB, [
+        "Timestamp","TradeID","Symbol","Side","Qty","Price","Note",
+        "ExitPrice","ExitQty","Fees","PnL","R","Tags","Audit"
+    ])
+
+    if SKIP_IB:
+        ts = dt.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+        for sym in tickers:
+            sc.append_trade_log(
+                [ts, "DRYRUN", sym, "", "", "", "render job (no IB)", "", "", "", "", "", "scan", "dryrun"],
+                tab_name=LOG_TAB
+            )
+            print(f"Logged DRYRUN for {sym}")
+        print("✅ Sheets-only run complete.")
+        return
 
     ib = IB()
     print(f"Connecting IBKR {IB_HOST}:{IB_PORT} clientId={IB_CLIENTID} ...")
@@ -66,20 +80,17 @@ def main():
         sys.exit(1)
     print("✅ IBKR connected.")
 
-    # Request quotes
     for sym in tickers:
         contract = parse_contract(sym)
         try:
             ib.qualifyContracts(contract)
             ticker = ib.reqMktData(contract, "", False, False)
-            ib.sleep(2.0)  # small delay to receive fields
+            ib.sleep(2.0)
             ts = dt.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
             last = ticker.last or 0.0
             bid  = ticker.bid  or 0.0
             ask  = ticker.ask  or 0.0
             vol  = int(ticker.volume or 0)
-
-            # Append a lightweight scan row into your log tab
             sc.append_trade_log(
                 [ts, "SCAN", sym, "", "", last, f"bid={bid} ask={ask} vol={vol}", "", "", "", "", "", "scan", "ibkr"],
                 tab_name=LOG_TAB
