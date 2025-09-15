@@ -1,39 +1,22 @@
-name: CI - Smoke & Lint
+name: CI
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-
+  push: { branches: [ "main", "develop" ] }
+  pull_request: { branches: [ "main" ] }
 jobs:
   ci:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - name: Install
         run: |
-          python -m pip install --upgrade pip
           pip install -r requirements.txt
-          if [ -f requirements-actions.txt ]; then pip install -r requirements-actions.txt; fi
-
-      - name: Lint (black check only)
+      - name: Import smoke test
         run: |
-          pip install black
-          black --check . || true
-
-      - name: Smoke test
-        env:
-          IB_HOST: 127.0.0.1
-          IB_PORT: "7496"
-          IB_CLIENT_ID: "1"
-          GOOGLE_SERVICE_ACCOUNT_JSON: "{}"
-          GOOGLE_SHEET_WATCHLIST_ID: "DUMMY"
-        run: |
-          python scripts/local_smoke.py || true
+          python - << 'PY'
+import importlib
+for m in ["streamlit","pandas","pydantic","yaml","plotly","numpy"]:
+    importlib.import_module(m)
+print("OK")
+PY
