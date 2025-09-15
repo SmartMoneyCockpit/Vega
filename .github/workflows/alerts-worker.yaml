@@ -1,0 +1,66 @@
+name: alerts-worker
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/30 13-21 * * 1-5"   # every 30m during US cash hours UTC (edit as needed)
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      PYTHONUNBUFFERED: "1"
+      TZ: "America/Los_Angeles"              # your saved pref
+      # Optional: set LOG_LEVEL to DEBUG for deeper traces
+      LOG_LEVEL: INFO
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ hashFiles('**/requirements-actions.txt') }}
+
+      - name: Install deps (actions)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-actions.txt
+
+      - name: Validate secrets
+        run: |
+          python - <<'PY'
+          import os, sys
+          required = ["SENDGRID_API_KEY","ALERTS_TO","ALERTS_FROM"]
+          missing = [k for k in required if not os.getenv(k)]
+          if missing:
+              print(f"[FATAL] Missing secrets: {missing}", file=sys.stderr)
+              sys.exit(2)
+          print("[OK] Secrets present:", required)
+          PY
+
+      - name: Run alerts worker (dry-run sanity)
+        run: |
+          python workers/alerts_worker.py --dry-run --log-level $LOG_LEVEL
+
+      - name: Run alerts worker (live)
+        if: ${{ success() }}
+        env:
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          ALERTS_TO:       ${{ secrets.ALERTS_TO }}
+          ALERTS_FROM:     ${{ secrets.ALERTS_FROM }}
+          # Optional market keys (the worker won’t crash if absent in dry-run):
+          POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
+          IBKR_USERNAME:   ${{ secrets.IBKR_USERNAME }}
+          IBKR_PASSWORD:   ${{ secrets.IBKR_PASSWORD }}
+        run: |
+          python workers/alerts_worker.py --log-level $LOG_LEVEL
