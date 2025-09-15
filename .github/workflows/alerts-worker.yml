@@ -2,7 +2,7 @@ name: alerts-worker
 on:
   workflow_dispatch:
   schedule:
-    - cron: '*/30 14-22 * * 1-5'   # every 30m during US market hours UTC (adjust as needed)
+    - cron: '*/30 14-22 * * 1-5'every 30m during US market hours UTC (adjust as needed)
 
 jobs:
   run:
