@@ -1,8 +1,7 @@
-from __future__ import annotations
 import pandas as pd
 import plotly.graph_objects as go
 
-def price_with_ma(df: pd.DataFrame, title: str) -> go.Figure:
+def price_with_ma(df: pd.DataFrame, title: str):
     fig = go.Figure()
     fig.add_trace(go.Candlestick(x=df["date"], open=df["open"], high=df["high"], low=df["low"], close=df["close"], name="OHLC"))
     for col in [c for c in df.columns if c.startswith(("ema_","sma_","hma_","gma_"))]:

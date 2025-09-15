@@ -1,4 +1,3 @@
-from __future__ import annotations
 from typing import List, Dict
 from pydantic import BaseModel, Field, ValidationError
 import yaml
