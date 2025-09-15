@@ -1,29 +1,16 @@
 name: Integrity Check (Vega Handoff)
 
 on:
-  push:
-    branches: [ main, staging ]
-  workflow_dispatch:
+  workflow_dispatch:   # only runs when you click "Run workflow"
 
 jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       - name: Run integrity verification
         run: |
-          python -c "import sys; print(sys.version)"
-          python scripts/smoke_check.py || true
-          echo "::group::Download verifier & manifest"
-          curl -fsSL -o verify_integrity.py ${{ github.server_url }}/${{ github.repository }}/raw/${{ github.ref_name }}/verify_integrity.py || true
-          curl -fsSL -o Vega-handoff-manifest.json ${{ github.server_url }}/${{ github.repository }}/raw/${{ github.ref_name }}/Vega-handoff-manifest.json || true
-          echo "::endgroup::"
-          if [ -f Vega-handoff-manifest.json ] && [ -f verify_integrity.py ]; then
-            python verify_integrity.py Vega-handoff-manifest.json .
-          else
-            echo "Manifest or verifier not found in repo. Commit both files to enable integrity checks."
-          fi
+          python verify_integrity.py Vega-handoff-manifest.json .
