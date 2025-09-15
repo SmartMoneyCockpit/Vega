@@ -1,7 +1,7 @@
 name: alerts-worker
 
 on:
-  # Runs every 15 minutes. Adjust as you like or comment out to disable.
+  # Runs every 15 minutes. Adjust as needed or comment out to disable.
   schedule:
     - cron: "*/15 * * * *"
   # Manual run with optional overrides
@@ -16,7 +16,7 @@ on:
         required: false
         type: string
       dry_run:
-        description: "Run without sending email (if your script supports it)"
+        description: "Run without sending email"
         required: false
         default: "false"
         type: choice
@@ -29,6 +29,7 @@ jobs:
   run:
     name: Run alerts scan
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
@@ -45,7 +46,7 @@ jobs:
           if [ -f requirements-actions.txt ]; then python -m pip install -r requirements-actions.txt; fi
           if [ -f requirements.txt ]; then python -m pip install -r requirements.txt; fi
 
-      - name: Run worker
+      - name: Run worker (module mode)
         env:
           # required secrets
           SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
@@ -59,16 +60,18 @@ jobs:
 
           # optional toggle from dispatch
           DRY_RUN: ${{ inputs.dry_run || 'false' }}
+        shell: bash
         run: |
           set -euo pipefail
           echo "Starting alerts worker…"
-          # If your entrypoint is different, adjust this line:
-          # Common patterns:
-          #   python workers/alerts_worker.py
-          #   python -m workers.alerts_worker
-          #   python -m workers.main --job alerts
-          if [ -f workers/alerts_worker.py ]; then
-            python workers/alerts_worker.py
-          else
-            python -c "import workers, sys; print('You may need to set the correct worker entrypoint.'); sys.exit(1)"
-          fi
+          # IMPORTANT: run as a package module to resolve 'workers' imports
+          python -m workers.alerts_worker $( [ "$DRY_RUN" = "true" ] && echo --dry-run )
+
+      # Optional: upload the JSON produced at artifacts/alerts.json
+      - name: Upload alerts JSON (optional)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: alerts-json
+          path: artifacts/alerts.json
+          if-no-files-found: ignore
