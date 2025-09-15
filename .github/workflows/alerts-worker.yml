@@ -1,46 +1,74 @@
 name: alerts-worker
 
 on:
-  workflow_dispatch:
+  # Runs every 15 minutes. Adjust as you like or comment out to disable.
   schedule:
-    - cron: '*/30 14-22 * * 1-5'   # every 30m during US market hours UTC (adjust as needed)
+    - cron: "*/15 * * * *"
+  # Manual run with optional overrides
+  workflow_dispatch:
+    inputs:
+      universe_csv:
+        description: "Override TRADINGVIEW_CSV_URL"
+        required: false
+        type: string
+      earnings_csv:
+        description: "Override COCKPIT_EARNINGS_CSV_URL"
+        required: false
+        type: string
+      dry_run:
+        description: "Run without sending email (if your script supports it)"
+        required: false
+        default: "false"
+        type: choice
+        options: ["false", "true"]
+
+permissions:
+  contents: read
 
 jobs:
   run:
+    name: Run alerts scan
     runs-on: ubuntu-latest
-    env:
-      # secrets
-      SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
-      POLYGON_API_KEY:  ${{ secrets.POLYGON_API_KEY }}
-      # variables
-      ALERTS_FROM:              ${{ vars.ALERTS_FROM }}
-      ALERTS_TO:                ${{ vars.ALERTS_TO }}
-      TRADINGVIEW_CSV_URL:      ${{ vars.TRADINGVIEW_CSV_URL }}
-      COCKPIT_EARNINGS_CSV_URL: ${{ vars.COCKPIT_EARNINGS_CSV_URL }}
-      SECTOR_ALLOWLIST:         ${{ vars.SECTOR_ALLOWLIST }}
-      # enable dry-run mode for testing
-      DRY_RUN: "1"
-
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: 
-          python-version: '3.11'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
 
       - name: Install deps
+        shell: bash
         run: |
-          pip install --upgrade pip
-          if [ -f requirements-actions.txt ]; then pip install -r requirements-actions.txt; fi
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          python -m pip install --upgrade pip
+          if [ -f requirements-actions.txt ]; then python -m pip install -r requirements-actions.txt; fi
+          if [ -f requirements.txt ]; then python -m pip install -r requirements.txt; fi
 
-      - name: Validate required email envs for dry-run
+      - name: Run worker
+        env:
+          # required secrets
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
+
+          # repo vars (can be moved to secrets if you prefer)
+          ALERTS_TO: ${{ vars.ALERTS_TO }}
+          ALERTS_FROM: ${{ vars.ALERTS_FROM }}
+          TRADINGVIEW_CSV_URL: ${{ inputs.universe_csv || vars.TRADINGVIEW_CSV_URL }}
+          COCKPIT_EARNINGS_CSV_URL: ${{ inputs.earnings_csv || vars.COCKPIT_EARNINGS_CSV_URL }}
+
+          # optional toggle from dispatch
+          DRY_RUN: ${{ inputs.dry_run || 'false' }}
         run: |
-          MISSING=0
-          req () { test -z "$1" && echo "❌ Missing: $2" && MISSING=1; }
-          req "${{ env.SENDGRID_API_KEY }}" SENDGRID_API_KEY
-          req "${{ env.ALERTS_FROM }}"     ALERTS_FROM
-          req "${{ env.ALERTS_TO }}"       ALERTS_TO
-          if [ $MISSING -eq 1 ]; then exit 1; fi
-
-      - name: Run alerts worker (dry-run email check)
-        run: python workers/alerts_worker.py --dry-run
+          set -euo pipefail
+          echo "Starting alerts worker…"
+          # If your entrypoint is different, adjust this line:
+          # Common patterns:
+          #   python workers/alerts_worker.py
+          #   python -m workers.alerts_worker
+          #   python -m workers.main --job alerts
+          if [ -f workers/alerts_worker.py ]; then
+            python workers/alerts_worker.py
+          else
+            python -c "import workers, sys; print('You may need to set the correct worker entrypoint.'); sys.exit(1)"
+          fi
