@@ -1,38 +1,126 @@
 # workers/alerts_worker.py
 """
-Vega Alerts Worker (single-file version)
-- Email sending is optional (uses SENDGRID_API_KEY if present).
-- Emits artifacts/alerts.json with {"email": "sent|failed|disabled", "picks":[...]}.
-- Can be run as:
-    python -m workers.alerts_worker
-  or:
-    python workers/alerts_worker.py
+Vega Alerts Worker (single-file, self-contained)
+- Email sending is optional (uses SENDGRID_API_KEY if present)
+- Includes fallbacks for scan_rules (ema, atr, rs_against, rr_ok, build_df)
+- Emits artifacts/alerts.json with {"email": "...", "picks": [...]}
+Run via:
+  python -m workers.alerts_worker
+or:
+  python workers/alerts_worker.py
 """
 
 import os, sys, argparse, logging, json
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Iterable
 
-# --- import shim so running as a script still finds the package 'workers' ---
+# --- import shim so running as a script still finds 'workers' package ---
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 # --- end shim ---
 
 import pandas as pd
+import numpy as np
 import requests
 
-# Project imports (providers + rules must exist in your repo)
+# Providers you already have in your repo:
 from workers.providers.polygon_client import Polygon
 from workers.providers.csv_sources import load_tradingview_universe, load_earnings_calendar
 from workers.providers.yfinance_sector import SectorResolver
-from workers.scan_rules import ema, atr, rs_against, rr_ok, build_df
 
 LOG = logging.getLogger("alerts-worker")
 
 # Only hard requirements (email is optional)
 REQ = ["POLYGON_API_KEY", "TRADINGVIEW_CSV_URL", "COCKPIT_EARNINGS_CSV_URL"]
 
+# -----------------------------
+# Try to import scan_rules; if missing, provide fallbacks
+# -----------------------------
+try:
+    from workers.scan_rules import ema, atr, rs_against, rr_ok, build_df  # type: ignore
+except Exception:
+    LOG.warning("workers.scan_rules not found. Using built-in fallback implementations.")
+
+    def ema(series: pd.Series, n: int) -> pd.Series:
+        """Exponential moving average."""
+        return series.ewm(span=n, adjust=False, min_periods=n).mean()
+
+    def atr(df: pd.DataFrame, n: int) -> pd.Series:
+        """
+        Average True Range. If high/low not present, approximate with
+        rolling std of close * sqrt(1) as a conservative proxy.
+        """
+        if all(col in df.columns for col in ("high", "low", "close")):
+            prev_close = df["close"].shift(1)
+            tr = pd.concat(
+                [
+                    (df["high"] - df["low"]).abs(),
+                    (df["high"] - prev_close).abs(),
+                    (df["low"] - prev_close).abs(),
+                ],
+                axis=1,
+            ).max(axis=1)
+            return tr.rolling(n, min_periods=n).mean()
+        # Fallback: proxy ATR from close volatility
+        return df["close"].pct_change().abs().rolling(n, min_periods=n).mean() * df["close"]
+
+    def rs_against(df: pd.DataFrame, bench: pd.DataFrame, lookback: int) -> float:
+        """
+        Simple relative strength vs SPY over lookback:
+        (price / price[-lookback]) / (bench / bench[-lookback])
+        """
+        if len(df) < lookback + 1 or len(bench) < lookback + 1:
+            return 1.0
+        p0, p1 = float(df["close"].iloc[-lookback - 1]), float(df["close"].iloc[-1])
+        b0, b1 = float(bench["close"].iloc[-lookback - 1]), float(bench["close"].iloc[-1])
+        if p0 == 0 or b0 == 0:
+            return 1.0
+        return (p1 / p0) / (b1 / b0)
+
+    def rr_ok(entry: float, stop: float, target: float, rr_min: float = 3.0) -> bool:
+        """Risk/Reward sanity."""
+        if not (stop < entry < target):
+            return False
+        rr = (target - entry) / (entry - stop) if (entry - stop) != 0 else 0.0
+        return rr >= rr_min
+
+    def _poly_agg_to_df(bars: Iterable[Dict[str, Any] | Any]) -> pd.DataFrame:
+        """
+        Convert Polygon aggregates list to a standard DataFrame.
+        Tries keys: c/o/h/l/v (Polygon) or close/open/high/low/volume.
+        """
+        if isinstance(bars, pd.DataFrame):
+            df = bars.copy()
+        else:
+            rows = []
+            for b in bars or []:
+                # allow object with attributes or dict
+                get = (lambda k: getattr(b, k, None)) if not isinstance(b, dict) else (lambda k: b.get(k))
+                rows.append(
+                    {
+                        "ts": get("t") or get("timestamp") or get("time"),
+                        "open": get("o") or get("open"),
+                        "high": get("h") or get("high"),
+                        "low": get("l") or get("low"),
+                        "close": get("c") or get("close"),
+                        "vol": get("v") or get("volume"),
+                    }
+                )
+            df = pd.DataFrame(rows)
+
+        # standardize and clean
+        rename_map = {"volume": "vol"}
+        df = df.rename(columns=rename_map)
+        for col in ["open", "high", "low", "close", "vol"]:
+            if col not in df.columns:
+                df[col] = np.nan
+        df = df.dropna(subset=["close"]).reset_index(drop=True)
+        return df
+
+    def build_df(bars: Iterable[Dict[str, Any] | Any]) -> pd.DataFrame:
+        """Public wrapper used by worker."""
+        return _poly_agg_to_df(bars)
 
 # -----------------------------
 # Built-in lightweight EmailClient
@@ -72,7 +160,6 @@ class EmailClient:
         )
         r.raise_for_status()
 
-
 # -----------------------------
 # Helpers
 # -----------------------------
@@ -103,7 +190,6 @@ def compose_json(picks: List[Dict[str, Any]], email_status: str) -> str:
         indent=2
     ))
     return str(outp)
-
 
 # -----------------------------
 # Main
@@ -158,7 +244,7 @@ def main() -> int:
     allow = sector_allowlist()
     sectorer = SectorResolver()
 
-    # 1) Pull universe from TradingView CSV
+    # 1) Universe from TradingView CSV
     tv_rows = load_tradingview_universe()
 
     # 2) Keep US-listed issues for Polygon (skip TSX etc.)
@@ -181,8 +267,8 @@ def main() -> int:
                 continue
 
             # Simple liquidity gate
-            vols = df["vol"].tail(30)
-            if float(vols.mean()) < 500_000:
+            vols = df["vol"].tail(30) if "vol" in df.columns else pd.Series(dtype=float)
+            if len(vols) >= 10 and float(vols.mean()) < 500_000:
                 continue
 
             df["ema21"] = ema(df["close"], 21)
@@ -244,8 +330,6 @@ def main() -> int:
         except Exception:
             email_status = "failed"
             LOG.exception("Email send failed; continuing without email")
-
-        # Update JSON with actual email status
         compose_json(picks, email_status)
     else:
         why = "no picks" if not picks else "email disabled"
