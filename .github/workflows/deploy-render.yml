@@ -1,18 +1,26 @@
-name: Deploy to Render (via Deploy Hook)
+name: Deploy to Render (Hook)
 
 on:
   push:
-    branches: [ main, staging ]
+    branches: [ main ]
+    paths:
+      - 'app.py'
+      - 'modules/**'
+      - 'services/**'
+      - 'requirements.txt'
+      - 'Procfile'
+      - 'render.yaml'
   workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   deploy:
     if: ${{ secrets.RENDER_DEPLOY_HOOK != '' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 3
     steps:
       - name: Trigger Render deploy
-        env:
-          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
-        run: |
-          echo "Triggering Render deploy via hook..."
-          curl -fsSL -X POST "$RENDER_DEPLOY_HOOK"
+        run: curl -fsSL -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}"
