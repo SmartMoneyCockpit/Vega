@@ -1,3 +1,10 @@
+name: alerts-worker
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/30 14-22 * * 1-5'   # every 30m during US market hours UTC (adjust as needed)
+
 jobs:
   run:
     runs-on: ubuntu-latest
@@ -11,13 +18,14 @@ jobs:
       TRADINGVIEW_CSV_URL:      ${{ vars.TRADINGVIEW_CSV_URL }}
       COCKPIT_EARNINGS_CSV_URL: ${{ vars.COCKPIT_EARNINGS_CSV_URL }}
       SECTOR_ALLOWLIST:         ${{ vars.SECTOR_ALLOWLIST }}
-      # enable dry-run mode
+      # enable dry-run mode for testing
       DRY_RUN: "1"
 
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: '3.11' }
+        with: 
+          python-version: '3.11'
 
       - name: Install deps
         run: |
