@@ -10,11 +10,13 @@ from workers.providers.yfinance_sector import SectorResolver
 from workers.scan_rules import ema, atr, rs_against, rr_ok, build_df
 
 LOG = logging.getLogger("alerts-worker")
-REQ = ["SENDGRID_API_KEY","ALERTS_TO","ALERTS_FROM","POLYGON_API_KEY","TRADINGVIEW_CSV_URL","COCKPIT_EARNINGS_CSV_URL"]
+
+# Only the true runtime requirements here (email is optional)
+REQ = ["POLYGON_API_KEY", "TRADINGVIEW_CSV_URL", "COCKPIT_EARNINGS_CSV_URL"]
 
 def need(keys):
     miss = [k for k in keys if not os.getenv(k)]
-    if miss: 
+    if miss:
         raise RuntimeError(f"Missing required env: {miss}")
 
 def sector_allowlist():
@@ -34,39 +36,50 @@ def earnings_ok(ticker, earn_map):
 def compose_json(picks):
     Path("artifacts").mkdir(parents=True, exist_ok=True)
     outp = Path("artifacts/alerts.json")
-    outp.write_text(json.dumps({"generated_by":"alerts-worker","picks":picks}, indent=2))
+    outp.write_text(json.dumps({"generated_by": "alerts-worker", "picks": picks}, indent=2))
     return str(outp)
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
-    ap.add_argument("--log-level", default=os.getenv("LOG_LEVEL","INFO"))
+    ap.add_argument("--log-level", default=os.getenv("LOG_LEVEL", "INFO"))
     args = ap.parse_args()
 
     logging.basicConfig(
         level=getattr(logging, args.log_level.upper(), logging.INFO),
-        format="%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+        format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
     )
+
+    # Email is optional
+    email_enabled = bool(os.getenv("SENDGRID_API_KEY"))
+    alerts_to = os.getenv("ALERTS_TO")
+    alerts_from = os.getenv("ALERTS_FROM")
 
     try:
         need(REQ)
-        client = EmailClient(
-            os.environ["SENDGRID_API_KEY"], 
-            os.environ["ALERTS_FROM"], 
-            os.environ["ALERTS_TO"]
-        )
     except Exception:
         LOG.exception("Startup failed")
         return 2
 
-    if args.dry_run:
+    client = None
+    if email_enabled:
         try:
-            client.send("Vega Alerts Worker: DRY-RUN OK", "Email pipe verified.")
-            LOG.info("Dry run email sent.")
-            return 0
+            client = EmailClient(os.environ["SENDGRID_API_KEY"], alerts_from, alerts_to)
         except Exception:
-            LOG.exception("Dry-run email failed")
-            return 2
+            # If email wiring is bad, keep running but without email
+            email_enabled = False
+            LOG.exception("Email client init failed; continuing without email")
+
+    if args.dry_run:
+        if email_enabled and client:
+            try:
+                client.send("Vega Alerts Worker: DRY-RUN OK", "Email pipe verified.")
+                LOG.info("Dry run email sent.")
+            except Exception:
+                LOG.exception("Dry-run email failed; continuing")
+        else:
+            LOG.info("Dry run OK (email disabled)")
+        return 0
 
     poly = Polygon(os.environ["POLYGON_API_KEY"])
     earn_map = load_earnings_calendar()
@@ -78,8 +91,9 @@ def main():
 
     # 2) Keep US-listed issues for Polygon (skip TSX etc.)
     def is_us(ex):
-        return (ex or "").upper() in {"NYSE","NASDAQ","AMEX","NMS","NYS"} or not ex
-    tickers = [ r["symbol"].upper() for r in tv_rows if is_us(r.get("exchange")) ]
+        return (ex or "").upper() in {"NYSE", "NASDAQ", "AMEX", "NMS", "NYS"} or not ex
+
+    tickers = [r["symbol"].upper() for r in tv_rows if is_us(r.get("exchange"))]
 
     # 3) Scan
     spy_df = to_df(poly, "SPY")
@@ -118,8 +132,8 @@ def main():
                 if (s is None) or (s not in allow):
                     continue
 
-            entry  = price
-            stop   = entry - float(df["atr14"].iloc[-1]) * 1.0
+            entry = price
+            stop = entry - float(df["atr14"].iloc[-1]) * 1.0
             target = entry + float(df["atr14"].iloc[-1]) * 3.5
 
             if not rr_ok(entry, stop, target, rr_min=3.0):
@@ -134,7 +148,7 @@ def main():
                 "entry": round(entry, 2),
                 "stop": round(stop, 2),
                 "target": round(target, 2),
-                "rr": round((target-entry)/(entry-stop), 2)
+                "rr": round((target - entry) / (entry - stop), 2),
             })
         except Exception:
             LOG.exception("Scan error for %s", t)
@@ -143,21 +157,24 @@ def main():
     # 4) Persist JSON for cockpit
     json_path = compose_json(picks)
 
-    # 5) Email (only if there are picks)
-    if picks:
-        lines = [
-            f"{p['ticker']}: ${p['price']} | EMA21 {p['ema21']} | ATR {p['atr']} | "
-            f"RS20 {p['rs20_vs_SPY']} | Entry {p['entry']} Stop {p['stop']} Target {p['target']} (R/R {p['rr']})"
-            for p in picks
-        ]
-        body = "Smart Money (Daily) — Green / Tradable Today\n\n" + "\n".join(lines) + f"\n\nJSON: {json_path}"
-        client.send(f"Vega Alerts: {len(picks)} setups", body)
-        LOG.info("Email sent with %d picks; JSON at %s", len(picks), json_path)
-        return 0
+    # 5) Email (only if enabled and there are picks)
+    if picks and email_enabled and client:
+        try:
+            lines = [
+                f"{p['ticker']}: ${p['price']} | EMA21 {p['ema21']} | ATR {p['atr']} | "
+                f"RS20 {p['rs20_vs_SPY']} | Entry {p['entry']} Stop {p['stop']} Target {p['target']} (R/R {p['rr']})"
+                for p in picks
+            ]
+            body = "Smart Money (Daily) — Green / Tradable Today\n\n" + "\n".join(lines) + f"\n\nJSON: {json_path}"
+            client.send(f"Vega Alerts: {len(picks)} setups", body)
+            LOG.info("Email sent with %d picks; JSON at %s", len(picks), json_path)
+        except Exception:
+            LOG.exception("Email send failed; continuing without email")
     else:
-        LOG.info("No green setups today; JSON at %s", json_path)
-        # Optional: quiet day → no email
-        return 0
+        why = "no picks" if not picks else "email disabled"
+        LOG.info("No email sent (%s); JSON at %s", why, json_path)
+
+    return 0
 
 if __name__ == "__main__":
     sys.exit(main())
