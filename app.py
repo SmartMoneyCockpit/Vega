@@ -1,3 +1,4 @@
+from utils.prefs_bootstrap import prefs
 import streamlit as st
 import pandas as pd
 from src.config_schema import load_config
