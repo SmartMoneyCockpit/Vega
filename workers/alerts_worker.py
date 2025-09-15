@@ -1,9 +1,9 @@
 # workers/alerts_worker.py
 """
-Vega Alerts Worker (single-file, self-contained)
-- Email sending is optional (uses SENDGRID_API_KEY if present)
-- Includes fallbacks for scan_rules (ema, atr, rs_against, rr_ok, build_df)
-- Emits artifacts/alerts.json with {"email": "...", "picks": [...]}
+Vega Alerts Worker (single-file, resilient)
+- Email is optional (SENDGRID_API_KEY if present)
+- Treats 'none', 'null', 'n/a' as missing
+- If POLYGON_API_KEY or CSV URLs are missing, falls back and still writes artifacts/alerts.json
 Run via:
   python -m workers.alerts_worker
 or:
@@ -24,15 +24,14 @@ import pandas as pd
 import numpy as np
 import requests
 
-# Providers you already have in your repo:
+# Providers you already have
 from workers.providers.polygon_client import Polygon
 from workers.providers.csv_sources import load_tradingview_universe, load_earnings_calendar
 from workers.providers.yfinance_sector import SectorResolver
 
 LOG = logging.getLogger("alerts-worker")
 
-# Only hard requirements (email is optional)
-REQ = ["POLYGON_API_KEY", "TRADINGVIEW_CSV_URL", "COCKPIT_EARNINGS_CSV_URL"]
+NULLY = {"", "none", "null", "na", "n/a"}
 
 # -----------------------------
 # Try to import scan_rules; if missing, provide fallbacks
@@ -43,14 +42,9 @@ except Exception:
     LOG.warning("workers.scan_rules not found. Using built-in fallback implementations.")
 
     def ema(series: pd.Series, n: int) -> pd.Series:
-        """Exponential moving average."""
         return series.ewm(span=n, adjust=False, min_periods=n).mean()
 
     def atr(df: pd.DataFrame, n: int) -> pd.Series:
-        """
-        Average True Range. If high/low not present, approximate with
-        rolling std of close * sqrt(1) as a conservative proxy.
-        """
         if all(col in df.columns for col in ("high", "low", "close")):
             prev_close = df["close"].shift(1)
             tr = pd.concat(
@@ -62,14 +56,9 @@ except Exception:
                 axis=1,
             ).max(axis=1)
             return tr.rolling(n, min_periods=n).mean()
-        # Fallback: proxy ATR from close volatility
         return df["close"].pct_change().abs().rolling(n, min_periods=n).mean() * df["close"]
 
     def rs_against(df: pd.DataFrame, bench: pd.DataFrame, lookback: int) -> float:
-        """
-        Simple relative strength vs SPY over lookback:
-        (price / price[-lookback]) / (bench / bench[-lookback])
-        """
         if len(df) < lookback + 1 or len(bench) < lookback + 1:
             return 1.0
         p0, p1 = float(df["close"].iloc[-lookback - 1]), float(df["close"].iloc[-1])
@@ -79,23 +68,18 @@ except Exception:
         return (p1 / p0) / (b1 / b0)
 
     def rr_ok(entry: float, stop: float, target: float, rr_min: float = 3.0) -> bool:
-        """Risk/Reward sanity."""
         if not (stop < entry < target):
             return False
-        rr = (target - entry) / (entry - stop) if (entry - stop) != 0 else 0.0
+        denom = entry - stop
+        rr = (target - entry) / denom if denom != 0 else 0.0
         return rr >= rr_min
 
     def _poly_agg_to_df(bars: Iterable[Dict[str, Any] | Any]) -> pd.DataFrame:
-        """
-        Convert Polygon aggregates list to a standard DataFrame.
-        Tries keys: c/o/h/l/v (Polygon) or close/open/high/low/volume.
-        """
         if isinstance(bars, pd.DataFrame):
             df = bars.copy()
         else:
             rows = []
             for b in bars or []:
-                # allow object with attributes or dict
                 get = (lambda k: getattr(b, k, None)) if not isinstance(b, dict) else (lambda k: b.get(k))
                 rows.append(
                     {
@@ -108,10 +92,7 @@ except Exception:
                     }
                 )
             df = pd.DataFrame(rows)
-
-        # standardize and clean
-        rename_map = {"volume": "vol"}
-        df = df.rename(columns=rename_map)
+        df = df.rename(columns={"volume": "vol"})
         for col in ["open", "high", "low", "close", "vol"]:
             if col not in df.columns:
                 df[col] = np.nan
@@ -119,18 +100,12 @@ except Exception:
         return df
 
     def build_df(bars: Iterable[Dict[str, Any] | Any]) -> pd.DataFrame:
-        """Public wrapper used by worker."""
         return _poly_agg_to_df(bars)
 
 # -----------------------------
 # Built-in lightweight EmailClient
 # -----------------------------
 class EmailClient:
-    """
-    Minimal SendGrid client.
-    - If 'to' not provided on send(), falls back to ALERTS_TO env.
-    - Uses ALERTS_FROM for sender (default 'noreply@vega.local').
-    """
     def __init__(self, api_key: Optional[str] = None,
                  sender: Optional[str] = None,
                  default_to: Optional[str] = None):
@@ -142,7 +117,6 @@ class EmailClient:
         dest = to or self.default_to
         if not dest:
             raise ValueError("Destination email missing (set ALERTS_TO or pass 'to=').")
-
         payload = {
             "personalizations": [{"to": [{"email": dest}]}],
             "from": {"email": self.sender},
@@ -151,10 +125,7 @@ class EmailClient:
         }
         r = requests.post(
             "https://api.sendgrid.com/v3/mail/send",
-            headers={
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json",
-            },
+            headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
             data=json.dumps(payload),
             timeout=20,
         )
@@ -163,14 +134,12 @@ class EmailClient:
 # -----------------------------
 # Helpers
 # -----------------------------
-def need(keys: List[str]) -> None:
-    miss = [k for k in keys if not os.getenv(k)]
-    if miss:
-        raise RuntimeError(f"Missing required env: {miss}")
+def _is_missing(v: Optional[str]) -> bool:
+    return v is None or v.strip().lower() in NULLY
 
 def sector_allowlist() -> set:
-    raw = (os.getenv("SECTOR_ALLOWLIST") or "").strip()
-    if not raw:
+    raw = os.getenv("SECTOR_ALLOWLIST", "")
+    if _is_missing(raw):
         return set()
     return {s.strip() for s in raw.split(",") if s.strip()}
 
@@ -205,14 +174,8 @@ def main() -> int:
         format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
     )
 
-    try:
-        need(REQ)
-    except Exception:
-        LOG.exception("Startup failed")
-        return 2
-
     # Email is optional
-    email_enabled = bool(os.getenv("SENDGRID_API_KEY"))
+    email_enabled = not _is_missing(os.getenv("SENDGRID_API_KEY"))
     alerts_to = os.getenv("ALERTS_TO")
     alerts_from = os.getenv("ALERTS_FROM")
 
@@ -239,21 +202,41 @@ def main() -> int:
         compose_json([], status)
         return 0
 
-    poly = Polygon(os.environ["POLYGON_API_KEY"])
-    earn_map = load_earnings_calendar()
+    poly_key = os.getenv("POLYGON_API_KEY", "")
+    tv_url = os.getenv("TRADINGVIEW_CSV_URL", "")
+    earn_url = os.getenv("COCKPIT_EARNINGS_CSV_URL", "")
+
+    # Friendly checks + fallbacks
+    if _is_missing(tv_url):
+        LOG.warning("TRADINGVIEW_CSV_URL missing; using fallback universe list.")
+        tv_rows = [{"symbol": s} for s in ["SPY", "AAPL", "MSFT", "NVDA", "AMZN"]]
+    else:
+        tv_rows = load_tradingview_universe()
+
+    if _is_missing(earn_url):
+        LOG.warning("COCKPIT_EARNINGS_CSV_URL missing; proceeding with empty earnings map.")
+        earn_map: Dict[str, Optional[int]] = {}
+    else:
+        earn_map = load_earnings_calendar()
+
     allow = sector_allowlist()
     sectorer = SectorResolver()
 
-    # 1) Universe from TradingView CSV
-    tv_rows = load_tradingview_universe()
+    # If Polygon key missing, we cannot fetch bars; write empty JSON and exit OK.
+    if _is_missing(poly_key):
+        LOG.error("POLYGON_API_KEY missing; skipping scan. Add it as a repo secret to enable full scans.")
+        compose_json([], "disabled")
+        return 0
 
-    # 2) Keep US-listed issues for Polygon (skip TSX etc.)
+    poly = Polygon(poly_key)
+
+    # 1) Keep US-listed issues for Polygon (skip TSX etc.)
     def is_us(ex: Optional[str]) -> bool:
         return (ex or "").upper() in {"NYSE", "NASDAQ", "AMEX", "NMS", "NYS"} or not ex
 
     tickers = [r["symbol"].upper() for r in tv_rows if is_us(r.get("exchange"))]
 
-    # 3) Scan
+    # 2) Scan
     spy_df = to_df(poly, "SPY")
     picks: List[Dict[str, Any]] = []
     for t in tickers:
@@ -266,7 +249,6 @@ def main() -> int:
             if price < 5:
                 continue
 
-            # Simple liquidity gate
             vols = df["vol"].tail(30) if "vol" in df.columns else pd.Series(dtype=float)
             if len(vols) >= 10 and float(vols.mean()) < 500_000:
                 continue
@@ -311,11 +293,11 @@ def main() -> int:
             LOG.exception("Scan error for %s", t)
             continue
 
-    # 4) Persist JSON for cockpit
+    # 3) Persist JSON for cockpit
     email_status = "disabled"
     json_path = compose_json(picks, email_status)
 
-    # 5) Email (only if enabled and there are picks)
+    # 4) Email (only if enabled and there are picks)
     if picks and email_enabled and client:
         try:
             lines = [
@@ -336,7 +318,6 @@ def main() -> int:
         LOG.info("No email sent (%s); JSON at %s", why, json_path)
 
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())
