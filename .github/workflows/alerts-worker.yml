@@ -1,12 +1,19 @@
-name: alerts-worker
-on:
-  workflow_dispatch:
-  schedule:
-    - cron: '*/30 14-22 * * 1-5'every 30m during US market hours UTC (adjust as needed)
-
 jobs:
   run:
     runs-on: ubuntu-latest
+    env:
+      # secrets
+      SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+      POLYGON_API_KEY:  ${{ secrets.POLYGON_API_KEY }}
+      # variables
+      ALERTS_FROM:              ${{ vars.ALERTS_FROM }}
+      ALERTS_TO:                ${{ vars.ALERTS_TO }}
+      TRADINGVIEW_CSV_URL:      ${{ vars.TRADINGVIEW_CSV_URL }}
+      COCKPIT_EARNINGS_CSV_URL: ${{ vars.COCKPIT_EARNINGS_CSV_URL }}
+      SECTOR_ALLOWLIST:         ${{ vars.SECTOR_ALLOWLIST }}
+      # enable dry-run mode
+      DRY_RUN: "1"
+
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -18,31 +25,14 @@ jobs:
           if [ -f requirements-actions.txt ]; then pip install -r requirements-actions.txt; fi
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      - name: Validate required secrets
+      - name: Validate required email envs for dry-run
         run: |
           MISSING=0
-          require () { test -z "$1" && echo "❌ Missing: $2" && MISSING=1; }
-          require "${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}" GOOGLE_APPLICATION_CREDENTIALS
-          # Add any others you truly need for this worker:
-          # require "${{ secrets.SENDGRID_API_KEY }}" SENDGRID_API_KEY
+          req () { test -z "$1" && echo "❌ Missing: $2" && MISSING=1; }
+          req "${{ env.SENDGRID_API_KEY }}" SENDGRID_API_KEY
+          req "${{ env.ALERTS_FROM }}"     ALERTS_FROM
+          req "${{ env.ALERTS_TO }}"       ALERTS_TO
           if [ $MISSING -eq 1 ]; then exit 1; fi
 
-      - name: Mount google creds
-        run: |
-          echo '${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}' > $GITHUB_WORKSPACE/gcp_service_account.json
-          echo "GOOGLE_APPLICATION_CREDENTIALS=$GITHUB_WORKSPACE/gcp_service_account.json" >> $GITHUB_ENV
-
-      - name: Run alerts worker
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ env.GOOGLE_APPLICATION_CREDENTIALS }}
-          # SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
-          # Add your envs as needed...
-        run: |
-          set -e
-          if [ -f alerts_worker.py ]; then
-            python alerts_worker.py
-          elif [ -f workers/alerts_worker.py ]; then
-            python workers/alerts_worker.py
-          else
-            echo "❌ Could not find alerts_worker.py"; exit 1
-          fi
+      - name: Run alerts worker (dry-run email check)
+        run: python workers/alerts_worker.py --dry-run
