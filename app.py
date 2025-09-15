@@ -1,3 +1,4 @@
+from utils.prefs_bootstrap import prefs
 from __future__ import annotations
 import streamlit as st
 import pandas as pd
