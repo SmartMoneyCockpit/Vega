@@ -1,0 +1,17 @@
+universe:
+  - SPY
+  - TSLA
+  - AAPL
+  - AMD
+  - META
+  - ORCL
+  # add as many as you want; you can mirror your TradingView list here
+
+rules:
+  min_avg_volume: 500000           # 500k 30-day avg
+  min_price: 5
+  rs_lookback_days: 20
+  ema_period: 21
+  atr_period: 14
+  rr_min: 3.0
+  sector_allowlist: []             # [] = all sectors; e.g. ["Technology","Industrials"]
