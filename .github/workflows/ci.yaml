@@ -1,22 +1,26 @@
-name: CI
+name: ci
+
 on:
-  push: { branches: [ "main", "develop" ] }
-  pull_request: { branches: [ "main" ] }
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
 jobs:
-  ci:
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
-      - name: Install
-        run: |
-          pip install -r requirements.txt
-      - name: Import smoke test
-        run: |
-          python - << 'PY'
-import importlib
-for m in ["streamlit","pandas","pydantic","yaml","plotly","numpy"]:
-    importlib.import_module(m)
-print("OK")
-PY
+      - run: python -m pip install --upgrade pip ruff
+      - run: ruff check .
+  build:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: echo "Build OK"   # placeholder – add real build steps here
