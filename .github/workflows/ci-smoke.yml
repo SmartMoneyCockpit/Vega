@@ -1,26 +1,42 @@
-name: CI - Vega Smoke Check
+name: CI - Vega Smoke (Lean)
 
 on:
   push:
-    branches: [ main, staging ]
-  pull_request:
-    branches: [ main, staging ]
+    branches: [ main ]
+    paths:
+      - 'app.py'
+      - 'modules/**'
+      - 'services/**'
+      - 'scripts/smoke_check.py'
+      - 'requirements.txt'
+      - '.streamlit/**'
+      - '!docs/**'
+      - '!assets/**'
   workflow_dispatch:
+
+concurrency:
+  group: smoke-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   smoke:
     runs-on: ubuntu-latest
+    timeout-minutes: 6
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Install dependencies
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: ${{ runner.os }}-pip-
+      - name: Install minimal deps (skip heavy extras)
         run: |
-          python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          pip install streamlit
       - name: Static import test
         run: |
           python scripts/smoke_check.py
+
