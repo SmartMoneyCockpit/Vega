@@ -9,12 +9,13 @@ jobs:
   run:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-
     env:
       PYTHONUNBUFFERED: "1"
-      TZ: "America/Los_Angeles"              # your saved pref
-      # Optional: set LOG_LEVEL to DEBUG for deeper traces
+      TZ: "America/Los_Angeles"
       LOG_LEVEL: INFO
+      TRADINGVIEW_CSV_URL: ${{ vars.TRADINGVIEW_CSV_URL }}
+      COCKPIT_EARNINGS_CSV_URL: ${{ vars.COCKPIT_EARNINGS_CSV_URL }}
+      SECTOR_ALLOWLIST: ${{ vars.SECTOR_ALLOWLIST }}
 
     steps:
       - name: Check out repo
@@ -40,27 +41,36 @@ jobs:
         run: |
           python - <<'PY'
           import os, sys
-          required = ["SENDGRID_API_KEY","ALERTS_TO","ALERTS_FROM"]
-          missing = [k for k in required if not os.getenv(k)]
-          if missing:
-              print(f"[FATAL] Missing secrets: {missing}", file=sys.stderr)
-              sys.exit(2)
-          print("[OK] Secrets present:", required)
+          req_secrets = ["SENDGRID_API_KEY","ALERTS_TO","ALERTS_FROM","POLYGON_API_KEY"]
+          miss = [k for k in req_secrets if not os.getenv(k)]
+          if miss:
+              print(f"[FATAL] Missing secrets: {miss}", file=sys.stderr); sys.exit(2)
+          req_vars = ["TRADINGVIEW_CSV_URL","COCKPIT_EARNINGS_CSV_URL"]
+          missv = [k for k in req_vars if not os.getenv(k)]
+          if missv:
+              print(f"[FATAL] Missing action variables: {missv}", file=sys.stderr); sys.exit(2)
+          print("[OK] Secrets & Variables present")
           PY
 
-      - name: Run alerts worker (dry-run sanity)
-        run: |
-          python workers/alerts_worker.py --dry-run --log-level $LOG_LEVEL
-
-      - name: Run alerts worker (live)
-        if: ${{ success() }}
+      - name: Dry-run email
         env:
           SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
           ALERTS_TO:       ${{ secrets.ALERTS_TO }}
           ALERTS_FROM:     ${{ secrets.ALERTS_FROM }}
-          # Optional market keys (the worker won’t crash if absent in dry-run):
+        run: python workers/alerts_worker.py --dry-run --log-level $LOG_LEVEL
+
+      - name: Run alerts worker (live scan)
+        env:
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          ALERTS_TO:       ${{ secrets.ALERTS_TO }}
+          ALERTS_FROM:     ${{ secrets.ALERTS_FROM }}
           POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
-          IBKR_USERNAME:   ${{ secrets.IBKR_USERNAME }}
-          IBKR_PASSWORD:   ${{ secrets.IBKR_PASSWORD }}
-        run: |
-          python workers/alerts_worker.py --log-level $LOG_LEVEL
+        run: python workers/alerts_worker.py --log-level $LOG_LEVEL
+
+      - name: Upload alerts.json
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: alerts-json
+          path: artifacts/alerts.json
+          if-no-files-found: warn
