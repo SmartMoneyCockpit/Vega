@@ -1,0 +1,40 @@
+name: sendgrid-test
+on:
+  workflow_dispatch:
+    inputs:
+      to:
+        description: "Where to send the test email"
+        required: true
+        type: string
+      from:
+        description: "From email (verified in SendGrid)"
+        required: false
+        default: "noreply@vega.local"
+        type: string
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send test email via SendGrid
+        env:
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          TO: ${{ inputs.to }}
+          FROM: ${{ inputs.from }}
+        run: |
+          if [ -z "${SENDGRID_API_KEY}" ]; then
+            echo "❌ Missing SENDGRID_API_KEY secret"; exit 1
+          fi
+          cat > payload.json <<EOF
+          {
+            "personalizations":[{"to":[{"email":"${TO}"}]}],
+            "from":{"email":"${FROM}"},
+            "subject":"SendGrid test from GitHub Actions",
+            "content":[{"type":"text/plain","value":"It works"}]
+          }
+          EOF
+          set -e
+          curl -i -X POST https://api.sendgrid.com/v3/mail/send \
+            -H "Authorization: Bearer ${SENDGRID_API_KEY}" \
+            -H "Content-Type: application/json" \
+            --data-binary @payload.json
