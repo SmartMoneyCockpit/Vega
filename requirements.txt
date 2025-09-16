@@ -1,14 +1,25 @@
-# Vega Cockpit — UI runtime (Render)
-# Keep this light so the app boots fast.
+# Vega Cockpit — Unified requirements (Render + Actions)
+# Python 3.11
 
+# UI core
 streamlit==1.38.0
 pandas==2.2.2
 numpy==2.0.2
 PyYAML==6.0.2
 
-# HTTP helper used by the UI
+# HTTP / async utils
 requests>=2.32.0,<3
+httpx==0.27.2
+nest-asyncio==1.6.0
+python-dateutil==2.9.0.post0
 
-# Used by the in-app snapshot viewer only (safe on Render)
+# Email (A+ digest, alerts)
+sendgrid==6.11.0
+
+# Charts / exports (PNG + PDF snapshots)
 matplotlib>=3.8,<3.10
 reportlab>=4.1,<5
+
+# Data providers used by workers
+yfinance==0.2.40
+polygon-api-client==1.13.6
