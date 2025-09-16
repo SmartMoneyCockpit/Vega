@@ -1,91 +1,82 @@
-# app.py — Safe/fast fetch + visible diagnostics
-from utils.prefs_bootstrap import prefs  # noqa: F401
-import streamlit as st
+# app.py — Vega Cockpit (starter, fast + Render-ready)
+import os
+import time
 import pandas as pd
-from datetime import timedelta
+import numpy as np
+import streamlit as st
+import plotly.graph_objects as go
 
-st.set_page_config(page_title="Vega Cockpit — Core Fix Pack", layout="wide")
+st.set_page_config(page_title="Vega Cockpit", layout="wide")
 
-# ---- Config / Providers ----
-@st.cache_data(show_spinner=False, ttl=900)
-def get_config():
-    # robust import: don't 500 if schema changed
-    try:
-        from src.config_schema import load_config
-        return load_config("vega_config.yaml")
-    except Exception as e:
-        return {"_err": f"Config load failed: {e}"}
+# -----------------------------
+# App Settings / Flags
+# -----------------------------
+APP_ENV = os.getenv("APP_ENV", "prod")  # dev|prod
+st.sidebar.caption(f"Environment: **{APP_ENV}**")
 
-@st.cache_data(show_spinner=True, ttl=900)
-def fetch(symbol: str, period: str = "6mo", interval: str = "1d") -> pd.DataFrame:
-    """
-    Try primary provider chain, then hard fallback to public/yfinance.
-    Never return None — always a DataFrame (possibly empty with 'err' flag).
-    """
-    try:
-        cfg = get_config()
-        provider_order = []
-        try:
-            # prefer configured chain, but enforce a public fallback
-            from src.providers import MarketDataProvider
-            order = getattr(cfg, "providers", None)
-            if order and getattr(order, "order", None):
-                provider_order = list(order.order)
-            provider_order += ["public"]  # ensure fallback
-            provider = MarketDataProvider(provider_order)
-            df = provider._fetch(symbol, period, interval)
-            if isinstance(df, pd.DataFrame) and not df.empty:
-                return df
-        except Exception as e:
-            # fall through to yfinance path
-            st.session_state["_provider_err"] = str(e)
-
-        # Public fallback (direct yfinance) to guarantee a plot
-        import yfinance as yf
-        hist = yf.Ticker(symbol).history(period=period, interval=interval, auto_adjust=True)
-        hist = hist.rename(columns={"Open":"open","High":"high","Low":"low","Close":"close","Volume":"volume"})
-        return hist.reset_index()
-
-    except Exception as e:
-        # return a sentinel DataFrame with error text
-        return pd.DataFrame({"__error__":[str(e)]})
+# -----------------------------
+# Data (mocked for now; replace with your providers later)
+# -----------------------------
+@st.cache_data(ttl=600, show_spinner=False)
+def load_demo(symbol: str = "SPY", n=120) -> pd.DataFrame:
+    rng = pd.date_range(end=pd.Timestamp.today(), periods=n, freq="B")
+    price = np.cumsum(np.random.normal(loc=0.2, scale=1.5, size=n)) + 500
+    df = pd.DataFrame({"date": rng, "close": price})
+    df["sma20"] = df["close"].rolling(20).mean()
+    df["sma50"] = df["close"].rolling(50).mean()
+    return df.dropna()
 
 def plot_price(df: pd.DataFrame, title: str):
-    import plotly.graph_objects as go
-    if "__error__" in df.columns:
-        st.error(f"Data error: {df['__error__'].iloc[0]}")
-        return
-    if df.empty:
-        st.warning("No data received from any provider.")
-        return
-    # accept both datetime or named 'Date'
-    tcol = "Date" if "Date" in df.columns else df.columns[0]
-    fig = go.Figure(data=[go.Candlestick(
-        x=df[tcol],
-        open=df["open"], high=df["high"], low=df["low"], close=df["close"]
-    )])
-    fig.update_layout(height=520, margin=dict(l=0,r=0,t=30,b=0), title=title)
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=df["date"], y=df["close"], name="Close"))
+    fig.add_trace(go.Scatter(x=df["date"], y=df["sma20"], name="SMA20"))
+    fig.add_trace(go.Scatter(x=df["date"], y=df["sma50"], name="SMA50"))
+    fig.update_layout(title=title, height=420, margin=dict(l=10, r=10, t=40, b=10))
     st.plotly_chart(fig, use_container_width=True)
 
-# ---- Page body ----
-st.title("Vega Cockpit — Core Fix Pack")
+# -----------------------------
+# UI
+# -----------------------------
+st.title("Vega Cockpit — Core Starter")
 
-cfg = get_config()
-if isinstance(cfg, dict) and cfg.get("_err"):
-    st.error(cfg["_err"])
+tab1, tab2, tab3 = st.tabs(["Dashboard", "Watchlist", "System Check"])
 
-tabs = st.tabs(["USA","Canada","Mexico","Europe","APAC"])
-
-with tabs[0]:
-    colA, colB = st.columns([1,3])
+with tab1:
+    colA, colB = st.columns(2)
     with colA:
-        symbol = st.text_input("Symbol (Yahoo-style)", value="SPY")
-        period = st.selectbox("Period", ["1mo","3mo","6mo","1y","2y"], index=2)
-        interval = st.selectbox("Interval", ["1d","4h","1h","30m","15m"], index=0)
-        st.caption("Public fallback is enabled; provider errors will be shown below.")
-        prov_err = st.session_state.get("_provider_err")
-        if prov_err:
-            st.info(f"Provider chain error observed, using public fallback:\n\n{prov_err}")
+        df_spy = load_demo("SPY")
+        plot_price(df_spy, "SPY — Demo (Close + SMA20/50)")
     with colB:
-        df = fetch(symbol, period, interval)
-        plot_price(df, f"{symbol} — {period} / {interval}")
+        df_qqq = load_demo("QQQ")
+        plot_price(df_qqq, "QQQ — Demo (Close + SMA20/50)")
+    st.success("This is a self-contained demo. You can plug in real providers later.")
+
+with tab2:
+    st.subheader("Watchlist (demo)")
+    wl = pd.DataFrame(
+        [
+            {"Ticker": "SPY", "Theme": "Hedge / Benchmark", "Status": "🟡 Wait"},
+            {"Ticker": "SQQQ", "Theme": "Inverse QQQ", "Status": "🔴 Avoid"},
+            {"Ticker": "RWM", "Theme": "Inverse Russell", "Status": "🟡 Wait"},
+            {"Ticker": "SLV", "Theme": "Silver", "Status": "🟢 Buy next few days"},
+            {"Ticker": "CPER", "Theme": "Copper", "Status": "🟡 Wait"},
+        ]
+    )
+    st.dataframe(wl, use_container_width=True, hide_index=True)
+
+with tab3:
+    st.subheader("Health / Liveness")
+    ok = True
+    checks = [
+        ("Python version", f"{os.sys.version.split()[0]}", True),
+        ("Streamlit", st.__version__, True),
+        ("Plotly", go.__version__, True),
+        ("ENV PORT (Render sets this)", os.getenv("PORT", "not-set"), True),
+    ]
+    for name, val, passed in checks:
+        st.write(f"**{name}**: `{val}`  — " + ("✅ OK" if passed else "❌ FAIL"))
+    if os.getenv("ON_RENDER", "0") == "1":
+        st.info("Running on Render.")
+    st.write("Sleeping 0.2s to simulate readiness...")
+    time.sleep(0.2)
+    st.success("System check complete.")
