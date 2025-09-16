@@ -6,4 +6,4 @@ port = 8501
 gatherUsageStats = false
 
 [theme]
-base = "light"
+base = "dark"    # <-- dark mode
