@@ -1,47 +1,32 @@
 name: alerts-worker
 
 on:
+  # Manual only to avoid burning minutes
   workflow_dispatch:
-  schedule:
-    - cron: "*/30 13-22 * * 1-5"   # sample trading-hours cadence; adjust to your needs
+  # schedule:
+  #   - cron: '*/15 * * * *'   # <— leave commented until you decide to enable
 
 permissions:
   contents: read
 
 concurrency:
-  group: alerts-worker
+  group: ${{ github.workflow }}
   cancel-in-progress: true
 
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-          cache: "pip"
-
-      - name: Install deps
-        run: pip install -r requirements.txt
-
-      - name: Run alerts scan
-        env:
-          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
-          ALERTS_TO:        ${{ secrets.ALERTS_TO }}
-          ALERTS_FROM:      ${{ secrets.ALERTS_FROM }}
-          POLYGON_API_KEY:  ${{ secrets.POLYGON_API_KEY }}
+          python-version: '3.11'
+      - name: Install worker deps
         run: |
-          set -euo pipefail
-          python workers/alerts_worker.py
-
-      - name: Upload artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: alerts-json
-          path: alerts.json
-          if-no-files-found: warn
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run (placeholder)
+        run: |
+          echo "Alerts worker disabled by default. Use workflow_dispatch to run manually."
+          exit 0
