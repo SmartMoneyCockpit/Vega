@@ -1,0 +1,1 @@
+Changelog — text charts upgrade.
