@@ -1,6 +1,5 @@
 # app.py — Vega Cockpit (focused, dark, no-plotly)
 import os
-import io
 import glob
 import datetime as dt
 from pathlib import Path
@@ -9,13 +8,13 @@ import pandas as pd
 import numpy as np
 import streamlit as st
 import yfinance as yf
+import yaml
 
-# (safe if you later import ib_insync elsewhere)
+# (safe if ib_insync appears anywhere in your codebase)
 import nest_asyncio as _na
 _na.apply()
 
 st.set_page_config(page_title="Vega Cockpit", layout="wide")
-
 APP_ENV = os.getenv("APP_ENV", "prod")
 st.sidebar.caption(f"Environment: **{APP_ENV}**")
 
@@ -24,22 +23,29 @@ st.sidebar.caption(f"Environment: **{APP_ENV}**")
 # -----------------------------
 @st.cache_data(ttl=900, show_spinner=False)
 def yf_hist(symbol: str, period="6mo", interval="1d") -> pd.DataFrame:
-    df = yf.download(symbol, period=period, interval=interval, auto_adjust=True, progress=False)
+    try:
+        df = yf.download(symbol, period=period, interval=interval, auto_adjust=True, progress=False)
+    except Exception:
+        return pd.DataFrame()
     if not isinstance(df, pd.DataFrame) or df.empty:
         return pd.DataFrame()
-    df = df.rename(columns=str.lower).reset_index().rename(columns={"index": "date"})
+    df = df.rename(columns=str.lower).reset_index(names="date")
+    if "date" not in df.columns:
+        df = df.reset_index().rename(columns={"index": "date"})
     return df
 
 def pct_change(series: pd.Series, periods: int) -> float:
-    if len(series) <= periods or series.iloc[-periods-1] == 0:
+    try:
+        if len(series) <= periods or series.iloc[-periods-1] == 0:
+            return np.nan
+        return 100 * (series.iloc[-1] / series.iloc[-periods-1] - 1)
+    except Exception:
         return np.nan
-    return 100 * (series.iloc[-1] / series.iloc[-periods-1] - 1)
 
-def tv_embed(symbol: str, interval: str = "D", theme: str = "dark", height: int = 560):
-    # one TradingView widget only
+def tv_embed(symbol: str, interval: str = "D", theme: str = "dark", height: int = 720):
     widget = f"""
-    <div class="tradingview-widget-container">
-      <div id="tvchart"></div>
+    <div class="tradingview-widget-container" style="height:{height}px;">
+      <div id="tvchart" style="height:{height}px;"></div>
       <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
       <script type="text/javascript">
         new TradingView.widget({{
@@ -61,7 +67,6 @@ def tv_embed(symbol: str, interval: str = "D", theme: str = "dark", height: int 
     st.components.v1.html(widget, height=height, scrolling=False)
 
 def list_pdfs(region: str) -> list[Path]:
-    # convention: reports/<REGION>/*.pdf  (REGION in {USA, CANADA, MEXICO, APAC, EUROPE})
     folder = Path("reports") / region.upper()
     return sorted(folder.glob("*.pdf"))
 
@@ -70,39 +75,42 @@ def list_pdfs(region: str) -> list[Path]:
 # -----------------------------
 st.title("Vega Cockpit — Core Starter")
 
-tab_dash, tab_apac, tab_scanner, tab_reports, tab_system = st.tabs(
-    ["Dashboard", "APAC Panel", "Scanner", "Reports", "System"]
+tab_dash, tab_apac, tab_scan, tab_europe, tab_reports, tab_system = st.tabs(
+    ["Dashboard", "APAC Panel", "Scanner", "Europe", "Reports", "System"]
 )
 
 # -----------------------------
-# Dashboard — ticker input + quick chart/table
+# DASHBOARD — big TradingView + quick chart/table
 # -----------------------------
 with tab_dash:
-    c1, c2 = st.columns([2, 1])
-    with c1:
-        st.subheader("Quick Ticker")
-        symbol = st.text_input("Symbol", value="SPY", placeholder="e.g., AAPL, MSFT, TSLA, SPY")
+    st.subheader("Quick Ticker")
+    col = st.columns(3)
+    with col[0]:
+        symbol = st.text_input("Symbol", value="SPY", placeholder="e.g., AAPL, MSFT, TSLA, SPY").strip().upper()
+    with col[1]:
         period = st.selectbox("Period", ["1mo", "3mo", "6mo", "1y", "2y"], index=2)
+    with col[2]:
         interval = st.selectbox("Interval", ["1d", "1h", "30m", "15m"], index=0)
-        df = yf_hist(symbol, period=period, interval=interval)
-        if df.empty:
-            st.warning("No data found for that symbol/period.")
-        else:
-            # native Streamlit chart (no plotly)
-            st.line_chart(df.set_index("date")["close"], height=320)
-            st.caption("Close price (auto-adjusted)")
-            st.dataframe(df.tail(25), use_container_width=True)
 
-    with c2:
-        st.subheader("TradingView (single)")
-        tv_interval = "D" if interval.endswith("d") else "60"
-        tv_embed(symbol, interval=tv_interval, theme="dark", height=420)
+    # --- TradingView full-width ---
+    st.markdown("### TradingView Chart")
+    tv_interval = "D" if interval.endswith("d") else "60"
+    tv_embed(symbol or "SPY", interval=tv_interval, theme="dark", height=720)
+
+    # --- Native chart + table ---
+    df = yf_hist(symbol or "SPY", period=period, interval=interval)
+    if df.empty:
+        st.warning("No data found for that symbol/period.")
+    else:
+        st.line_chart(df.set_index("date")["close"], height=300, use_container_width=True)
+        st.caption("Close price (auto-adjusted). Latest 25 rows below.")
+        st.dataframe(df.tail(25), use_container_width=True)
 
 # -----------------------------
-# APAC Panel — table summary + one TV chart
+# APAC — table summary + single chart picker
 # -----------------------------
 with tab_apac:
-    st.subheader("APAC Indices — Table Summary")
+    st.subheader("APAC Indices — Summary")
     apac_map = {
         "Nikkei 225": "^N225",
         "ASX 200": "^AXJO",
@@ -111,6 +119,7 @@ with tab_apac:
         "USDJPY": "JPY=X",
         "AUDUSD": "AUDUSD=X",
     }
+
     rows = []
     for name, sym in apac_map.items():
         d = yf_hist(sym, period="6mo", interval="1d")
@@ -118,43 +127,77 @@ with tab_apac:
             rows.append({"Name": name, "Symbol": sym, "Last": np.nan, "1D%": np.nan, "1W%": np.nan, "1M%": np.nan})
         else:
             last = float(d["close"].iloc[-1])
-            d1 = pct_change(d["close"], 1)
-            d5 = pct_change(d["close"], 5)
-            d21 = pct_change(d["close"], 21)
-            rows.append({"Name": name, "Symbol": sym, "Last": round(last, 2), "1D%": round(d1, 2),
-                         "1W%": round(d5, 2), "1M%": round(d21, 2)})
-    tdf = pd.DataFrame(rows)
-    st.dataframe(tdf, use_container_width=True, hide_index=True)
+            rows.append({
+                "Name": name,
+                "Symbol": sym,
+                "Last": round(last, 2),
+                "1D%": round(pct_change(d["close"], 1), 2),
+                "1W%": round(pct_change(d["close"], 5), 2),
+                "1M%": round(pct_change(d["close"], 21), 2),
+            })
+    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
     st.divider()
-    st.subheader("One APAC Chart")
-    picked = st.selectbox("Pick index/cross to view", list(apac_map.keys()))
+    st.subheader("Single APAC Chart")
+    picked = st.selectbox("Pick index/cross", list(apac_map.keys()))
     tv_embed(apac_map[picked], interval="D", theme="dark", height=560)
 
 # -----------------------------
-# Scanner — simple, usable stub
+# SCANNER — working now (Yahoo Finance backbone)
 # -----------------------------
-with tab_scanner:
-    st.subheader("IBKR Stock Scanner (Stub)")
-    st.caption("This runs a safe example now. We’ll wire real feeds in the next upgrade.")
+with tab_scan:
+    st.subheader("Stock Scanner (live % change)")
     universe = st.text_area(
         "Symbols (comma-separated)",
         value="AAPL, MSFT, SPY, TSLA, NVDA, AMZN",
     )
     lookback = st.selectbox("Lookback (days)", [1, 5, 21], index=0)
+
     syms = [s.strip().upper() for s in universe.split(",") if s.strip()]
-    out = []
+    results = []
     for s in syms:
         d = yf_hist(s, period="6mo", interval="1d")
-        if d.empty: continue
+        if d.empty:
+            continue
         last = float(d["close"].iloc[-1])
-        change = pct_change(d["close"], lookback)
-        out.append({"symbol": s, "last": round(last, 2), f"{lookback}d%": round(change, 2)})
-    sdf = pd.DataFrame(out).sort_values(by=f"{lookback}d%", ascending=False)
-    st.dataframe(sdf, use_container_width=True, hide_index=True)
+        chg = pct_change(d["close"], lookback)
+        results.append({"symbol": s, "last": round(last, 2), "change%": round(chg, 2)})
+
+    if results:
+        sdf = pd.DataFrame(results).sort_values(by="change%", ascending=False)
+        st.dataframe(sdf, use_container_width=True, hide_index=True)
+    else:
+        st.warning("No data returned for given symbols.")
+
+    st.caption("Powered by Yahoo Finance for now. IBKR/Polygon wiring comes next.")
 
 # -----------------------------
-# Reports — show PDFs by region
+# EUROPE — table (no YAML parsing error)
+# -----------------------------
+with tab_europe:
+    st.subheader("Europe Trading — Indices & ETFs")
+    config = """
+    exchanges:
+      - name: London (LSE)
+        indices: ["^FTSE"]
+        etfs: ["EWU", "EZU"]
+      - name: Frankfurt (Xetra)
+        indices: ["^GDAXI"]
+        etfs: ["EWG", "DAX"]
+      - name: Paris (Euronext)
+        indices: ["^FCHI"]
+        etfs: ["EWQ"]
+      - name: Europe Broad
+        indices: ["^STOXX50E"]
+        etfs: ["VGK", "FEZ"]
+    """
+    data = yaml.safe_load(config)
+    rows = [{"Exchange": ex["name"], "Indices": ", ".join(ex["indices"]), "ETFs": ", ".join(ex["etfs"])}
+            for ex in data["exchanges"]]
+    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+# -----------------------------
+# REPORTS — list & download PDFs per region
 # -----------------------------
 with tab_reports:
     st.subheader("Daily Reports (PDF)")
@@ -174,7 +217,7 @@ with tab_reports:
                 )
 
 # -----------------------------
-# System — health
+# SYSTEM — health
 # -----------------------------
 with tab_system:
     st.subheader("Health / Liveness")
