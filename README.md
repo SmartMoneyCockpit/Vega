@@ -1,20 +1,20 @@
-# Vega Rulepack (VectorVest-style) — 2025-09-07
+# Vega Cockpit (Starter)
 
-This bundle contains:
-- **13 strategy rules** (consolidated from your VectorVest UniSearch set)
-- **VV-like scoring proxies** (`_vega_scores.yaml`) for RT/RS/RV/CI/VST
-- **Region settings** (`config/regions.yaml`) with price/volume/dollar-turnover + cap floors
-- **Analyst rating policy** and **TradingView profiles**
-- **GitHub Actions** daily runner (skeleton) and a small Python runner
+Minimal Streamlit cockpit that runs locally and on Render.  
+**Docs for the VectorVest-style Rulepack live in [`docs/rulepack/`](docs/rulepack/).**
 
-## How to use
-1. Drop these files into your repo at the same paths.
-2. (Optional) Edit `config/regions.yaml` if you want different floors per country.
-3. Run locally:
-   ```bash
-   python scripts/vega_unisearch_runner.py --region US --profile SmartMoney_NA_Level2
-   ```
-4. Enable the GitHub Action (`.github/workflows/vega_unisearch.yml`).
+## Features
+- Streamlit app with demo charts (SPY/QQQ) and tabs
+- Render-ready (`render.yaml`)
+- Clean `requirements.txt` with safe pins
+- `.env.example` scaffold for local runs; use Render Environment for real secrets
 
-> NOTE: This runner is a **skeleton** (no live market data). In your Vega app, wire the rule YAMLs
-> to your data client (Polygon/IBKR/TradingView) and the Smart Money A-to-Z filters you already use.
+## Local Run
+**Python 3.11** recommended.
+
+```bash
+python -m venv .venv
+# Windows: .venv\Scripts\activate
+source .venv/bin/activate
+pip install -r requirements.txt
+streamlit run app.py
