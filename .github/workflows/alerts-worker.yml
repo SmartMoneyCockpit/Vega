@@ -1,77 +1,47 @@
 name: alerts-worker
 
 on:
-  # Runs every 15 minutes. Adjust as needed or comment out to disable.
-  schedule:
-    - cron: "*/15 * * * *"
-  # Manual run with optional overrides
   workflow_dispatch:
-    inputs:
-      universe_csv:
-        description: "Override TRADINGVIEW_CSV_URL"
-        required: false
-        type: string
-      earnings_csv:
-        description: "Override COCKPIT_EARNINGS_CSV_URL"
-        required: false
-        type: string
-      dry_run:
-        description: "Run without sending email"
-        required: false
-        default: "false"
-        type: choice
-        options: ["false", "true"]
+  schedule:
+    - cron: "*/30 13-22 * * 1-5"   # sample trading-hours cadence; adjust to your needs
 
 permissions:
   contents: read
 
+concurrency:
+  group: alerts-worker
+  cancel-in-progress: true
+
 jobs:
   run:
-    name: Run alerts scan
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: "pip"
 
       - name: Install deps
-        shell: bash
-        run: |
-          python -m pip install --upgrade pip
-          if [ -f requirements-actions.txt ]; then python -m pip install -r requirements-actions.txt; fi
-          if [ -f requirements.txt ]; then python -m pip install -r requirements.txt; fi
+        run: pip install -r requirements.txt
 
-      - name: Run worker (module mode)
+      - name: Run alerts scan
         env:
-          # required secrets
           SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
-          POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY }}
-
-          # repo vars (can be moved to secrets if you prefer)
-          ALERTS_TO: ${{ vars.ALERTS_TO }}
-          ALERTS_FROM: ${{ vars.ALERTS_FROM }}
-          TRADINGVIEW_CSV_URL: ${{ inputs.universe_csv || vars.TRADINGVIEW_CSV_URL }}
-          COCKPIT_EARNINGS_CSV_URL: ${{ inputs.earnings_csv || vars.COCKPIT_EARNINGS_CSV_URL }}
-
-          # optional toggle from dispatch
-          DRY_RUN: ${{ inputs.dry_run || 'false' }}
-        shell: bash
+          ALERTS_TO:        ${{ secrets.ALERTS_TO }}
+          ALERTS_FROM:      ${{ secrets.ALERTS_FROM }}
+          POLYGON_API_KEY:  ${{ secrets.POLYGON_API_KEY }}
         run: |
           set -euo pipefail
-          echo "Starting alerts worker…"
-          # IMPORTANT: run as a package module to resolve 'workers' imports
-          python -m workers.alerts_worker $( [ "$DRY_RUN" = "true" ] && echo --dry-run )
+          python workers/alerts_worker.py
 
-      # Optional: upload the JSON produced at artifacts/alerts.json
-      - name: Upload alerts JSON (optional)
+      - name: Upload artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: alerts-json
-          path: artifacts/alerts.json
-          if-no-files-found: ignore
+          path: alerts.json
+          if-no-files-found: warn
