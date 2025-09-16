@@ -1,14 +1,14 @@
 # Vega Cockpit — UI runtime (Render)
-# Python 3.11
+# Keep this light so the app boots fast.
 
 streamlit==1.38.0
 pandas==2.2.2
-numpy==2.0.1
-pyyaml==6.0.1
+numpy==2.0.2
+PyYAML==6.0.2
 
-# HTTP utilities used by the UI
+# HTTP helper used by the UI
 requests>=2.32.0,<3
 
-# Charts/exports used by the snapshot viewer (safe on Render)
+# Used by the in-app snapshot viewer only (safe on Render)
 matplotlib>=3.8,<3.10
 reportlab>=4.1,<5
