@@ -1,7 +1,22 @@
-pandas>=2.2.2
-reportlab>=4.2
-sendgrid==6.11.0
-requests==2.31
+# Vega Cockpit — Automations & Workers (GitHub Actions)
+
+# Your libs (kept)
+pandas==2.2.2
+numpy==2.0.2
 PyYAML==6.0.2
-numpy==1.26.4
 python-dateutil==2.9.0.post0
+reportlab==4.1.0
+sendgrid==6.11.0
+# requests was too old; bump to avoid CVEs and TLS issues
+requests>=2.32.0,<3
+
+# Needed for the snapshot exporter and plots
+matplotlib>=3.8,<3.10
+
+# Useful helpers (safe to keep; some jobs reference these)
+httpx==0.27.2
+nest-asyncio==1.6.0
+
+# Data sources (optional but commonly used by Vega jobs; keep if you plan to use them)
+yfinance==0.2.40
+polygon-api-client==1.13.6
