@@ -1,49 +1,88 @@
-import streamlit as st, pandas as pd
+import streamlit as st
+import pandas as pd
 from pathlib import Path
+
 from modules.utils.tv_links import tv_symbol_url
-from modules.ui.focus_chart import render_focus
+from modules.ui.focus_chart import render_focus  # toggle-based: render_focus(symbol)
 
-def load_csv(p):
-    try: return pd.read_csv(p)
-    except Exception: return pd.DataFrame()
+def load_csv(path: str) -> pd.DataFrame:
+    try:
+        return pd.read_csv(path)
+    except Exception:
+        return pd.DataFrame()
 
-def render_region(region: str, collapse_focus=True):
+def render_region(region: str) -> None:
+    """
+    Text-first dashboard with compact rows + click-to-expand details.
+    One optional TradingView focus chart is gated behind a toggle in render_focus().
+    """
     region = region.upper()
     st.subheader(f"{region} Index Dashboard")
-    focus_default = "SPY" if region=="NA" else ("VGK" if region=="EU" else "EWJ")
-    focus_symbol = st.session_state.get("focus_symbol", focus_default)
-    render_focus(focus_symbol, collapsed=collapse_focus)
 
-    df = load_csv(f"data/snapshots/{region.lower()}_indices.csv")
+    # Load snapshot (may be empty on first run)
+    snap_path = f"data/snapshots/{region.lower()}_indices.csv"
+    df = load_csv(snap_path)
+
+    # Choose a sensible default symbol
+    focus_default = "SPY" if region == "NA" else ("VGK" if region == "EU" else "EWJ")
+    if not df.empty and "symbol" in df.columns and pd.notna(df.iloc[0]["symbol"]):
+        focus_default = str(df.iloc[0]["symbol"])
+
+    # Persist and render the (toggle-based) focus chart
+    st.session_state.setdefault("focus_symbol", focus_default)
+    render_focus(st.session_state["focus_symbol"])
+
     if df.empty:
         st.info("No snapshot data yet. The hourly worker will populate CSVs.")
         return
 
-    def trend_row(r):
-        a = "A" if r.get("above_50d") else "B"
-        b = "A" if r.get("above_200d") else "B"
-        s = r.get("sma50_slope","Flat")
-        return f"{a}50/{b}200 • {s}"
+    # ----- Helpers for compact row fields -----
+    def _rs_flag(x):
+        try:
+            v = float(x)
+            return "▲" if v > 0 else "▼" if v < 0 else "•"
+        except Exception:
+            return "•"
+
+    def _trend_row(row):
+        above_50 = bool(row.get("above_50d", False))
+        above_200 = bool(row.get("above_200d", False))
+        slope = row.get("sma50_slope", "Flat")
+        a = "A" if above_50 else "B"
+        b = "A" if above_200 else "B"
+        return f"{a}50/{b}200 • {slope}"
 
     if "rs" in df.columns:
-        df["rs_flag"] = df["rs"].apply(lambda x: "▲" if x>0 else "▼" if x<0 else "•")
+        df["rs_flag"] = df["rs"].apply(_rs_flag)
     else:
         df["rs_flag"] = "•"
-    df["trend"] = df.apply(trend_row, axis=1)
-    df["decision"] = df["decision"].fillna("🟡 Wait")
 
+    df["trend"] = df.apply(_trend_row, axis=1)
+    if "decision" not in df.columns:
+        df["decision"] = "🟡 Wait"
+    else:
+        df["decision"] = df["decision"].fillna("🟡 Wait")
+
+    # ----- Index Scorecard (compact rows + expanders) -----
     st.write("### Index Scorecard")
     for _, r in df.iterrows():
-        sym = r["symbol"]
-        cols = st.columns([2,1,1,1,2,2])
-        with cols[0]: st.markdown(f"[**{sym}** ↗]({tv_symbol_url(sym)})", unsafe_allow_html=True)
-        with cols[1]: st.write(r.get("price"))
-        with cols[2]: st.write(r.get("chg_1d"))
-        with cols[3]: st.write(r.get("rs_flag"))
-        with cols[4]: st.write(r.get("trend"))
-        with cols[5]: st.write(r.get("decision"))
+        sym = str(r.get("symbol", ""))
+        cols = st.columns([2, 1, 1, 1, 2, 2])
+        with cols[0]:
+            st.markdown(f"[**{sym}** ↗]({tv_symbol_url(sym)})", unsafe_allow_html=True)
+        with cols[1]:
+            st.write(r.get("price", "—"))
+        with cols[2]:
+            st.write(r.get("chg_1d", "—"))
+        with cols[3]:
+            st.write(r.get("rs_flag", "•"))
+        with cols[4]:
+            st.write(r.get("trend", "—"))
+        with cols[5]:
+            st.write(r.get("decision", "🟡 Wait"))
+
         with st.expander(f"Details — {sym}"):
-            st.write({
+            details = {
                 "1W%": r.get("chg_1w"),
                 "1M%": r.get("chg_1m"),
                 "YTD%": r.get("ytd"),
@@ -52,24 +91,27 @@ def render_region(region: str, collapse_focus=True):
                 "ATR%": r.get("atr_pct"),
                 "Momentum(10>30)": r.get("mom_flag"),
                 "Room to R/S (ATRs)": r.get("room_atr"),
-                "Earnings window": r.get("earnings_window","N/A"),
-                "Contras": r.get("contras","")
-            })
+                "Earnings window": r.get("earnings_window", "N/A"),
+                "Contras": r.get("contras", "")
+            }
+            st.write(details)
             if st.button(f"Preview {sym} in Focus", key=f"focus_{sym}"):
                 st.session_state["focus_symbol"] = sym
                 st.experimental_rerun()
 
-    # Sector movers
+    # ----- Sector movers -----
     st.write("### Sector Movers")
     sec = load_csv(f"data/snapshots/{region.lower()}_sectors.csv")
-    if not sec.empty: st.dataframe(sec, use_container_width=True, hide_index=True)
-    else: st.caption("No sector snapshot yet.")
+    if not sec.empty:
+        st.dataframe(sec, use_container_width=True, hide_index=True)
+    else:
+        st.caption("No sector snapshot yet.")
 
-    # FX & Commodities
+    # ----- FX & Commodities -----
     st.write("### FX & Commodities")
-    fxf = Path(f"data/snapshots/{region.lower()}_fxcmd.csv")
-    if fxf.exists():
-        fx = pd.read_csv(fxf)
+    fx_path = Path(f"data/snapshots/{region.lower()}_fxcmd.csv")
+    if fx_path.exists():
+        fx = pd.read_csv(fx_path)
         fx["link"] = fx["symbol"].apply(tv_symbol_url)
         fx["symbol"] = fx.apply(lambda x: f"[{x['symbol']}]({x['link']})", axis=1)
         fx = fx.drop(columns=["link"])
@@ -77,6 +119,7 @@ def render_region(region: str, collapse_focus=True):
     else:
         st.caption("No FX/commodities snapshot yet.")
 
+    # ----- Daily report (markdown) -----
     rp = Path(f"reports/{region}/latest.md")
     if rp.exists():
         st.write("### Daily Report")
