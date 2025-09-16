@@ -1,3 +1,4 @@
+from utils.prefs_bootstrap import prefs
 # app.py — Vega Cockpit (starter, fast + Render-ready)
 import os
 import time
