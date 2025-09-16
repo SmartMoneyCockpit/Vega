@@ -1,7 +1,6 @@
 streamlit==1.38.0
 pandas==2.2.2
 numpy==1.26.4
-plotly==5.23.0
 pyyaml==6.0.1
 pydantic==2.8.2
 ib_insync==0.9.86
