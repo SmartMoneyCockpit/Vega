@@ -1,8 +1,9 @@
-# app.py — Vega Cockpit (focused, dark, no-plotly)
+# app.py — Vega Cockpit (focused, dark, no-plotly) — with TradingView Connect + Stay Out vs Get Back In
 import os
-import glob
-import datetime as dt
+import sys
 from pathlib import Path
+import datetime as dt
+import glob
 
 import pandas as pd
 import numpy as np
@@ -14,9 +15,29 @@ import yaml
 import nest_asyncio as _na
 _na.apply()
 
+# ---------------------------------------
+# Streamlit config
+# ---------------------------------------
 st.set_page_config(page_title="Vega Cockpit", layout="wide")
 APP_ENV = os.getenv("APP_ENV", "prod")
 st.sidebar.caption(f"Environment: **{APP_ENV}**")
+
+# ---------------------------------------
+# Ensure we can import src/* modules
+# ---------------------------------------
+ROOT = Path(__file__).resolve().parent
+SRC_DIR = ROOT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
+# TradingView Connect module (drop-in)
+# Save tv_connect.py at: src/integrations/tv_connect.py
+try:
+    from integrations.tv_connect import tradingview_panel  # type: ignore
+    _tv_import_err = None
+except Exception as e:
+    tradingview_panel = None
+    _tv_import_err = str(e)
 
 # -----------------------------
 # Helpers
@@ -41,6 +62,9 @@ def pct_change(series: pd.Series, periods: int) -> float:
         return 100 * (series.iloc[-1] / series.iloc[-periods-1] - 1)
     except Exception:
         return np.nan
+
+def sma(series: pd.Series, n: int) -> pd.Series:
+    return series.rolling(n).mean()
 
 def tv_embed(symbol: str, interval: str = "D", theme: str = "dark", height: int = 720):
     widget = f"""
@@ -71,12 +95,12 @@ def list_pdfs(region: str) -> list[Path]:
     return sorted(folder.glob("*.pdf"))
 
 # -----------------------------
-# Layout
+# Layout (added Stay Out vs Get Back In)
 # -----------------------------
 st.title("Vega Cockpit — Core Starter")
 
-tab_dash, tab_apac, tab_scan, tab_europe, tab_reports, tab_system = st.tabs(
-    ["Dashboard", "APAC Panel", "Scanner", "Europe", "Reports", "System"]
+tab_dash, tab_apac, tab_scan, tab_europe, tab_reports, tab_stayout, tab_system = st.tabs(
+    ["Dashboard", "APAC Panel", "Scanner", "Europe", "Reports", "Stay Out vs Get Back In", "System"]
 )
 
 # -----------------------------
@@ -217,6 +241,72 @@ with tab_reports:
                 )
 
 # -----------------------------
+# STAY OUT vs GET BACK IN — risk toggle + TradingView panel
+# -----------------------------
+with tab_stayout:
+    st.subheader("Stay Out vs Get Back In")
+
+    # --- Simple, transparent risk model (expand later) ---
+    # Signals:
+    # 1) VIX > 20 -> Risk-Off
+    # 2) SPY close < SPY 50-day SMA -> Risk-Off
+    # If both false -> Risk-On
+    spy = yf_hist("SPY", period="6mo", interval="1d")
+    vix = yf_hist("^VIX", period="6mo", interval="1d")
+
+    # Compute signals
+    risk_notes = []
+    is_risk_off = False
+
+    if not vix.empty:
+        vix_last = float(vix["close"].iloc[-1])
+        if vix_last > 20:
+            is_risk_off = True
+            risk_notes.append(f"VIX {vix_last:.1f} > 20 (Risk-Off)")
+        else:
+            risk_notes.append(f"VIX {vix_last:.1f} ≤ 20")
+    else:
+        risk_notes.append("VIX data unavailable")
+
+    if not spy.empty:
+        s50 = sma(spy["close"], 50)
+        if len(s50.dropna()) > 0:
+            if float(spy['close'].iloc[-1]) < float(s50.iloc[-1]):
+                is_risk_off = True
+                risk_notes.append("SPY below 50-day SMA (Risk-Off)")
+            else:
+                risk_notes.append("SPY above 50-day SMA")
+        else:
+            risk_notes.append("Not enough data for SPY 50-SMA")
+    else:
+        risk_notes.append("SPY data unavailable")
+
+    status = "🟥 STAY OUT (Risk-Off)" if is_risk_off else "🟩 GET BACK IN (Risk-On)"
+    st.markdown(f"### {status}")
+    st.caption(" • ".join(risk_notes))
+
+    # --- TradingView Connect panel (no API/creds) ---
+    st.divider()
+    st.subheader("TradingView Connect")
+    if tradingview_panel is None:
+        st.warning("TradingView panel unavailable — couldn’t import `src/integrations/tv_connect.py`.")
+        if _tv_import_err:
+            with st.expander("Import error details"):
+                st.code(_tv_import_err)
+        st.info("Place tv_connect.py at `src/integrations/tv_connect.py` to enable this panel.")
+    else:
+        # Default symbols: core equity + volatility + FX hedge
+        items = [
+            {"label": "S&P 500 ETF", "symbol": "SPY", "exchange": "AMEX"},
+            {"label": "NASDAQ 100 ETF", "symbol": "QQQ", "exchange": "AMEX"},
+            {"label": "Russell 2000 ETF", "symbol": "IWM", "exchange": "AMEX"},
+            {"label": "VIX (CBOE)", "symbol": "VIX", "exchange": "CBOE"},
+            {"label": "USD/MXN", "symbol": "USDMXN", "exchange": "FX"},
+        ]
+        default_ivl = "60" if is_risk_off else "D"
+        tradingview_panel(items, default_interval=default_ivl, show_embed_preview=True, embed_height=520)
+
+# -----------------------------
 # SYSTEM — health
 # -----------------------------
 with tab_system:
@@ -226,7 +316,10 @@ with tab_system:
         ("Streamlit", st.__version__, True),
         ("yfinance", yf.__version__, True),
         ("ENV PORT", os.getenv("PORT", "not-set"), True),
+        ("TV Panel Import", "OK" if _tv_import_err is None else "FAILED", _tv_import_err is None),
     ]
     for k, v, ok in checks:
         st.write(f"**{k}**: `{v}` — {'✅ OK' if ok else '❌ FAIL'}")
+    if _tv_import_err:
+        st.code(_tv_import_err, language="text")
     st.success("System check complete.")
