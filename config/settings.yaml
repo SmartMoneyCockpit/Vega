@@ -12,11 +12,13 @@ alerts:
     momentum_ema_fast: 10
     momentum_ema_slow: 30
     volume_mult: 1.2
-    poll_minutes: 5
+    confirm_minutes: 15
 snapshots:
   morning_export_enabled: true
   export_time_local: "07:45"
   output_dir: "snapshots"
+  image_name: "grid_snapshot"
+  pdf_name: "grid_snapshot"
 email:
   aplus_digest:
     enabled: true
@@ -24,6 +26,8 @@ email:
     provider: "sendgrid"
     to: null
     from: null
+    source_csv: "data/aplus_setups.csv"
 tradingview:
   mode: "authenticated"
   refresh_seconds: 60
+  cookies_env: "TRADINGVIEW_COOKIES"
