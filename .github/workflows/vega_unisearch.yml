@@ -1,28 +1,30 @@
-name: Vega UniSearch Runner
+name: vega_unisearch
 
 on:
-  schedule:
-    - cron: "45 13 * * 1-5"   # 13:45 UTC ≈ 6:45 AM PT weekdays
-  workflow_dispatch: {}      # manual run
+  workflow_dispatch:
+  # schedule:
+  #   - cron: '0 14 * * 1-5'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
 
 jobs:
   run:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: '3.11'
       - name: Install deps
         run: |
-          python -m pip install --upgrade pip pyyaml
-      - name: Run Vega UniSearch (skeleton)
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Runner
         run: |
-          python scripts/vega_unisearch_runner.py --region US --profile SmartMoney_NA_Level2
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: vega-unisearch-output
-          path: outputs/
+          echo "Runner disabled by default. Trigger manually from the Actions tab."
