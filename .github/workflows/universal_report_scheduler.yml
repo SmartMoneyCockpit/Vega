@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   schedule:
     # One hour after open, Pacific time (DST-aware)
-    - cron: '30 14 * 3-10 1-5'     # 07:30 AM PDT (Mar–Oct)
+    - cron: '30 14 * 3-10 1-5'      # 07:30 AM PDT (Mar–Oct)
     - cron: '30 16 * 11,12,1,2 1-5' # 08:30 AM PST (Nov–Feb)
 
 permissions:
@@ -30,25 +30,26 @@ jobs:
 
   morning_report:
     needs: precheck
-    if: ${{ needs.precheck.outputs.ok == 'true' }}
+    # Runs unless REPORT_MORNING_ENABLED is explicitly "false"
+    if: ${{ needs.precheck.outputs.ok == 'true' && (vars.REPORT_MORNING_ENABLED != 'false') }}
     uses: ./.github/workflows/morning-report-na.yml
     secrets: inherit
 
   color_guard:
     needs: precheck
-    if: ${{ needs.precheck.outputs.ok == 'true' }}
+    if: ${{ needs.precheck.outputs.ok == 'true' && (vars.REPORT_COLOR_ENABLED != 'false') }}
     uses: ./.github/workflows/color_guard_prep.yml
     secrets: inherit
 
   econ_calendar:
     needs: precheck
-    if: ${{ needs.precheck.outputs.ok == 'true' }}
+    if: ${{ needs.precheck.outputs.ok == 'true' && (vars.REPORT_ECON_ENABLED != 'false') }}
     uses: ./.github/workflows/econ_calendar.yml
     secrets: inherit
 
   uptime_ping:
     needs: precheck
-    if: ${{ needs.precheck.outputs.ok == 'true' }}
+    if: ${{ needs.precheck.outputs.ok == 'true' && (vars.REPORT_UPTIME_ENABLED != 'false') }}
     uses: ./.github/workflows/uptime_ping.yml
     secrets: inherit
 
