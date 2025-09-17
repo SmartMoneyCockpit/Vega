@@ -27,7 +27,10 @@ jobs:
 
   ping:
     needs: precheck
-    if: ${{ needs.precheck.outputs.ok == 'true' && github.ref == 'refs/heads/main' && vars.UPTIME_URL != '' }}
+    if: ${{ needs.precheck.outputs.ok == 'true'
+          && github.ref == 'refs/heads/main'
+          && (vars.REPORT_UPTIME_ENABLED != 'false')
+          && vars.UPTIME_URL != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
