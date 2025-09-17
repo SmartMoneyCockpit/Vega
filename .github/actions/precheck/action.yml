@@ -1,0 +1,29 @@
+name: Precheck
+description: Fast guardrail for required secrets/flags. Skips instead of failing.
+runs:
+  using: "composite"
+  steps:
+    - shell: bash
+      run: |
+        missing=()
+        need() { test -n "${!1}" || missing+=("$1"); }
+        # List all secrets your jobs actually need:
+        need GITHUB_TOKEN
+        need RENDER_API_KEY
+        need TV_COOKIES
+        need SENDGRID_API_KEY
+        # Feature toggle (optional): export to skip modules
+        : "${VEGA_ACTIONS_ENABLED:=true}"
+
+        if [ "${#missing[@]}" -gt 0 ]; then
+          echo "missing_secrets=${missing[*]}" >> "$GITHUB_OUTPUT"
+          echo "ok=false" >> "$GITHUB_OUTPUT"
+          echo "::notice title=Precheck::Missing secrets: ${missing[*]}"
+          exit 0
+        fi
+        if [ "$VEGA_ACTIONS_ENABLED" != "true" ]; then
+          echo "ok=false" >> "$GITHUB_OUTPUT"
+          echo "::notice title=Precheck::VEGA_ACTIONS_ENABLED=false → skipping."
+          exit 0
+        fi
+        echo "ok=true" >> "$GITHUB_OUTPUT"
