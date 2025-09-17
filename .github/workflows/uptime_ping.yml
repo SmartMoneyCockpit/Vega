@@ -26,14 +26,23 @@ jobs:
 
   ping:
     needs: precheck
-    if: ${{ needs.precheck.outputs.ok == 'true' && github.ref == 'refs/heads/main' }}
+    if: ${{ needs.precheck.outputs.ok == 'true' && github.ref == 'refs/heads/main' && vars.UPTIME_URL != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Ping health endpoint (retry)
+      - name: Ping health endpoint (retry with fallback)
+        env:
+          URL: ${{ vars.UPTIME_URL }}
         run: |
+          set -e
           n=0
           until [ $n -ge 3 ]; do
-            curl -fsS https://<your-render-app-or-host>/health && break
+            # try /health first; follow redirects; fallback to /
+            if curl -fsSL -m 10 "$URL/health" || curl -fsSL -m 10 "$URL/"; then
+              echo "OK: $URL is up"
+              exit 0
+            fi
             n=$((n+1)); sleep 5
           done
+          echo "ERROR: Health check failed for $URL" >&2
+          exit 1
