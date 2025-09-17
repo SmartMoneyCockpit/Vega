@@ -28,28 +28,24 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
+  # Call each workflow unconditionally; each one has its own toggle gate
   morning_report:
     needs: precheck
-    # Runs unless REPORT_MORNING_ENABLED is explicitly "false"
-    if: ${{ needs.precheck.outputs.ok == 'true' && (vars.REPORT_MORNING_ENABLED != 'false') }}
     uses: ./.github/workflows/morning-report-na.yml
     secrets: inherit
 
   color_guard:
     needs: precheck
-    if: ${{ needs.precheck.outputs.ok == 'true' && (vars.REPORT_COLOR_ENABLED != 'false') }}
     uses: ./.github/workflows/color_guard_prep.yml
     secrets: inherit
 
   econ_calendar:
     needs: precheck
-    if: ${{ needs.precheck.outputs.ok == 'true' && (vars.REPORT_ECON_ENABLED != 'false') }}
     uses: ./.github/workflows/econ_calendar.yml
     secrets: inherit
 
   uptime_ping:
     needs: precheck
-    if: ${{ needs.precheck.outputs.ok == 'true' && (vars.REPORT_UPTIME_ENABLED != 'false') }}
     uses: ./.github/workflows/uptime_ping.yml
     secrets: inherit
 
