@@ -1,0 +1,62 @@
+name: Rule Linter
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 13 * * 1-5'   # 6:23 AM PT weekdays (stagger different jobs by a few minutes)
+permissions:
+  contents: read
+
+concurrency:
+  group: rule-linter-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  precheck:
+    runs-on: ubuntu-latest
+    outputs:
+      ok: ${{ steps.set.outputs.ok }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: set
+        uses: ./.github/actions/precheck
+
+  lint:
+    if: ${{ needs.precheck.outputs.ok == 'true' && github.ref == 'refs/heads/main' }}
+    needs: precheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+
+      - name: Install
+        run: |
+          python -m pip install -U pip
+          pip install -r requirements-lint.txt
+
+      - name: Run linter (retry on flake)
+        run: |
+          n=0
+          until [ $n -ge 3 ]; do
+            set -e
+            python tools/rule_linter.py && break
+          n=$((n+1)); sleep 5; done
+
+  # Optional: one-email digest if anything fails
+  digest:
+    if: ${{ failure() }}
+    runs-on: ubuntu-latest
+    needs: [lint]
+    steps:
+      - name: Post failure digest
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.notice(`Rule Linter failed in ${context.runNumber}. Check logs.`)
+            // If you want email via SendGrid, call your tiny script here.
