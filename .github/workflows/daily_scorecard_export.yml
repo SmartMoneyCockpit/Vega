@@ -1,6 +1,9 @@
 name: Daily Scorecard Export (07:45 PT)
 
 on:
+  push:
+    branches: [ main ]
+
   schedule:
     - cron: '45 14 * * 1-5'   # 07:45 PT weekdays
   workflow_dispatch:

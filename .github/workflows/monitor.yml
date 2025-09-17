@@ -1,6 +1,9 @@
 name: DISABLED – kept for reference
 
 on:
+  push:
+    branches: [ main ]
+
   workflow_dispatch: {}
   # No schedules, no push triggers
 

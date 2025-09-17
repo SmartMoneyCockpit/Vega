@@ -1,8 +1,9 @@
 name: Validate Vega Prefs
 
 on:
-  pull_request:
-    paths: ["config/vega_prefs.yaml"]
+  push:
+    branches: [ main ]
+
   workflow_dispatch:
 
 jobs:

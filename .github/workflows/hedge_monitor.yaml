@@ -1,6 +1,9 @@
 name: Hedge Monitor (15m)
 
 on:
+  push:
+    branches: [ main ]
+
   schedule:
     - cron: "*/15 13-20 * * 1-5"  # 06:00–13:59 Phoenix (UTC-7)
   workflow_dispatch:

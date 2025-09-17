@@ -1,5 +1,8 @@
 name: alerts-digest
 on:
+  push:
+    branches: [ main ]
+
   workflow_dispatch:
     inputs:
       lookback:

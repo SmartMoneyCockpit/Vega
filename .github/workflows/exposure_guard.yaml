@@ -1,5 +1,8 @@
 name: Exposure Guard
 on:
+  push:
+    branches: [ main ]
+
   schedule: [{ cron: "30 13 * * 1-5" }]  # 06:30 Phoenix (pre-open check)
   workflow_dispatch:
 jobs:

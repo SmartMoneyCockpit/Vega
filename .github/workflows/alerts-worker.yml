@@ -1,6 +1,9 @@
 name: alerts-worker
 
 on:
+  push:
+    branches: [ main ]
+
   # Manual only to avoid burning minutes
   workflow_dispatch:
   # schedule:

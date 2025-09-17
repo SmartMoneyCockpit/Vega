@@ -1,6 +1,9 @@
 name: Integrity Check (Vega Handoff)
 
 on:
+  push:
+    branches: [ main ]
+
   workflow_dispatch:            # run only when you click "Run workflow"
 
 concurrency:

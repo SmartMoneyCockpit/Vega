@@ -1,6 +1,9 @@
 name: GATED – runs only when explicitly enabled
 
 on:
+  push:
+    branches: [ main ]
+
   workflow_dispatch: {}
   # Optional: uncomment to run only if specific files change
   # push:

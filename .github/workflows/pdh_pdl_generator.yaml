@@ -1,5 +1,8 @@
 name: PDH/PDL Seed
 on:
+  push:
+    branches: [ main ]
+
   schedule: [{ cron: "5 13 * * 2-6" }]  # 06:05 Phoenix, Tue–Sat (after prior close)
   workflow_dispatch:
 jobs:

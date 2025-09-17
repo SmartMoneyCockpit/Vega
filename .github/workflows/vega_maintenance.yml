@@ -1,6 +1,9 @@
 name: Vega Maintenance & Config Check
 
 on:
+  push:
+    branches: [ main ]
+
   schedule:
     # Mondays 07:00 UTC (adjust if you want)
     - cron: "0 7 * * 1"

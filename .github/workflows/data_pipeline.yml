@@ -1,6 +1,9 @@
 name: Vega Data Pipeline (Hourly)
 
 on:
+  push:
+    branches: [ main ]
+
   schedule:
     - cron: '0 * * * *'
   workflow_dispatch:

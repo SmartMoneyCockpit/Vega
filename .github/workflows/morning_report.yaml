@@ -1,6 +1,9 @@
 name: Morning Report (NA)
 
 on:
+  push:
+    branches: [ main ]
+
   schedule:
     - cron: "25 14 * * 1-5"   # 07:25 Phoenix (UTC-7)
   workflow_dispatch:

@@ -1,5 +1,8 @@
 name: Nightly Jobs - Cache & Reports
 on:
+  push:
+    branches: [ main ]
+
   schedule:
     - cron: "45 2 * * *"   # 02:45 UTC nightly
   workflow_dispatch:

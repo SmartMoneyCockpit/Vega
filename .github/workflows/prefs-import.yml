@@ -3,6 +3,7 @@ name: Ensure prefs import on pages
 on:
   push:
     branches: [ main ]
+
     paths:
       - 'app.py'
       - 'pages/**'

@@ -1,6 +1,9 @@
 name: Nightly Archive Snapshots
 
 on:
+  push:
+    branches: [ main ]
+
   schedule:
     - cron: '0 8 * * *'   # 01:00 PT approximate
   workflow_dispatch:

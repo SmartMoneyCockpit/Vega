@@ -1,5 +1,8 @@
 name: Daily Digest
 on:
+  push:
+    branches: [ main ]
+
   schedule: [{ cron: "15 20 * * 1-5" }]  # 13:15 Phoenix
   workflow_dispatch:
 jobs:

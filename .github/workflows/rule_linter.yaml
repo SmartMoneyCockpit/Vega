@@ -6,6 +6,7 @@ on:
     - cron: '23 13 * * 1-5'   # 6:23 AM PT weekdays (stagger different jobs by a few minutes)
   push:
     branches: [ main ]
+
     paths: [ '.github/workflows/rule-linter.yml', 'rules/**' ]  # limit to relevant changes
 
 permissions:

@@ -3,6 +3,7 @@ name: CI - Vega Smoke (Lean)
 on:
   push:
     branches: [ main ]
+
     paths:
       - 'app.py'
       - 'modules/**'

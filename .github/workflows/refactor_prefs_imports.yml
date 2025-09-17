@@ -1,5 +1,8 @@
 name: Refactor prefs imports
 on:
+  push:
+    branches: [ main ]
+
   workflow_dispatch: {}
 
 # Needed to push a branch and open a PR

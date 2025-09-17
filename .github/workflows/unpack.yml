@@ -1,6 +1,8 @@
 name: Unpack uploaded ZIP into repo
 
 on:
+  workflow_dispatch:
+
   push:
     branches: [ upgrade/render-import ]
     paths:

@@ -1,6 +1,9 @@
 name: Generate Trade Plan
 
 on:
+  push:
+    branches: [ main ]
+
   workflow_dispatch:   # manual trigger from Actions tab
 
 jobs:

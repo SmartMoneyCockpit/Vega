@@ -1,5 +1,8 @@
 name: vega-offloaded-tasks
 on:
+  push:
+    branches: [ main ]
+
   workflow_dispatch:
   schedule:
     - cron: "25 14 * * 1-5"   # 7:25 AM PT pre-warm

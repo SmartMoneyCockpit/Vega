@@ -1,6 +1,9 @@
 name: Midday Verdict
 
 on:
+  push:
+    branches: [ main ]
+
   schedule:
     - cron: "0 19 * * 1-5"   # 12:00 Phoenix
   workflow_dispatch:

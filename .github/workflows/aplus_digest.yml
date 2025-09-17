@@ -1,6 +1,9 @@
 name: A+ Digest (12:45 PT)
 
 on:
+  push:
+    branches: [ main ]
+
   schedule:
     - cron: '45 19 * * 1-5'
   workflow_dispatch:

@@ -1,6 +1,9 @@
 name: ci
 
 on:
+  push:
+    branches: [ main ]
+
   # Manual only. Uncomment "push" later if you really need auto CI.
   workflow_dispatch:
   # push:

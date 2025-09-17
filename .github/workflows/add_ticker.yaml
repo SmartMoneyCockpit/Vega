@@ -1,6 +1,9 @@
 name: Add/Update Ticker (Earnings Guard)
 
 on:
+  push:
+    branches: [ main ]
+
   workflow_dispatch:
     inputs:
       ticker:

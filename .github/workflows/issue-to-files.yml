@@ -1,5 +1,10 @@
 name: issue-to-files
 on:
+  push:
+    branches: [ main ]
+
+  workflow_dispatch:
+
   issues:
     types: [opened, edited, labeled]
 
