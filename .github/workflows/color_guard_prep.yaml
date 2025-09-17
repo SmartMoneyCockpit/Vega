@@ -1,28 +1,44 @@
 name: Color Guard Prep
+
 on:
-  schedule: [{ cron: "15 14 * * 1-5" }]
   workflow_dispatch:
+  schedule:
+    - cron: '23 13 * * 1-5'   # 6:23 AM PT
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/color-guard-prep.yml'
+      - 'modules/guards/**'
+      - 'data/**'
+
+permissions: { contents: read }
+
+concurrency:
+  group: color-guard-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  prep:
+  precheck:
     runs-on: ubuntu-latest
+    outputs: { ok: ${{ steps.p.outputs.ok }} }
+    steps:
+      - uses: actions/checkout@v4
+      - id: p
+        uses: ./.github/actions/precheck
+
+  prep:
+    if: ${{ needs.precheck.outputs.ok == 'true' && github.ref == 'refs/heads/main' }}
+    needs: precheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: "3.11" }
-      - run: |
-          python - << 'PY'
-          import json, yaml, os, datetime as dt
-          cfg=yaml.safe_load(open("config/vega_rules.yaml"))
-          tel={"vix":16.0,"breadth_nyse":55,"spy_above_vwap":True,"spy_above_pdh":True}
-          if os.path.exists("data/telemetry.json"):
-            tel.update(json.load(open("data/telemetry.json")))
-          v=tel["vix"]; br=tel["breadth_nyse"]
-          vix= "green" if v < cfg["color_guard_thresholds"]["vix"]["green_lt"] else ("yellow" if v < cfg["color_guard_thresholds"]["vix"]["yellow_lt"] else "red")
-          breadth= "green" if br >= cfg["color_guard_thresholds"]["breadth_nyse"]["green_gte"] else ("yellow" if br >= cfg["color_guard_thresholds"]["breadth_nyse"]["yellow_gte"] else "red")
-          price= "green" if (tel["spy_above_vwap"] and tel["spy_above_pdh"]) else ("yellow" if tel["spy_above_vwap"] else "red")
-          out={"price_signal":price,"breadth_signal":breadth,"risk_signal":vix,"ts":dt.datetime.utcnow().isoformat()+"Z"}
-          os.makedirs("snapshots", exist_ok=True)
-          open("snapshots/color_guard.json","w").write(json.dumps(out, indent=2))
-          PY
-      - uses: actions/upload-artifact@v4
-        with: { name: color-guard, path: snapshots/color_guard.json, retention-days: 7 }
+        with: { python-version: '3.11' }
+      - name: Install
+        run: pip install -r requirements.txt
+      - name: Build guard snapshot (non-critical pulls)
+        run: python modules/guards/color_guard_prep.py
+      - name: Fetch news feed (non-critical)
+        continue-on-error: true
+        run: python modules/guards/fetch_news.py
