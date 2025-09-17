@@ -7,7 +7,6 @@ runs:
       id: p
       env:
         GITHUB_TOKEN: ${{ github.token }}
-        # match these to your repo's secret names (or comment out ones you don't use)
         RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
         TV_COOKIES: ${{ secrets.TV_COOKIES }}
         SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
@@ -20,7 +19,9 @@ runs:
         # need SENDGRID_API_KEY
         : "${VEGA_ACTIONS_ENABLED:=true}"
         if [ "${#missing[@]}" -gt 0 ]; then
-          echo "::notice title=Precheck::Missing -> ${missing[*]}"; echo "ok=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          echo "::notice title=Precheck::Missing -> ${missing[*]}"
+          echo "ok=false" >> "$GITHUB_OUTPUT"; exit 0; fi
         if [ "$VEGA_ACTIONS_ENABLED" != "true" ]; then
-          echo "::notice title=Precheck::VEGA_ACTIONS_ENABLED=false (skipping)"; echo "ok=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          echo "::notice title=Precheck::VEGA_ACTIONS_ENABLED=false (skipping)"
+          echo "ok=false" >> "$GITHUB_OUTPUT"; exit 0; fi
         echo "ok=true" >> "$GITHUB_OUTPUT"
