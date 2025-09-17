@@ -1,0 +1,29 @@
+name: Integrity Check (Vega Handoff)
+
+on:
+  workflow_dispatch:
+
+  workflow_dispatch:            # run only when you click "Run workflow"
+
+concurrency:
+  group: integrity-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: ${{ runner.os }}-pip-
+      - name: Run integrity
+        run: |
+          python verify_integrity.py Vega-handoff-manifest.json .

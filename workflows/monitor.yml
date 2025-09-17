@@ -1,0 +1,13 @@
+name: DISABLED – kept for reference
+
+on:
+  workflow_dispatch:
+
+  workflow_dispatch: {}
+  # No schedules, no push triggers
+
+jobs:
+  noop:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Workflow disabled (no-op to prevent 'No jobs were run' emails)."

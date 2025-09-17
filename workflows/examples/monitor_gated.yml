@@ -1,0 +1,25 @@
+name: GATED – runs only when explicitly enabled
+
+on:
+  workflow_dispatch:
+
+  workflow_dispatch: {}
+  # Optional: uncomment to run only if specific files change
+  # push:
+  #   paths:
+  #     - 'delta/**'
+
+env:
+  ENABLE_PIPELINE: ${{ secrets.ENABLE_PIPELINE }}
+
+jobs:
+  guarded_job:
+    if: ${{ env.ENABLE_PIPELINE == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Pipeline enabled via secret ENABLE_PIPELINE=true"
+  guard_noop:
+    if: ${{ env.ENABLE_PIPELINE != 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Guard ran (pipeline disabled)"
