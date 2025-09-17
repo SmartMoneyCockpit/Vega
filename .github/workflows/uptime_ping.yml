@@ -1,0 +1,39 @@
+name: Cockpit Uptime Ping
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: uptime-ping-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  precheck:
+    runs-on: ubuntu-latest
+    outputs:
+      ok: ${{ steps.p.outputs.ok }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: p
+        uses: ./.github/actions/precheck
+        with:
+          vega_actions_enabled: ${{ vars.VEGA_ACTIONS_ENABLED }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+  ping:
+    needs: precheck
+    if: ${{ needs.precheck.outputs.ok == 'true' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping health endpoint (retry)
+        run: |
+          n=0
+          until [ $n -ge 3 ]; do
+            curl -fsS https://<your-render-app-or-host>/health && break
+            n=$((n+1)); sleep 5
+          done
