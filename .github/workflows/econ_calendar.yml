@@ -27,7 +27,9 @@ jobs:
 
   build:
     needs: precheck
-    if: ${{ needs.precheck.outputs.ok == 'true' && github.ref == 'refs/heads/main' }}
+    if: ${{ needs.precheck.outputs.ok == 'true'
+          && github.ref == 'refs/heads/main'
+          && (vars.REPORT_ECON_ENABLED != 'false') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
