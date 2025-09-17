@@ -2,7 +2,7 @@ name: Vega Data Pipeline (Hourly)
 
 on:
   schedule:
-    - cron: '0 * * * *'   # top of every hour
+    - cron: '0 * * * *'
   workflow_dispatch:
 
 permissions:
