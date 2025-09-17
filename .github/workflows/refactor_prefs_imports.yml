@@ -1,63 +1,57 @@
 name: Refactor prefs imports
-on:
+true:
   push:
-    branches: [ main ]
-
+    branches:
+    - main
   workflow_dispatch: {}
-
-# Needed to push a branch and open a PR
 permissions:
   contents: write
   pull-requests: write
-
 jobs:
+  precheck:
+    runs-on: ubuntu-latest
+    outputs:
+      ok: ${{ steps.p.outputs.ok }}
+    steps:
+    - uses: actions/checkout@v4
+    - id: p
+      uses: ./.github/actions/precheck
   codemod:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Replace imports safely (no-fail if no matches)
+      shell: bash
+      run: "set -eux\n\n# helper: run sed replacements over all *.py, but do NOT fail\
+        \ if there are no matches\nreplace_all() {\n  local from=\"$1\"\n  local to=\"\
+        $2\"\n  # Using find+sed avoids grep returning 1 when no matches\n  find .\
+        \ -type f -name \"*.py\" -print0 \\\n    | xargs -0 -r sed -i \"s#${from}#${to}#g\"\
+        \n}\n\n# Exact import\nreplace_all 'from utils\\.prefs_bootstrap import load_prefs'\
+        \ 'from utils.load_prefs import load_prefs'\n\n# Common variants\nreplace_all\
+        \ 'from utils import prefs_bootstrap' 'from utils import load_prefs'\nreplace_all\
+        \ 'import utils\\.prefs_bootstrap as' 'import utils.load_prefs as'\nreplace_all\
+        \ 'from utils\\.prefs_bootstrap import get_prefs' 'from utils.load_prefs import\
+        \ load_prefs'\n\n# Remove the old file if present (do not fail if missing)\n\
+        git rm -f utils/prefs_bootstrap.py || true\n\n# Show diff for debugging\n\
+        git status\ngit diff --staged || true\n\n# Stage all edits (if any)\ngit add\
+        \ -A || true\n"
+    - name: Create Pull Request (only if changes)
+      uses: peter-evans/create-pull-request@v6
+      with:
+        branch: refactor/prefs-imports
+        commit-message: 'codemod: unify prefs imports to utils.load_prefs; remove
+          prefs_bootstrap.py'
+        title: 'Refactor: unify prefs imports to utils.load_prefs'
+        body: 'This PR unifies all imports to `utils.load_prefs` and removes `utils/prefs_bootstrap.py`.
 
-      - name: Replace imports safely (no-fail if no matches)
-        shell: bash
-        run: |
-          set -eux
+          - Replaces common variants (import/as/from)
 
-          # helper: run sed replacements over all *.py, but do NOT fail if there are no matches
-          replace_all() {
-            local from="$1"
-            local to="$2"
-            # Using find+sed avoids grep returning 1 when no matches
-            find . -type f -name "*.py" -print0 \
-              | xargs -0 -r sed -i "s#${from}#${to}#g"
-          }
+          - Safe if some patterns are not present
 
-          # Exact import
-          replace_all 'from utils\.prefs_bootstrap import load_prefs' 'from utils.load_prefs import load_prefs'
-
-          # Common variants
-          replace_all 'from utils import prefs_bootstrap' 'from utils import load_prefs'
-          replace_all 'import utils\.prefs_bootstrap as' 'import utils.load_prefs as'
-          replace_all 'from utils\.prefs_bootstrap import get_prefs' 'from utils.load_prefs import load_prefs'
-
-          # Remove the old file if present (do not fail if missing)
-          git rm -f utils/prefs_bootstrap.py || true
-
-          # Show diff for debugging
-          git status
-          git diff --staged || true
-
-          # Stage all edits (if any)
-          git add -A || true
-
-      - name: Create Pull Request (only if changes)
-        uses: peter-evans/create-pull-request@v6
-        with:
-          branch: refactor/prefs-imports
-          commit-message: "codemod: unify prefs imports to utils.load_prefs; remove prefs_bootstrap.py"
-          title: "Refactor: unify prefs imports to utils.load_prefs"
-          body: |
-            This PR unifies all imports to `utils.load_prefs` and removes `utils/prefs_bootstrap.py`.
-            - Replaces common variants (import/as/from)
-            - Safe if some patterns are not present
-          delete-branch: true
+          '
+        delete-branch: true
+    needs: precheck
+    if: ${{ needs.precheck.outputs.ok == 'true' && github.ref == 'refs/heads/main'
+      }}

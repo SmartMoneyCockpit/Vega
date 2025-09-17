@@ -1,95 +1,80 @@
 name: Add/Update Ticker (Earnings Guard)
-
-on:
+true:
   push:
-    branches: [ main ]
-
+    branches:
+    - main
   workflow_dispatch:
     inputs:
       ticker:
-        description: "Ticker (e.g., BA)"
+        description: Ticker (e.g., BA)
         required: true
       region:
-        description: "Region"
+        description: Region
         required: true
         type: choice
-        options: [USA, Canada, Mexico, LatAm]
+        options:
+        - USA
+        - Canada
+        - Mexico
+        - LatAm
       earnings_date:
-        description: "Earnings date (YYYY-MM-DD) — leave blank if unknown"
+        description: "Earnings date (YYYY-MM-DD) \u2014 leave blank if unknown"
         required: false
-        default: ""
-
+        default: ''
 permissions:
   contents: write
-
 jobs:
+  precheck:
+    runs-on: ubuntu-latest
+    outputs:
+      ok: ${{ steps.p.outputs.ok }}
+    steps:
+    - uses: actions/checkout@v4
+    - id: p
+      uses: ./.github/actions/precheck
   update:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+    - uses: actions/checkout@v4
+    - name: Update CSVs
+      run: "python - << 'PY'\nimport csv, os, datetime as dt\nfrom pathlib import\
+        \ Path\n\nticker=os.environ['TI'].strip().upper()\nregion=os.environ['RG'].strip()\n\
+        ed=os.environ['ED'].strip()\n\nPath('data').mkdir(exist_ok=True)\nwl_path='data/watchlists.csv'\n\
+        ec_path='data/earnings_calendar.csv'\n\n# ensure headers if files don't exist\n\
+        if not os.path.exists(wl_path):\n    open(wl_path,'w').write('ticker,region\\\
+        n')\nif not os.path.exists(ec_path):\n    open(ec_path,'w').write('ticker,earnings_date\\\
+        n')\n\n# write watchlists.csv (replace any existing row for ticker)\nrows=[]\n\
+        with open(wl_path) as f:\n    rdr=csv.DictReader(f)\n    for r in rdr:\n \
+        \       if r['ticker'].upper()!=ticker:\n            rows.append(r)\nrows.append({'ticker':\
+        \ ticker, 'region': region})\nwith open(wl_path,'w',newline='') as f:\n  \
+        \  w=csv.DictWriter(f, fieldnames=['ticker','region'])\n    w.writeheader()\n\
+        \    for r in sorted(rows, key=lambda r:r['ticker']):\n        w.writerow(r)\n\
+        \n# write earnings_calendar.csv if date provided\nif ed:\n    try:\n     \
+        \   dt.date.fromisoformat(ed)\n    except Exception as e:\n        raise SystemExit(f\"\
+        Invalid earnings_date: {ed} (use YYYY-MM-DD)\")\n    ec=[]\n    with open(ec_path)\
+        \ as f:\n        rdr=csv.DictReader(f)\n        for r in rdr:\n          \
+        \  if r['ticker'].upper()!=ticker:\n                ec.append(r)\n    ec.append({'ticker':\
+        \ ticker, 'earnings_date': ed})\n    with open(ec_path,'w',newline='') as\
+        \ f:\n        w=csv.DictWriter(f, fieldnames=['ticker','earnings_date'])\n\
+        \        w.writeheader()\n        for r in sorted(ec, key=lambda r:r['ticker']):\n\
+        \            w.writerow(r)\nPY\n"
+      env:
+        TI: ${{ github.event.inputs.ticker }}
+        RG: ${{ github.event.inputs.region }}
+        ED: ${{ github.event.inputs.earnings_date }}
+    - name: Commit & push
+      run: 'git config user.name "github-actions"
 
-      - name: Update CSVs
-        run: |
-          python - << 'PY'
-          import csv, os, datetime as dt
-          from pathlib import Path
+        git config user.email "actions@users.noreply.github.com"
 
-          ticker=os.environ['TI'].strip().upper()
-          region=os.environ['RG'].strip()
-          ed=os.environ['ED'].strip()
+        git add -A
 
-          Path('data').mkdir(exist_ok=True)
-          wl_path='data/watchlists.csv'
-          ec_path='data/earnings_calendar.csv'
+        git commit -m "chore(earnings-guard): add/update ${{ github.event.inputs.ticker
+        }}" || echo "No changes"
 
-          # ensure headers if files don't exist
-          if not os.path.exists(wl_path):
-              open(wl_path,'w').write('ticker,region\n')
-          if not os.path.exists(ec_path):
-              open(ec_path,'w').write('ticker,earnings_date\n')
+        git push
 
-          # write watchlists.csv (replace any existing row for ticker)
-          rows=[]
-          with open(wl_path) as f:
-              rdr=csv.DictReader(f)
-              for r in rdr:
-                  if r['ticker'].upper()!=ticker:
-                      rows.append(r)
-          rows.append({'ticker': ticker, 'region': region})
-          with open(wl_path,'w',newline='') as f:
-              w=csv.DictWriter(f, fieldnames=['ticker','region'])
-              w.writeheader()
-              for r in sorted(rows, key=lambda r:r['ticker']):
-                  w.writerow(r)
-
-          # write earnings_calendar.csv if date provided
-          if ed:
-              try:
-                  dt.date.fromisoformat(ed)
-              except Exception as e:
-                  raise SystemExit(f"Invalid earnings_date: {ed} (use YYYY-MM-DD)")
-              ec=[]
-              with open(ec_path) as f:
-                  rdr=csv.DictReader(f)
-                  for r in rdr:
-                      if r['ticker'].upper()!=ticker:
-                          ec.append(r)
-              ec.append({'ticker': ticker, 'earnings_date': ed})
-              with open(ec_path,'w',newline='') as f:
-                  w=csv.DictWriter(f, fieldnames=['ticker','earnings_date'])
-                  w.writeheader()
-                  for r in sorted(ec, key=lambda r:r['ticker']):
-                      w.writerow(r)
-          PY
-        env:
-          TI: ${{ github.event.inputs.ticker }}
-          RG: ${{ github.event.inputs.region }}
-          ED: ${{ github.event.inputs.earnings_date }}
-
-      - name: Commit & push
-        run: |
-          git config user.name "github-actions"
-          git config user.email "actions@users.noreply.github.com"
-          git add -A
-          git commit -m "chore(earnings-guard): add/update ${{ github.event.inputs.ticker }}" || echo "No changes"
-          git push
+        '
+    needs: precheck
+    if: ${{ needs.precheck.outputs.ok == 'true' && github.ref == 'refs/heads/main'
+      }}

@@ -1,34 +1,43 @@
 name: Earnings Guard
-on:
+true:
   push:
-    branches: [ main ]
-
-  schedule: [{ cron: "0 13 * * 1-5" }]
-  workflow_dispatch:
+    branches:
+    - main
+  schedule:
+  - cron: 0 13 * * 1-5
+  workflow_dispatch: null
 jobs:
+  precheck:
+    runs-on: ubuntu-latest
+    outputs:
+      ok: ${{ steps.p.outputs.ok }}
+    steps:
+    - uses: actions/checkout@v4
+    - id: p
+      uses: ./.github/actions/precheck
   guard:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.11" }
-      - run: |
-          python - << 'PY'
-          import csv, datetime as dt, json, os
-          from pathlib import Path
-          rules_days = 30
-          wl = list(csv.DictReader(open("data/watchlists.csv"))) if os.path.exists("data/watchlists.csv") else []
-          cal = {r["ticker"]: r["earnings_date"] for r in csv.DictReader(open("data/earnings_calendar.csv"))} if os.path.exists("data/earnings_calendar.csv") else {}
-          today = dt.date.today()
-          violations=[]
-          for row in wl:
-            t=row["ticker"]; d=cal.get(t)
-            if not d: continue
-            ed=dt.date.fromisoformat(d)
-            if 0 <= (ed - today).days <= rules_days:
-              violations.append({"ticker": t, "days_to_earnings": (ed-today).days, "earnings_date": d})
-          Path("snapshots").mkdir(exist_ok=True)
-          open("snapshots/earnings_guard.json","w").write(json.dumps({"violations":violations, "as_of": today.isoformat()}, indent=2))
-          PY
-      - uses: actions/upload-artifact@v4
-        with: { name: earnings-guard, path: snapshots/earnings_guard.json, retention-days: 7 }
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    - run: "python - << 'PY'\nimport csv, datetime as dt, json, os\nfrom pathlib import\
+        \ Path\nrules_days = 30\nwl = list(csv.DictReader(open(\"data/watchlists.csv\"\
+        ))) if os.path.exists(\"data/watchlists.csv\") else []\ncal = {r[\"ticker\"\
+        ]: r[\"earnings_date\"] for r in csv.DictReader(open(\"data/earnings_calendar.csv\"\
+        ))} if os.path.exists(\"data/earnings_calendar.csv\") else {}\ntoday = dt.date.today()\n\
+        violations=[]\nfor row in wl:\n  t=row[\"ticker\"]; d=cal.get(t)\n  if not\
+        \ d: continue\n  ed=dt.date.fromisoformat(d)\n  if 0 <= (ed - today).days\
+        \ <= rules_days:\n    violations.append({\"ticker\": t, \"days_to_earnings\"\
+        : (ed-today).days, \"earnings_date\": d})\nPath(\"snapshots\").mkdir(exist_ok=True)\n\
+        open(\"snapshots/earnings_guard.json\",\"w\").write(json.dumps({\"violations\"\
+        :violations, \"as_of\": today.isoformat()}, indent=2))\nPY\n"
+    - uses: actions/upload-artifact@v4
+      with:
+        name: earnings-guard
+        path: snapshots/earnings_guard.json
+        retention-days: 7
+    needs: precheck
+    if: ${{ needs.precheck.outputs.ok == 'true' && github.ref == 'refs/heads/main'
+      }}

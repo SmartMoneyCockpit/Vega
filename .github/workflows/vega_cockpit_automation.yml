@@ -1,14 +1,22 @@
-name: DISABLED – kept for reference
-
-on:
+name: "DISABLED \u2013 kept for reference"
+true:
   push:
-    branches: [ main ]
-
+    branches:
+    - main
   workflow_dispatch: {}
-  # No schedules, no push triggers
-
 jobs:
+  precheck:
+    runs-on: ubuntu-latest
+    outputs:
+      ok: ${{ steps.p.outputs.ok }}
+    steps:
+    - uses: actions/checkout@v4
+    - id: p
+      uses: ./.github/actions/precheck
   noop:
     runs-on: ubuntu-latest
     steps:
-      - run: echo "Workflow disabled (no-op to prevent 'No jobs were run' emails)."
+    - run: echo "Workflow disabled (no-op to prevent 'No jobs were run' emails)."
+    needs: precheck
+    if: ${{ needs.precheck.outputs.ok == 'true' && github.ref == 'refs/heads/main'
+      }}

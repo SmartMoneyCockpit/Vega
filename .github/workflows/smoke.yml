@@ -1,12 +1,23 @@
 name: smoke
-on:
-  workflow_dispatch:
+true:
+  workflow_dispatch: null
   push:
-    branches: [ main ]
-
+    branches:
+    - main
 jobs:
+  precheck:
+    runs-on: ubuntu-latest
+    outputs:
+      ok: ${{ steps.p.outputs.ok }}
+    steps:
+    - uses: actions/checkout@v4
+    - id: p
+      uses: ./.github/actions/precheck
   run:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - run: echo "✅ Actions runner is working on $(uname -a)"
+    - uses: actions/checkout@v4
+    - run: "echo \"\u2705 Actions runner is working on $(uname -a)\""
+    needs: precheck
+    if: ${{ needs.precheck.outputs.ok == 'true' && github.ref == 'refs/heads/main'
+      }}

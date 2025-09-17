@@ -1,41 +1,57 @@
 name: Sector Flip Alerts (Hourly)
-
-on:
+true:
   push:
-    branches: [ main ]
-
+    branches:
+    - main
   schedule:
-    - cron: '10 * * * *'
-  workflow_dispatch:
-
+  - cron: 10 * * * *
+  workflow_dispatch: null
 permissions:
   contents: write
-
 jobs:
+  precheck:
+    runs-on: ubuntu-latest
+    outputs:
+      ok: ${{ steps.p.outputs.ok }}
+    steps:
+    - uses: actions/checkout@v4
+    - id: p
+      uses: ./.github/actions/precheck
   run:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: vega-data
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - name: Install deps
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-      - name: Run Hourly Flip Alerts
-        env:
-          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
-          ALERTS_FROM: ${{ secrets.ALERTS_FROM }}
-          ALERTS_TO: ${{ secrets.ALERTS_TO }}
-        run: |
-          python workers/alerts/sector_flip_from_snapshots.py
-      - name: Commit state (debounce)
-        run: |
-          git config user.email "actions@github.com"
-          git config user.name "github-actions"
-          git add .state/sector_flips.json || true
-          git commit -m "state: sector flips $(date -u +%FT%TZ)" || echo "no changes"
-          git push origin vega-data || echo "no push"
+    - uses: actions/checkout@v4
+      with:
+        ref: vega-data
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    - name: Install deps
+      run: 'python -m pip install --upgrade pip
+
+        pip install -r requirements.txt
+
+        '
+    - name: Run Hourly Flip Alerts
+      env:
+        SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+        ALERTS_FROM: ${{ secrets.ALERTS_FROM }}
+        ALERTS_TO: ${{ secrets.ALERTS_TO }}
+      run: 'python workers/alerts/sector_flip_from_snapshots.py
+
+        '
+    - name: Commit state (debounce)
+      run: 'git config user.email "actions@github.com"
+
+        git config user.name "github-actions"
+
+        git add .state/sector_flips.json || true
+
+        git commit -m "state: sector flips $(date -u +%FT%TZ)" || echo "no changes"
+
+        git push origin vega-data || echo "no push"
+
+        '
+    needs: precheck
+    if: ${{ needs.precheck.outputs.ok == 'true' && github.ref == 'refs/heads/main'
+      }}

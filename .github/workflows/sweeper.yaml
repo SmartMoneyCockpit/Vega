@@ -1,28 +1,40 @@
 name: Repo Sweeper
-on:
+true:
   push:
-    branches: [ main ]
-
-  schedule: [{ cron: "0 10 * * 0" }]
-  workflow_dispatch:
+    branches:
+    - main
+  schedule:
+  - cron: 0 10 * * 0
+  workflow_dispatch: null
 jobs:
+  precheck:
+    runs-on: ubuntu-latest
+    outputs:
+      ok: ${{ steps.p.outputs.ok }}
+    steps:
+    - uses: actions/checkout@v4
+    - id: p
+      uses: ./.github/actions/precheck
   sweep:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Prune old JSON/MD (keep 7 days)
-        run: |
-          python - << 'PY'
-          import os, time, glob
-          cutoff = time.time() - 7*24*3600
-          for p in glob.glob("snapshots/*")+glob.glob("signals/*"):
-            try:
-              if os.path.getmtime(p) < cutoff: os.remove(p)
-            except FileNotFoundError: pass
-          PY
-      - name: Commit prune (if any)
-        run: |
-          git config user.name "github-actions"
-          git config user.email "actions@users.noreply.github.com"
-          git add -A && git commit -m "chore: prune old snapshots/signals" || echo "nothing to commit"
-          git push
+    - uses: actions/checkout@v4
+    - name: Prune old JSON/MD (keep 7 days)
+      run: "python - << 'PY'\nimport os, time, glob\ncutoff = time.time() - 7*24*3600\n\
+        for p in glob.glob(\"snapshots/*\")+glob.glob(\"signals/*\"):\n  try:\n  \
+        \  if os.path.getmtime(p) < cutoff: os.remove(p)\n  except FileNotFoundError:\
+        \ pass\nPY\n"
+    - name: Commit prune (if any)
+      run: 'git config user.name "github-actions"
+
+        git config user.email "actions@users.noreply.github.com"
+
+        git add -A && git commit -m "chore: prune old snapshots/signals" || echo "nothing
+        to commit"
+
+        git push
+
+        '
+    needs: precheck
+    if: ${{ needs.precheck.outputs.ok == 'true' && github.ref == 'refs/heads/main'
+      }}

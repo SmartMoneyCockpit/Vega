@@ -1,127 +1,101 @@
 name: alert-promote
-on:
+true:
   push:
-    branches: [ main ]
-
-  workflow_dispatch:
-
+    branches:
+    - main
+  workflow_dispatch: null
   issue_comment:
-    types: [created, edited]
-
+    types:
+    - created
+    - edited
 permissions:
   contents: write
   issues: write
-
 jobs:
+  precheck:
+    runs-on: ubuntu-latest
+    outputs:
+      ok: ${{ steps.p.outputs.ok }}
+    steps:
+    - uses: actions/checkout@v4
+    - id: p
+      uses: ./.github/actions/precheck
   promote:
-    if: startsWith(github.event.issue.title, 'Alert YAML:') || contains(join(github.event.issue.labels.*.name, ','), 'alert-yaml')
+    if: ${{ (startsWith(github.event.issue.title, 'Alert YAML:') || contains(join(github.event.issue.labels.*.name,
+      ','), 'alert-yaml')) && needs.precheck.outputs.ok == 'true' && github.ref ==
+      'refs/heads/main' }}
     runs-on: ubuntu-latest
     steps:
-      - id: parse
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const body = (context.payload.comment.body || '').trim();
-            const lines = body.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-            const cmds = [];
-            for (const ln of lines) {
-              let m;
-              if ((m = ln.match(/^(promote|demote)\s+(\S+)\s+(\S+)\s+(\d+(?:\.\d+)?)$/i))) {
-                cmds.push({ op: m[1].toLowerCase(), ticker: m[2], rule: m[3], level: Number(m[4]) });
-                continue;
-              }
-              if ((m = ln.match(/^promote-limit\s+(\d+)$/i))) {
-                cmds.push({ op: 'limit', n: parseInt(m[1], 10) });
-                continue;
-              }
-              if (/^demote-all$/i.test(ln)) { cmds.push({ op: 'demote_all' }); continue; }
-              if (/^list$/i.test(ln))      { cmds.push({ op: 'list' });       continue; }
-            }
-            if (!cmds.length) core.setFailed('No valid command. Use `promote <ticker> <rule> <level>`, `demote ...`, `promote-limit <N>`, `demote-all`, or `list`.');
-            core.setOutput('cmds', JSON.stringify(cmds));
-
-      - id: load
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const owner = context.repo.owner, repo = context.repo.repo;
-            const path = 'config/alerts/promoted.json';
-            let sha, data = { promoted: [], limit: 2 };
-            try {
-              const cur = await github.rest.repos.getContent({ owner, repo, path, ref: 'main' });
-              if (!Array.isArray(cur.data)) {
-                sha = cur.data.sha;
-                data = JSON.parse(Buffer.from(cur.data.content, 'base64').toString('utf8'));
-                if (!Array.isArray(data.promoted)) data.promoted = [];
-                if (typeof data.limit !== 'number') data.limit = 2;
-              }
-            } catch (e) { if (e.status !== 404) throw e; }
-            core.setOutput('path', path);
-            core.setOutput('sha', sha || '');
-            core.setOutput('json', JSON.stringify(data));
-
-      - id: apply
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const cmds = JSON.parse(`${{ steps.parse.outputs.cmds }}`);
-            const state = JSON.parse(`${{ steps.load.outputs.json }}`);
-            const list = state.promoted, limitDefault = state.limit ?? 2;
-
-            const key = x => `${x.ticker}|${x.rule}|${x.level}`;
-            const find = x => list.findIndex(y => key(y) === key(x));
-
-            let changed = false, notes = [];
-
-            for (const c of cmds) {
-              if (c.op === 'list') { notes.push(`Current limit: ${state.limit}. Promoted: ${list.length ? list.map(key).join(', ') : '(none)'}`); continue; }
-              if (c.op === 'limit') { state.limit = Math.max(0, c.n|0); changed = true; notes.push(`Set promote-limit=${state.limit}`); continue; }
-              if (c.op === 'demote_all') { if (list.length) { list.length = 0; changed = true; } notes.push('Demoted ALL'); continue; }
-
-              const item = { ticker: c.ticker, rule: c.rule, level: c.level };
-              const idx = find(item);
-              if (c.op === 'promote') {
-                if (idx === -1) { list.push(item); changed = true; notes.push(`Promoted ${key(item)}`); }
-                else { notes.push(`Already promoted: ${key(item)}`); }
-              } else if (c.op === 'demote') {
-                if (idx !== -1) { list.splice(idx, 1); changed = true; notes.push(`Demoted ${key(item)}`); }
-                else { notes.push(`Not found: ${key(item)}`); }
-              }
-            }
-
-            // Clamp to limit if necessary
-            if (list.length > (state.limit ?? limitDefault)) {
-              const removed = list.splice(state.limit);
-              if (removed.length) { changed = true; notes.push(`Clamped to limit=${state.limit}; removed: ${removed.map(key).join(', ')}`); }
-            }
-
-            core.setOutput('changed', String(changed));
-            core.setOutput('notes', notes.join('\n'));
-            core.setOutput('newjson', JSON.stringify(state, null, 2));
-
-      - id: save
-        if: steps.apply.outputs.changed == 'true'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const owner = context.repo.owner, repo = context.repo.repo;
-            const path = `${{ steps.load.outputs.path }}`;
-            const sha  = `${{ steps.load.outputs.sha }}` || undefined;
-            const content = Buffer.from(`${{ steps.apply.outputs.newjson }}`, 'utf8').toString('base64');
-            const res = await github.rest.repos.createOrUpdateFileContents({
-              owner, repo, path, content, sha, branch: 'main',
-              message: `chore(alerts): update promotions from comment #${context.payload.comment.id}`
-            });
-            core.setOutput('url', res.data.content.html_url);
-
-      - name: Comment back
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const owner = context.repo.owner, repo = context.repo.repo, num = context.payload.issue.number;
-            const notes = `${{ steps.apply.outputs.notes }}`;
-            const url = `${{ steps.save.outputs.url || '' }}`;
-            await github.rest.issues.createComment({
-              owner, repo, issue_number: num,
-              body: (context.payload.comment.body || '').trim() + '\n\n' + notes + (url ? `\n\nSaved: ${url}` : '')
-            });
+    - id: parse
+      uses: actions/github-script@v7
+      with:
+        script: "const body = (context.payload.comment.body || '').trim();\nconst\
+          \ lines = body.split(/\\r?\\n/).map(s => s.trim()).filter(Boolean);\nconst\
+          \ cmds = [];\nfor (const ln of lines) {\n  let m;\n  if ((m = ln.match(/^(promote|demote)\\\
+          s+(\\S+)\\s+(\\S+)\\s+(\\d+(?:\\.\\d+)?)$/i))) {\n    cmds.push({ op: m[1].toLowerCase(),\
+          \ ticker: m[2], rule: m[3], level: Number(m[4]) });\n    continue;\n  }\n\
+          \  if ((m = ln.match(/^promote-limit\\s+(\\d+)$/i))) {\n    cmds.push({\
+          \ op: 'limit', n: parseInt(m[1], 10) });\n    continue;\n  }\n  if (/^demote-all$/i.test(ln))\
+          \ { cmds.push({ op: 'demote_all' }); continue; }\n  if (/^list$/i.test(ln))\
+          \      { cmds.push({ op: 'list' });       continue; }\n}\nif (!cmds.length)\
+          \ core.setFailed('No valid command. Use `promote <ticker> <rule> <level>`,\
+          \ `demote ...`, `promote-limit <N>`, `demote-all`, or `list`.');\ncore.setOutput('cmds',\
+          \ JSON.stringify(cmds));\n"
+    - id: load
+      uses: actions/github-script@v7
+      with:
+        script: "const owner = context.repo.owner, repo = context.repo.repo;\nconst\
+          \ path = 'config/alerts/promoted.json';\nlet sha, data = { promoted: [],\
+          \ limit: 2 };\ntry {\n  const cur = await github.rest.repos.getContent({\
+          \ owner, repo, path, ref: 'main' });\n  if (!Array.isArray(cur.data)) {\n\
+          \    sha = cur.data.sha;\n    data = JSON.parse(Buffer.from(cur.data.content,\
+          \ 'base64').toString('utf8'));\n    if (!Array.isArray(data.promoted)) data.promoted\
+          \ = [];\n    if (typeof data.limit !== 'number') data.limit = 2;\n  }\n\
+          } catch (e) { if (e.status !== 404) throw e; }\ncore.setOutput('path', path);\n\
+          core.setOutput('sha', sha || '');\ncore.setOutput('json', JSON.stringify(data));\n"
+    - id: apply
+      uses: actions/github-script@v7
+      with:
+        script: "const cmds = JSON.parse(`${{ steps.parse.outputs.cmds }}`);\nconst\
+          \ state = JSON.parse(`${{ steps.load.outputs.json }}`);\nconst list = state.promoted,\
+          \ limitDefault = state.limit ?? 2;\n\nconst key = x => `${x.ticker}|${x.rule}|${x.level}`;\n\
+          const find = x => list.findIndex(y => key(y) === key(x));\n\nlet changed\
+          \ = false, notes = [];\n\nfor (const c of cmds) {\n  if (c.op === 'list')\
+          \ { notes.push(`Current limit: ${state.limit}. Promoted: ${list.length ?\
+          \ list.map(key).join(', ') : '(none)'}`); continue; }\n  if (c.op === 'limit')\
+          \ { state.limit = Math.max(0, c.n|0); changed = true; notes.push(`Set promote-limit=${state.limit}`);\
+          \ continue; }\n  if (c.op === 'demote_all') { if (list.length) { list.length\
+          \ = 0; changed = true; } notes.push('Demoted ALL'); continue; }\n\n  const\
+          \ item = { ticker: c.ticker, rule: c.rule, level: c.level };\n  const idx\
+          \ = find(item);\n  if (c.op === 'promote') {\n    if (idx === -1) { list.push(item);\
+          \ changed = true; notes.push(`Promoted ${key(item)}`); }\n    else { notes.push(`Already\
+          \ promoted: ${key(item)}`); }\n  } else if (c.op === 'demote') {\n    if\
+          \ (idx !== -1) { list.splice(idx, 1); changed = true; notes.push(`Demoted\
+          \ ${key(item)}`); }\n    else { notes.push(`Not found: ${key(item)}`); }\n\
+          \  }\n}\n\n// Clamp to limit if necessary\nif (list.length > (state.limit\
+          \ ?? limitDefault)) {\n  const removed = list.splice(state.limit);\n  if\
+          \ (removed.length) { changed = true; notes.push(`Clamped to limit=${state.limit};\
+          \ removed: ${removed.map(key).join(', ')}`); }\n}\n\ncore.setOutput('changed',\
+          \ String(changed));\ncore.setOutput('notes', notes.join('\\n'));\ncore.setOutput('newjson',\
+          \ JSON.stringify(state, null, 2));\n"
+    - id: save
+      if: steps.apply.outputs.changed == 'true'
+      uses: actions/github-script@v7
+      with:
+        script: "const owner = context.repo.owner, repo = context.repo.repo;\nconst\
+          \ path = `${{ steps.load.outputs.path }}`;\nconst sha  = `${{ steps.load.outputs.sha\
+          \ }}` || undefined;\nconst content = Buffer.from(`${{ steps.apply.outputs.newjson\
+          \ }}`, 'utf8').toString('base64');\nconst res = await github.rest.repos.createOrUpdateFileContents({\n\
+          \  owner, repo, path, content, sha, branch: 'main',\n  message: `chore(alerts):\
+          \ update promotions from comment #${context.payload.comment.id}`\n});\n\
+          core.setOutput('url', res.data.content.html_url);\n"
+    - name: Comment back
+      uses: actions/github-script@v7
+      with:
+        script: "const owner = context.repo.owner, repo = context.repo.repo, num =\
+          \ context.payload.issue.number;\nconst notes = `${{ steps.apply.outputs.notes\
+          \ }}`;\nconst url = `${{ steps.save.outputs.url || '' }}`;\nawait github.rest.issues.createComment({\n\
+          \  owner, repo, issue_number: num,\n  body: (context.payload.comment.body\
+          \ || '').trim() + '\\n\\n' + notes + (url ? `\\n\\nSaved: ${url}` : '')\n\
+          });\n"
+    needs: precheck

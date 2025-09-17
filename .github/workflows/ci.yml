@@ -1,38 +1,39 @@
 name: ci
-
-on:
+true:
   push:
-    branches: [ main ]
-
-  # Manual only. Uncomment "push" later if you really need auto CI.
-  workflow_dispatch:
-  # push:
-  #   branches: [ main ]
-  #   paths:
-  #     - 'app.py'
-  #     - 'requirements.txt'
-  #     - 'src/**'
-  #     - '.github/workflows/ci.yml'
-
+    branches:
+    - main
+  workflow_dispatch: null
 permissions:
   contents: read
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
+  precheck:
+    runs-on: ubuntu-latest
+    outputs:
+      ok: ${{ steps.p.outputs.ok }}
+    steps:
+    - uses: actions/checkout@v4
+    - id: p
+      uses: ./.github/actions/precheck
   lint-and-smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - name: Install deps (fast)
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-      - name: Smoke import
-        run: python -c "import streamlit, plotly, pandas, numpy; print('ok')"
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    - name: Install deps (fast)
+      run: 'python -m pip install --upgrade pip
+
+        pip install -r requirements.txt
+
+        '
+    - name: Smoke import
+      run: python -c "import streamlit, plotly, pandas, numpy; print('ok')"
+    needs: precheck
+    if: ${{ needs.precheck.outputs.ok == 'true' && github.ref == 'refs/heads/main'
+      }}

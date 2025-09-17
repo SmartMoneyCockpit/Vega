@@ -1,31 +1,39 @@
 name: PDH/PDL Seed
-on:
+true:
   push:
-    branches: [ main ]
-
-  schedule: [{ cron: "5 13 * * 2-6" }]  # 06:05 Phoenix, Tue–Sat (after prior close)
-  workflow_dispatch:
+    branches:
+    - main
+  schedule:
+  - cron: 5 13 * * 2-6
+  workflow_dispatch: null
 jobs:
+  precheck:
+    runs-on: ubuntu-latest
+    outputs:
+      ok: ${{ steps.p.outputs.ok }}
+    steps:
+    - uses: actions/checkout@v4
+    - id: p
+      uses: ./.github/actions/precheck
   pivots:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.11" }
-      - run: |
-          python - << 'PY'
-          import csv, json, datetime as dt
-          from collections import defaultdict
-          rows=list(csv.DictReader(open("data/daily_ohlc.csv")))
-          # keep only yesterday’s rows
-          y=(dt.date.today()-dt.timedelta(days=1)).isoformat()
-          out={}
-          for r in rows:
-            if r["date"]==y:
-              t=r["ticker"].upper()
-              out[t]={"date":y,"pdh":float(r["high"]), "pdl":float(r["low"]), "pc":float(r["close"])}
-          import os; os.makedirs("snapshots", exist_ok=True)
-          open("snapshots/pivots.json","w").write(json.dumps(out, indent=2))
-          PY
-      - uses: actions/upload-artifact@v4
-        with: { name: pivots, path: snapshots/pivots.json, retention-days: 7 }
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    - run: "python - << 'PY'\nimport csv, json, datetime as dt\nfrom collections import\
+        \ defaultdict\nrows=list(csv.DictReader(open(\"data/daily_ohlc.csv\")))\n\
+        # keep only yesterday\u2019s rows\ny=(dt.date.today()-dt.timedelta(days=1)).isoformat()\n\
+        out={}\nfor r in rows:\n  if r[\"date\"]==y:\n    t=r[\"ticker\"].upper()\n\
+        \    out[t]={\"date\":y,\"pdh\":float(r[\"high\"]), \"pdl\":float(r[\"low\"\
+        ]), \"pc\":float(r[\"close\"])}\nimport os; os.makedirs(\"snapshots\", exist_ok=True)\n\
+        open(\"snapshots/pivots.json\",\"w\").write(json.dumps(out, indent=2))\nPY\n"
+    - uses: actions/upload-artifact@v4
+      with:
+        name: pivots
+        path: snapshots/pivots.json
+        retention-days: 7
+    needs: precheck
+    if: ${{ needs.precheck.outputs.ok == 'true' && github.ref == 'refs/heads/main'
+      }}

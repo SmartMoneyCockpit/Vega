@@ -1,42 +1,48 @@
 name: Ensure prefs import on pages
-
-on:
+true:
   push:
-    branches: [ main ]
-
+    branches:
+    - main
     paths:
-      - 'app.py'
-      - 'pages/**'
-      - 'utils/prefs_bootstrap.py'
-      - 'add_prefs_import.py'
-      - '.github/workflows/prefs-import.yml'
+    - app.py
+    - pages/**
+    - utils/prefs_bootstrap.py
+    - add_prefs_import.py
+    - .github/workflows/prefs-import.yml
   workflow_dispatch: {}
-
 permissions:
   contents: write
-
 jobs:
+  precheck:
+    runs-on: ubuntu-latest
+    outputs:
+      ok: ${{ steps.p.outputs.ok }}
+    steps:
+    - uses: actions/checkout@v4
+    - id: p
+      uses: ./.github/actions/precheck
   patch-imports:
-    if: github.actor != 'github-actions[bot]'
+    if: ${{ (github.actor != 'github-actions[bot]') && needs.precheck.outputs.ok ==
+      'true' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    - name: Run add_prefs_import.py
+      run: python add_prefs_import.py
+    - name: Commit changes (if any)
+      uses: stefanzweifel/git-auto-commit-action@v5
+      with:
+        commit_message: 'chore(prefs): prepend prefs import [skip ci]'
+        file_pattern: 'app.py
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
+          pages/**/*.py
 
-      - name: Run add_prefs_import.py
-        run: python add_prefs_import.py
-
-      - name: Commit changes (if any)
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: 'chore(prefs): prepend prefs import [skip ci]'
-          file_pattern: |
-            app.py
-            pages/**/*.py
+          '
+    needs: precheck

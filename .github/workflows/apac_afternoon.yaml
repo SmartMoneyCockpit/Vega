@@ -1,32 +1,37 @@
 name: APAC Afternoon
-
-on:
+true:
   push:
-    branches: [ main ]
-
+    branches:
+    - main
   schedule:
-    - cron: "0 1 * * 1-5"  # 18:00 Phoenix previous day
-  workflow_dispatch:
-
+  - cron: 0 1 * * 1-5
+  workflow_dispatch: null
 jobs:
+  precheck:
+    runs-on: ubuntu-latest
+    outputs:
+      ok: ${{ steps.p.outputs.ok }}
+    steps:
+    - uses: actions/checkout@v4
+    - id: p
+      uses: ./.github/actions/precheck
   apac:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.11" }
-      - run: |
-          python - << 'PY'
-          import json, yaml, datetime as dt, os
-          from pathlib import Path
-          cfg = yaml.safe_load(open("config/vega_rules.yaml"))
-          Path("snapshots").mkdir(exist_ok=True)
-          open("snapshots/apac_afternoon.json","w").write(
-            json.dumps({"sections": cfg["sections_daily"], "ts_utc": dt.datetime.utcnow().isoformat()+"Z"}, indent=2)
-          )
-          PY
-      - uses: actions/upload-artifact@v4
-        with:
-          name: apac-afternoon
-          path: snapshots/
-          retention-days: 7
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    - run: "python - << 'PY'\nimport json, yaml, datetime as dt, os\nfrom pathlib\
+        \ import Path\ncfg = yaml.safe_load(open(\"config/vega_rules.yaml\"))\nPath(\"\
+        snapshots\").mkdir(exist_ok=True)\nopen(\"snapshots/apac_afternoon.json\"\
+        ,\"w\").write(\n  json.dumps({\"sections\": cfg[\"sections_daily\"], \"ts_utc\"\
+        : dt.datetime.utcnow().isoformat()+\"Z\"}, indent=2)\n)\nPY\n"
+    - uses: actions/upload-artifact@v4
+      with:
+        name: apac-afternoon
+        path: snapshots/
+        retention-days: 7
+    needs: precheck
+    if: ${{ needs.precheck.outputs.ok == 'true' && github.ref == 'refs/heads/main'
+      }}

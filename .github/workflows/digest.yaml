@@ -1,23 +1,35 @@
 name: alerts-digest
-on:
+true:
   push:
-    branches: [ main ]
-
+    branches:
+    - main
   workflow_dispatch:
     inputs:
       lookback:
-        description: "e.g., 1d, 4h"
+        description: e.g., 1d, 4h
         required: false
-        default: "1d"
+        default: 1d
 jobs:
+  precheck:
+    runs-on: ubuntu-latest
+    outputs:
+      ok: ${{ steps.p.outputs.ok }}
+    steps:
+    - uses: actions/checkout@v4
+    - id: p
+      uses: ./.github/actions/precheck
   run:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.11" }
-      - run: pip install -r requirements-actions.txt
-      - env:
-          DIGEST_LOOKBACK: ${{ github.event.inputs.lookback }}
-          ALERTS_TO: ${{ secrets.ALERTS_TO }}
-        run: python -m alerts.digest
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    - run: pip install -r requirements-actions.txt
+    - env:
+        DIGEST_LOOKBACK: ${{ github.event.inputs.lookback }}
+        ALERTS_TO: ${{ secrets.ALERTS_TO }}
+      run: python -m alerts.digest
+    needs: precheck
+    if: ${{ needs.precheck.outputs.ok == 'true' && github.ref == 'refs/heads/main'
+      }}

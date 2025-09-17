@@ -1,26 +1,31 @@
-name: GATED – runs only when explicitly enabled
-
-on:
+name: "GATED \u2013 runs only when explicitly enabled"
+true:
   push:
-    branches: [ main ]
-
+    branches:
+    - main
   workflow_dispatch: {}
-  # Optional: uncomment to run only if specific files change
-  # push:
-  #   paths:
-  #     - 'delta/**'
-
 env:
   ENABLE_PIPELINE: ${{ secrets.ENABLE_PIPELINE }}
-
 jobs:
+  precheck:
+    runs-on: ubuntu-latest
+    outputs:
+      ok: ${{ steps.p.outputs.ok }}
+    steps:
+    - uses: actions/checkout@v4
+    - id: p
+      uses: ./.github/actions/precheck
   guarded_job:
-    if: ${{ env.ENABLE_PIPELINE == 'true' }}
+    if: ${{ ( env.ENABLE_PIPELINE == 'true' ) && needs.precheck.outputs.ok == 'true'
+      && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     steps:
-      - run: echo "Pipeline enabled via secret ENABLE_PIPELINE=true"
+    - run: echo "Pipeline enabled via secret ENABLE_PIPELINE=true"
+    needs: precheck
   guard_noop:
-    if: ${{ env.ENABLE_PIPELINE != 'true' }}
+    if: ${{ ( env.ENABLE_PIPELINE != 'true' ) && needs.precheck.outputs.ok == 'true'
+      && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     steps:
-      - run: echo "Guard ran (pipeline disabled)"
+    - run: echo "Guard ran (pipeline disabled)"
+    needs: precheck

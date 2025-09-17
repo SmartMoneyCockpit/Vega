@@ -1,48 +1,60 @@
 name: Vega Data Pipeline (Hourly)
-
-on:
+true:
   push:
-    branches: [ main ]
-
+    branches:
+    - main
   schedule:
-    - cron: '0 * * * *'
-  workflow_dispatch:
-
+  - cron: 0 * * * *
+  workflow_dispatch: null
 permissions:
   contents: write
-
 concurrency:
   group: vega-data-pipeline
   cancel-in-progress: false
-
 jobs:
+  precheck:
+    runs-on: ubuntu-latest
+    outputs:
+      ok: ${{ steps.p.outputs.ok }}
+    steps:
+    - uses: actions/checkout@v4
+    - id: p
+      uses: ./.github/actions/precheck
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout data branch
-        uses: actions/checkout@v4
-        with:
-          ref: vega-data
+    - name: Checkout data branch
+      uses: actions/checkout@v4
+      with:
+        ref: vega-data
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    - name: Install deps
+      run: 'python -m pip install --upgrade pip
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
+        pip install -r requirements.txt
 
-      - name: Install deps
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+        '
+    - name: Build snapshots & reports
+      run: 'python workers/snapshots/market_snapshot.py
 
-      - name: Build snapshots & reports
-        run: |
-          python workers/snapshots/market_snapshot.py
-          python workers/reports/build_region_reports.py
+        python workers/reports/build_region_reports.py
 
-      - name: Commit & push
-        run: |
-          git config user.email "actions@github.com"
-          git config user.name "github-actions"
-          git add data/snapshots reports
-          git commit -m "data: hourly snapshot $(date -u +%FT%TZ)" || echo "no changes"
-          git push origin vega-data
+        '
+    - name: Commit & push
+      run: 'git config user.email "actions@github.com"
+
+        git config user.name "github-actions"
+
+        git add data/snapshots reports
+
+        git commit -m "data: hourly snapshot $(date -u +%FT%TZ)" || echo "no changes"
+
+        git push origin vega-data
+
+        '
+    needs: precheck
+    if: ${{ needs.precheck.outputs.ok == 'true' && github.ref == 'refs/heads/main'
+      }}

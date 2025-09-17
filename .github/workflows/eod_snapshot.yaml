@@ -1,35 +1,39 @@
 name: EOD Snapshot
-
-on:
+true:
   push:
-    branches: [ main ]
-
+    branches:
+    - main
   schedule:
-    - cron: "5 20 * * 1-5"  # 13:05 Phoenix
-  workflow_dispatch:
-
+  - cron: 5 20 * * 1-5
+  workflow_dispatch: null
 jobs:
+  precheck:
+    runs-on: ubuntu-latest
+    outputs:
+      ok: ${{ steps.p.outputs.ok }}
+    steps:
+    - uses: actions/checkout@v4
+    - id: p
+      uses: ./.github/actions/precheck
   eod:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.11" }
-      - run: |
-          python - << 'PY'
-          import json, glob, datetime as dt
-          from pathlib import Path
-          Path("snapshots").mkdir(exist_ok=True)
-          bundle = {"ts_utc": dt.datetime.utcnow().isoformat()+"Z", "files":[]}
-          for p in glob.glob("snapshots/*.json")+glob.glob("snapshots/*.md")+glob.glob("signals/*.json"):
-            try:
-              bundle["files"].append({"path": p, "content": open(p).read()[:50000]})
-            except Exception as e:
-              pass
-          open("snapshots/EOD_bundle.json","w").write(json.dumps(bundle, indent=2))
-          PY
-      - uses: actions/upload-artifact@v4
-        with:
-          name: eod-bundle
-          path: snapshots/EOD_bundle.json
-          retention-days: 7
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    - run: "python - << 'PY'\nimport json, glob, datetime as dt\nfrom pathlib import\
+        \ Path\nPath(\"snapshots\").mkdir(exist_ok=True)\nbundle = {\"ts_utc\": dt.datetime.utcnow().isoformat()+\"\
+        Z\", \"files\":[]}\nfor p in glob.glob(\"snapshots/*.json\")+glob.glob(\"\
+        snapshots/*.md\")+glob.glob(\"signals/*.json\"):\n  try:\n    bundle[\"files\"\
+        ].append({\"path\": p, \"content\": open(p).read()[:50000]})\n  except Exception\
+        \ as e:\n    pass\nopen(\"snapshots/EOD_bundle.json\",\"w\").write(json.dumps(bundle,\
+        \ indent=2))\nPY\n"
+    - uses: actions/upload-artifact@v4
+      with:
+        name: eod-bundle
+        path: snapshots/EOD_bundle.json
+        retention-days: 7
+    needs: precheck
+    if: ${{ needs.precheck.outputs.ok == 'true' && github.ref == 'refs/heads/main'
+      }}

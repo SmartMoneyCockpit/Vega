@@ -1,57 +1,71 @@
 name: Version & Changelog (Prefs)
-
-on:
+true:
   push:
-    branches: [ main ]
-
-    paths: ["config/vega_prefs.yaml"]
-  workflow_dispatch:
-
+    branches:
+    - main
+    paths:
+    - config/vega_prefs.yaml
+  workflow_dispatch: null
 permissions:
   contents: write
-
 jobs:
+  precheck:
+    runs-on: ubuntu-latest
+    outputs:
+      ok: ${{ steps.p.outputs.ok }}
+    steps:
+    - uses: actions/checkout@v4
+    - id: p
+      uses: ./.github/actions/precheck
   bump:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+    - uses: actions/checkout@v4
+    - name: Detect change type
+      id: diff
+      run: "# naive heuristic: major if meta/autonomy sections changed substantially\n\
+        if git diff -U0 HEAD~1 HEAD -- config/vega_prefs.yaml | grep -E '^\\+[^#].*autonomy|^\\\
+        +[^#].*meta_evolution' ; then\n  echo \"type=major\" >> $GITHUB_OUTPUT\nelif\
+        \ git diff -U0 HEAD~1 HEAD -- config/vega_prefs.yaml | grep -E '^\\+[^#].*true|^\\\
+        -.*true' ; then\n  echo \"type=minor\" >> $GITHUB_OUTPUT\nelse\n  echo \"\
+        type=patch\" >> $GITHUB_OUTPUT\nfi\n"
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    - name: Bump version.json
+      id: bump
+      env:
+        CHANGE_TYPE: ${{ steps.diff.outputs.type }}
+        CHANGE_DESC: Preferences update on ${GITHUB_SHA}
+        VERSION_PATH: config/version.json
+      run: 'python .github/scripts/bump_version.py > newver.txt
 
-      - name: Detect change type
-        id: diff
-        run: |
-          # naive heuristic: major if meta/autonomy sections changed substantially
-          if git diff -U0 HEAD~1 HEAD -- config/vega_prefs.yaml | grep -E '^\+[^#].*autonomy|^\+[^#].*meta_evolution' ; then
-            echo "type=major" >> $GITHUB_OUTPUT
-          elif git diff -U0 HEAD~1 HEAD -- config/vega_prefs.yaml | grep -E '^\+[^#].*true|^\-.*true' ; then
-            echo "type=minor" >> $GITHUB_OUTPUT
-          else
-            echo "type=patch" >> $GITHUB_OUTPUT
-          fi
+        echo "newver=$(cat newver.txt)" >> $GITHUB_OUTPUT
 
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.11" }
+        '
+    - name: Update CHANGELOG.md
+      run: 'TS=$(date -u +%F)
 
-      - name: Bump version.json
-        id: bump
-        env:
-          CHANGE_TYPE: ${{ steps.diff.outputs.type }}
-          CHANGE_DESC: "Preferences update on ${GITHUB_SHA}"
-          VERSION_PATH: config/version.json
-        run: |
-          python .github/scripts/bump_version.py > newver.txt
-          echo "newver=$(cat newver.txt)" >> $GITHUB_OUTPUT
+        echo "" >> CHANGELOG.md
 
-      - name: Update CHANGELOG.md
-        run: |
-          TS=$(date -u +%F)
-          echo "" >> CHANGELOG.md
-          echo "## [${{ steps.bump.outputs.newver }}] - $TS" >> CHANGELOG.md
-          echo "- Updated preferences in config/vega_prefs.yaml" >> CHANGELOG.md
+        echo "## [${{ steps.bump.outputs.newver }}] - $TS" >> CHANGELOG.md
 
-      - name: Commit & push
-        run: |
-          git config user.name "github-actions"
-          git config user.email "actions@users.noreply.github.com"
-          git add config/version.json CHANGELOG.md
-          git commit -m "chore(prefs): bump version to ${{ steps.bump.outputs.newver }}" || echo "No changes"
-          git push
+        echo "- Updated preferences in config/vega_prefs.yaml" >> CHANGELOG.md
+
+        '
+    - name: Commit & push
+      run: 'git config user.name "github-actions"
+
+        git config user.email "actions@users.noreply.github.com"
+
+        git add config/version.json CHANGELOG.md
+
+        git commit -m "chore(prefs): bump version to ${{ steps.bump.outputs.newver
+        }}" || echo "No changes"
+
+        git push
+
+        '
+    needs: precheck
+    if: ${{ needs.precheck.outputs.ok == 'true' && github.ref == 'refs/heads/main'
+      }}

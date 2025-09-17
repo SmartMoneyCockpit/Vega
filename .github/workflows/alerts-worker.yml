@@ -1,35 +1,44 @@
 name: alerts-worker
-
-on:
+true:
   push:
-    branches: [ main ]
-
-  # Manual only to avoid burning minutes
-  workflow_dispatch:
-  # schedule:
-  #   - cron: '*/15 * * * *'   # <— leave commented until you decide to enable
-
+    branches:
+    - main
+  workflow_dispatch: null
 permissions:
   contents: read
-
 concurrency:
   group: ${{ github.workflow }}
   cancel-in-progress: true
-
 jobs:
+  precheck:
+    runs-on: ubuntu-latest
+    outputs:
+      ok: ${{ steps.p.outputs.ok }}
+    steps:
+    - uses: actions/checkout@v4
+    - id: p
+      uses: ./.github/actions/precheck
   run:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - name: Install worker deps
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-      - name: Run (placeholder)
-        run: |
-          echo "Alerts worker disabled by default. Use workflow_dispatch to run manually."
-          exit 0
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    - name: Install worker deps
+      run: 'python -m pip install --upgrade pip
+
+        pip install -r requirements.txt
+
+        '
+    - name: Run (placeholder)
+      run: 'echo "Alerts worker disabled by default. Use workflow_dispatch to run
+        manually."
+
+        exit 0
+
+        '
+    needs: precheck
+    if: ${{ needs.precheck.outputs.ok == 'true' && github.ref == 'refs/heads/main'
+      }}

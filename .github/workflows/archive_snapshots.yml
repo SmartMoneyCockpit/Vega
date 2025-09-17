@@ -1,37 +1,53 @@
 name: Nightly Archive Snapshots
-
-on:
+true:
   push:
-    branches: [ main ]
-
+    branches:
+    - main
   schedule:
-    - cron: '0 8 * * *'   # 01:00 PT approximate
-  workflow_dispatch:
-
+  - cron: 0 8 * * *
+  workflow_dispatch: null
 permissions:
   contents: write
-
 jobs:
+  precheck:
+    runs-on: ubuntu-latest
+    outputs:
+      ok: ${{ steps.p.outputs.ok }}
+    steps:
+    - uses: actions/checkout@v4
+    - id: p
+      uses: ./.github/actions/precheck
   run:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: vega-data
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - name: Install deps
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-      - name: Archive snapshots
-        run: |
-          python workers/snapshots/archive_snapshots.py
-      - name: Commit archive
-        run: |
-          git config user.email "actions@github.com"
-          git config user.name "github-actions"
-          git add data/archive
-          git commit -m "archive: daily snapshots $(date -u +%FT%TZ)" || echo "no changes"
-          git push origin vega-data
+    - uses: actions/checkout@v4
+      with:
+        ref: vega-data
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    - name: Install deps
+      run: 'python -m pip install --upgrade pip
+
+        pip install -r requirements.txt
+
+        '
+    - name: Archive snapshots
+      run: 'python workers/snapshots/archive_snapshots.py
+
+        '
+    - name: Commit archive
+      run: 'git config user.email "actions@github.com"
+
+        git config user.name "github-actions"
+
+        git add data/archive
+
+        git commit -m "archive: daily snapshots $(date -u +%FT%TZ)" || echo "no changes"
+
+        git push origin vega-data
+
+        '
+    needs: precheck
+    if: ${{ needs.precheck.outputs.ok == 'true' && github.ref == 'refs/heads/main'
+      }}

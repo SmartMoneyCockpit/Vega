@@ -1,71 +1,58 @@
 name: weekly-module-drop
-on:
+true:
   push:
-    branches: [ main ]
-
+    branches:
+    - main
   schedule:
-    - cron: "0 15 * * 1"   # Mondays 08:00 America/Mazatlan (UTC-7)
-  workflow_dispatch:
-
+  - cron: 0 15 * * 1
+  workflow_dispatch: null
 permissions:
   contents: write
   issues: write
-
 jobs:
+  precheck:
+    runs-on: ubuntu-latest
+    outputs:
+      ok: ${{ steps.p.outputs.ok }}
+    steps:
+    - uses: actions/checkout@v4
+    - id: p
+      uses: ./.github/actions/precheck
   open-next-module:
     runs-on: ubuntu-latest
     steps:
-      - name: Determine next module to open
-        id: pick
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const owner = context.repo.owner, repo = context.repo.repo;
-            // Read the queue (order) and state (done)
-            async function read(path, fallback) {
-              try {
-                const r = await github.rest.repos.getContent({ owner, repo, path, ref: 'main' });
-                const txt = Buffer.from(r.data.content, 'base64').toString('utf8');
-                return JSON.parse(txt);
-              } catch (e) { if (e.status === 404) return fallback; throw e; }
-            }
-
-            const queue = await read('config/module_drops/queue.json', {
-              order: ['week1.md','week2.md','week3.md','week4.md'], done: []
-            });
-            const done = new Set(queue.done || []);
-            const next = (queue.order || []).find(f => !done.has(f));
-            if (!next) {
-              core.notice('All weekly module drops are already opened.');
-              core.setOutput('skip', 'true');
-              return;
-            }
-
-            // Fetch the issue body file
-            const bodyFile = await github.rest.repos.getContent({ owner, repo, path: `config/module_drops/${next}`, ref: 'main' });
-            const body = Buffer.from(bodyFile.data.content, 'base64').toString('utf8');
-
-            // Create the issue if not already open
-            const title = `Weekly Module Update — ${next.replace('.md','').toUpperCase()}`;
-            await github.rest.issues.create({
-              owner, repo, title,
-              body, labels: ['module-drop']
-            });
-
-            // Update state
-            queue.done = Array.from(new Set([...done, next]));
-            const content = Buffer.from(JSON.stringify(queue, null, 2), 'utf8').toString('base64');
-            // Upsert queue.json
-            let sha; try {
-              const cur = await github.rest.repos.getContent({ owner, repo, path: 'config/module_drops/queue.json', ref: 'main' });
-              if (!Array.isArray(cur.data)) sha = cur.data.sha;
-            } catch(e) { if (e.status !== 404) throw e; }
-            await github.rest.repos.createOrUpdateFileContents({
-              owner, repo, path: 'config/module_drops/queue.json', branch: 'main', content,
-              message: `chore(modules): mark ${next} as opened`, sha
-            });
-
-            core.setOutput('skip', 'false');
-      - name: Done
-        if: steps.pick.outputs.skip == 'true'
-        run: echo "No module to open this week."
+    - name: Determine next module to open
+      id: pick
+      uses: actions/github-script@v7
+      with:
+        script: "const owner = context.repo.owner, repo = context.repo.repo;\n// Read\
+          \ the queue (order) and state (done)\nasync function read(path, fallback)\
+          \ {\n  try {\n    const r = await github.rest.repos.getContent({ owner,\
+          \ repo, path, ref: 'main' });\n    const txt = Buffer.from(r.data.content,\
+          \ 'base64').toString('utf8');\n    return JSON.parse(txt);\n  } catch (e)\
+          \ { if (e.status === 404) return fallback; throw e; }\n}\n\nconst queue\
+          \ = await read('config/module_drops/queue.json', {\n  order: ['week1.md','week2.md','week3.md','week4.md'],\
+          \ done: []\n});\nconst done = new Set(queue.done || []);\nconst next = (queue.order\
+          \ || []).find(f => !done.has(f));\nif (!next) {\n  core.notice('All weekly\
+          \ module drops are already opened.');\n  core.setOutput('skip', 'true');\n\
+          \  return;\n}\n\n// Fetch the issue body file\nconst bodyFile = await github.rest.repos.getContent({\
+          \ owner, repo, path: `config/module_drops/${next}`, ref: 'main' });\nconst\
+          \ body = Buffer.from(bodyFile.data.content, 'base64').toString('utf8');\n\
+          \n// Create the issue if not already open\nconst title = `Weekly Module\
+          \ Update \u2014 ${next.replace('.md','').toUpperCase()}`;\nawait github.rest.issues.create({\n\
+          \  owner, repo, title,\n  body, labels: ['module-drop']\n});\n\n// Update\
+          \ state\nqueue.done = Array.from(new Set([...done, next]));\nconst content\
+          \ = Buffer.from(JSON.stringify(queue, null, 2), 'utf8').toString('base64');\n\
+          // Upsert queue.json\nlet sha; try {\n  const cur = await github.rest.repos.getContent({\
+          \ owner, repo, path: 'config/module_drops/queue.json', ref: 'main' });\n\
+          \  if (!Array.isArray(cur.data)) sha = cur.data.sha;\n} catch(e) { if (e.status\
+          \ !== 404) throw e; }\nawait github.rest.repos.createOrUpdateFileContents({\n\
+          \  owner, repo, path: 'config/module_drops/queue.json', branch: 'main',\
+          \ content,\n  message: `chore(modules): mark ${next} as opened`, sha\n});\n\
+          \ncore.setOutput('skip', 'false');\n"
+    - name: Done
+      if: steps.pick.outputs.skip == 'true'
+      run: echo "No module to open this week."
+    needs: precheck
+    if: ${{ needs.precheck.outputs.ok == 'true' && github.ref == 'refs/heads/main'
+      }}

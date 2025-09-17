@@ -1,74 +1,56 @@
 name: Guardrail Ping
-
-on:
+true:
   push:
-    branches: [ main ]
-
+    branches:
+    - main
   schedule:
-    - cron: "*/30 13-20 * * 1-5"  # every 30 min, 06:00–13:59 Phoenix (UTC-7)
-  workflow_dispatch:
-
+  - cron: '*/30 13-20 * * 1-5'
+  workflow_dispatch: null
 jobs:
+  precheck:
+    runs-on: ubuntu-latest
+    outputs:
+      ok: ${{ steps.p.outputs.ok }}
+    steps:
+    - uses: actions/checkout@v4
+    - id: p
+      uses: ./.github/actions/precheck
   ping:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    - name: Install Python deps
+      run: 'python -m pip install --upgrade pip
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+        pip install pyyaml==6.0.1
 
-      - name: Install Python deps
-        run: |
-          python -m pip install --upgrade pip
-          pip install pyyaml==6.0.1
-
-      - name: Build guardrail status
-        run: |
-          python - <<'PY'
-          import json
-          from pathlib import Path
-          from datetime import datetime, timezone
-          import yaml
-
-          # Load config (if present)
-          cfg_path = Path("config/vega_rules.yaml")
-          cfg = yaml.safe_load(cfg_path.read_text()) if cfg_path.exists() else {}
-          h = cfg.get("hedge_rules", {})
-          sec = h.get("trigger_secondary", {})
-          pri = h.get("trigger_primary", {})
-
-          # Load telemetry (if present)
-          tel_path = Path("data/telemetry.json")
-          tel = {}
-          if tel_path.exists():
-            try:
-              tel = json.loads(tel_path.read_text())
-            except Exception:
-              tel = {}
-
-          # Guardrail triggers
-          tighten_fx = (
-            (tel.get("dxy", -1e9)    >= sec.get("dxy_gt", 1e9)) or
-            (tel.get("usdmxn", -1e9) >= sec.get("usdmxn_gt", 1e9)) or
-            (tel.get("usdcad", -1e9) >= sec.get("usdcad_gt", 1e9))
-          )
-          vix_red = tel.get("vix", -1e9) >= pri.get("vix_gt", 1e9)
-
-          out = {
-            "tighten_fx": tighten_fx,
-            "vix_red": vix_red,
-            "ts": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-          }
-
-          outdir = Path("signals"); outdir.mkdir(exist_ok=True)
-          (outdir / "guardrails.json").write_text(json.dumps(out, indent=2))
-          print("wrote signals/guardrails.json")
-          PY
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: guardrails
-          path: signals/guardrails.json
-          retention-days: 3
+        '
+    - name: Build guardrail status
+      run: "python - <<'PY'\nimport json\nfrom pathlib import Path\nfrom datetime\
+        \ import datetime, timezone\nimport yaml\n\n# Load config (if present)\ncfg_path\
+        \ = Path(\"config/vega_rules.yaml\")\ncfg = yaml.safe_load(cfg_path.read_text())\
+        \ if cfg_path.exists() else {}\nh = cfg.get(\"hedge_rules\", {})\nsec = h.get(\"\
+        trigger_secondary\", {})\npri = h.get(\"trigger_primary\", {})\n\n# Load telemetry\
+        \ (if present)\ntel_path = Path(\"data/telemetry.json\")\ntel = {}\nif tel_path.exists():\n\
+        \  try:\n    tel = json.loads(tel_path.read_text())\n  except Exception:\n\
+        \    tel = {}\n\n# Guardrail triggers\ntighten_fx = (\n  (tel.get(\"dxy\"\
+        , -1e9)    >= sec.get(\"dxy_gt\", 1e9)) or\n  (tel.get(\"usdmxn\", -1e9) >=\
+        \ sec.get(\"usdmxn_gt\", 1e9)) or\n  (tel.get(\"usdcad\", -1e9) >= sec.get(\"\
+        usdcad_gt\", 1e9))\n)\nvix_red = tel.get(\"vix\", -1e9) >= pri.get(\"vix_gt\"\
+        , 1e9)\n\nout = {\n  \"tighten_fx\": tighten_fx,\n  \"vix_red\": vix_red,\n\
+        \  \"ts\": datetime.now(timezone.utc).isoformat().replace(\"+00:00\", \"Z\"\
+        ),\n}\n\noutdir = Path(\"signals\"); outdir.mkdir(exist_ok=True)\n(outdir\
+        \ / \"guardrails.json\").write_text(json.dumps(out, indent=2))\nprint(\"wrote\
+        \ signals/guardrails.json\")\nPY\n"
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: guardrails
+        path: signals/guardrails.json
+        retention-days: 3
+    needs: precheck
+    if: ${{ needs.precheck.outputs.ok == 'true' && github.ref == 'refs/heads/main'
+      }}
