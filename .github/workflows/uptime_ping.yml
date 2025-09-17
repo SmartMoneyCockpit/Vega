@@ -2,6 +2,7 @@ name: Cockpit Uptime Ping
 
 on:
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -37,10 +38,8 @@ jobs:
           set -e
           n=0
           until [ $n -ge 3 ]; do
-            # try /health first; follow redirects; fallback to /
             if curl -fsSL -m 10 "$URL/health" || curl -fsSL -m 10 "$URL/"; then
-              echo "OK: $URL is up"
-              exit 0
+              echo "OK: $URL is up"; exit 0
             fi
             n=$((n+1)); sleep 5
           done
