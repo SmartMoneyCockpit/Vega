@@ -55,12 +55,7 @@ jobs:
   failure_digest:
     if: ${{ failure() }}
     runs-on: ubuntu-latest
-    needs:
-      - morning_report
-      - color_guard
-      - econ_calendar
-      - uptime_ping
+    needs: [morning_report, color_guard, econ_calendar, uptime_ping]
     steps:
       - name: Summarize failures
-        run: |
-          echo "One or more report jobs failed. Open the failing job(s) above for logs."
+        run: echo "One or more report jobs failed. Open the failing job(s) above for logs."
