@@ -1,0 +1,57 @@
+# Builds data/screener_quotes.csv hourly from tickers in data/screener.csv
+from pathlib import Path
+import pandas as pd
+import yfinance as yf
+from datetime import datetime, timezone
+
+SRC = Path("data/screener.csv")
+OUT = Path("data/screener_quotes.csv")
+
+def fetch_quotes(tickers):
+    # yfinance batching
+    t = yf.Tickers(" ".join(tickers))
+    rows = []
+    for tk in tickers:
+        try:
+            info = t.tickers[tk].fast_info  # fast and usually reliable
+            last = info.get("last_price") or info.get("last_traded_price")
+            vol  = info.get("last_volume") or info.get("volume")
+            # chg and pct: use previous_close if present
+            prev = info.get("previous_close")
+            if last is not None and prev:
+                chg = last - prev
+                pct = (chg / prev) * 100.0
+            else:
+                chg = None; pct = None
+            rows.append({"ticker": tk, "last": last, "vol": vol, "chg": chg, "chg_pct": pct})
+        except Exception:
+            rows.append({"ticker": tk, "last": None, "vol": None, "chg": None, "chg_pct": None})
+    df = pd.DataFrame(rows)
+    df["ts"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    return df
+
+def main():
+    if not SRC.exists():
+        OUT.write_text("")
+        return
+    df = pd.read_csv(SRC)
+    # try ticker > symbol > name mapping
+    tickers = []
+    for _, r in df.iterrows():
+        tk = str(r.get("ticker") or r.get("symbol") or "").upper().strip()
+        if not tk or " " in tk:
+            name = str(r.get("name") or "").strip()
+            if name == "SPDR S&P 500 ETF": tk = "SPY"
+            elif name == "Invesco QQQ Trust": tk = "QQQ"
+            elif name == "iShares Russell 2000": tk = "IWM"
+        if tk:
+            tickers.append(tk)
+    tickers = sorted(set(tickers))
+    if not tickers:
+        OUT.write_text("")
+        return
+    quotes = fetch_quotes(tickers)
+    quotes.to_csv(OUT, index=False)
+
+if __name__ == "__main__":
+    main()
