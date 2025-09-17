@@ -19,6 +19,12 @@ jobs:
       - uses: actions/checkout@v4
       - id: p
         uses: ./.github/actions/precheck
+        with:
+          # If the repo variable is unset, the action's default is "true"
+          vega_actions_enabled: ${{ vars.VEGA_ACTIONS_ENABLED }}
+        env:
+          # Make the token available to the composite action
+          GITHUB_TOKEN: ${{ github.token }}
 
   build:
     needs: precheck
@@ -27,19 +33,25 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
       - name: Install
         run: |
           python -m pip install -U pip
           pip install -r requirements.txt
+
       - name: Generate report (retry)
         run: |
-          n=0; until [ $n -ge 3 ]; do
+          n=0
+          until [ $n -ge 3 ]; do
             python modules/reports/morning_na.py && break
-            n=$((n+1)); sleep 5
+            n=$((n+1))
+            sleep 5
           done
+
       - name: Upload artifact (optional)
         if: always()
         uses: actions/upload-artifact@v4
