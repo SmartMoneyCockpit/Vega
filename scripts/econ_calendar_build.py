@@ -1,25 +1,17 @@
 #!/usr/bin/env python3
-'''
-Minimal Economic Calendar builder.
-Writes a CSV with a couple of placeholder events for the chosen region.
-Usage: python scripts/econ_calendar_build.py --region NA --out outputs/econ_calendar/file.csv
-'''
-import argparse, csv, os, datetime
+import datetime, os, csv
 
 def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--region", default="NA")
-    p.add_argument("--out", required=True)
-    args = p.parse_args()
-
-    os.makedirs(os.path.dirname(args.out), exist_ok=True)
-    with open(args.out, "w", newline="", encoding="utf-8") as f:
+    now = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    os.makedirs("output/econ_calendar", exist_ok=True)
+    out = f"output/econ_calendar/econ_calendar_{now.replace(' ','_').replace(':','-')}.csv"
+    with open(out, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        w.writerow(["date_utc","region","event","importance","notes"])
-        today = datetime.datetime.utcnow().date()
-        w.writerow([today.isoformat(), args.region, "CPI (YoY)", "High", "Placeholder data"])
-        w.writerow([(today + datetime.timedelta(days=1)).isoformat(), args.region, "FOMC Minutes", "High", "Placeholder data"])
-    print(f"Wrote {args.out}")
+        w.writerow(["timestamp","region","event","note"])
+        w.writerow([now,"NA","CPI Release","Placeholder"])
+        w.writerow([now,"CA","BoC Rate Decision","Placeholder"])
+        w.writerow([now,"MX","Banxico Statement","Placeholder"])
+    print(f"Wrote {out}")
 
 if __name__ == "__main__":
     main()
