@@ -3,9 +3,18 @@ name: Morning Report NA
 on:
   workflow_call:
     inputs:
-      enabled: { type: string, required: false, default: 'true' }
-      timezone: { type: string, required: false, default: 'America/Los_Angeles' }
-      upload_artifacts: { type: string, required: false, default: 'true' }
+      enabled:
+        type: string
+        required: false
+        default: 'true'
+      timezone:
+        type: string
+        required: false
+        default: 'America/Los_Angeles'
+      upload_artifacts:
+        type: string
+        required: false
+        default: 'true'
 
 permissions:
   contents: read
@@ -26,14 +35,12 @@ jobs:
           cache: 'pip'
 
       - name: Install Python deps if present
-        shell: bash
         run: |
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           if [ -f setup.py ] || [ -f pyproject.toml ]; then pip install -e .; fi
 
       - name: Generate Morning Report (Markdown) — tolerant
         id: run
-        shell: bash
         run: |
           set -e
           mkdir -p artifacts/morning_report outputs/morning_report
@@ -54,7 +61,6 @@ jobs:
           echo "ts=$ts" >> "$GITHUB_OUTPUT"
 
       - name: Convert MD → PDF (robust fallback)
-        shell: bash
         run: |
           set -e
           MD="artifacts/morning_report/morning_na_${{ steps.run.outputs.ts }}.md"
@@ -91,7 +97,10 @@ PY
 import sys, pathlib, markdown
 md_path, html_path = sys.argv[1], sys.argv[2]
 html = markdown.markdown(pathlib.Path(md_path).read_text(encoding="utf-8"))
-pathlib.Path(html_path).write_text(f"<meta charset='utf-8'><div style='font-family:Arial,Helvetica,sans-serif;white-space:pre-wrap'>{html}</div>", encoding="utf-8")
+pathlib.Path(html_path).write_text(
+    "<meta charset='utf-8'><div style='font-family:Arial,Helvetica,sans-serif;white-space:pre-wrap'>"
+    + html + "</div>", encoding="utf-8"
+)
 PY
             if command -v wkhtmltopdf >/dev/null 2>&1; then
               wkhtmltopdf "$TMPHTML" "$OUTPDF" || true
@@ -107,7 +116,6 @@ PY
           fi
 
       - name: Job summary
-        shell: bash
         run: |
           echo "## Morning Report (NA)" >> "$GITHUB_STEP_SUMMARY"
           echo "- Timezone: \`${TZ}\`" >> "$GITHUB_STEP_SUMMARY"
