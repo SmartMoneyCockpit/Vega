@@ -14,11 +14,11 @@ permissions: {}
 
 jobs:
   build:
-    # Only run if enabled AND a URL is provided (input or secret)
-    if: ${{ inputs.enabled == 'true' && (inputs.url != '' || secrets.UPTIME_PING_URL != '') }}
+    # only check the simple flag at the job level
+    if: ${{ inputs.enabled == 'true' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Resolve URL
+      - name: Resolve URL (input or secret)
         id: cfg
         shell: bash
         env:
@@ -26,9 +26,19 @@ jobs:
           U_INPUT:  ${{ inputs.url }}
         run: |
           url="${U_INPUT:-$U_SECRET}"
-          echo "url=$url" >> "$GITHUB_OUTPUT"
+          if [ -z "$url" ]; then
+            echo "has_url=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_url=true" >> "$GITHUB_OUTPUT"
+            echo "url=$url" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: No URL provided — skipping politely
+        if: ${{ steps.cfg.outputs.has_url != 'true' }}
+        run: echo "::notice title=Uptime Ping::No URL provided via input or secret. Skipping."
 
       - name: Ping
+        if: ${{ steps.cfg.outputs.has_url == 'true' }}
         id: ping
         shell: bash
         env:
@@ -46,6 +56,7 @@ jobs:
           echo "OK ($code)"
 
       - name: Job summary
+        if: ${{ steps.cfg.outputs.has_url == 'true' }}
         run: |
           echo "## Uptime Ping" >> "$GITHUB_STEP_SUMMARY"
           echo "- URL: \`${{ steps.cfg.outputs.url }}\`" >> "$GITHUB_STEP_SUMMARY"
