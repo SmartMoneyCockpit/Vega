@@ -20,27 +20,37 @@ jobs:
       - name: Resolve URL set (input, variables, secret)
         id: cfg
         shell: bash
-        env:
-          U_INPUT:  ${{ inputs.url }}
-          U_VAR1:   ${{ vars.UPTIME_URL }}
-          U_VARS:   ${{ vars.UPTIME_URLS }}
-          U_SECRET: ${{ secrets.UPTIME_PING_URL }}
         run: |
-          set -e
+          set -u
           mkdir -p _uptime
+          U_INPUT="${{ inputs.url }}"
+          U_VAR1="${{ vars.UPTIME_URL }}"
+          U_VARS="${{ vars.UPTIME_URLS }}"
+          U_SECRET="${{ secrets.UPTIME_PING_URL }}"
+
+          # Build list defensively; never fail this step
           {
-            [ -n "$U_INPUT"  ] && echo "$U_INPUT"
-            [ -n "$U_VAR1"   ] && echo "$U_VAR1"
-            [ -n "$U_SECRET" ] && echo "$U_SECRET"
-            [ -n "$U_VARS"   ] && printf "%s\n" "$U_VARS"
-          } | tr ',; ' '\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | sed '/^$/d' | sort -u > _uptime/urls.txt
-          count=$(wc -l < _uptime/urls.txt | tr -d ' ')
-          if [ "$count" -eq 0 ]; then
+            [ -n "${U_INPUT:-}"  ] && echo "$U_INPUT"
+            [ -n "${U_VAR1:-}"   ] && echo "$U_VAR1"
+            [ -n "${U_SECRET:-}" ] && echo "$U_SECRET"
+            [ -n "${U_VARS:-}"   ] && printf "%s\n" "$U_VARS"
+          } 2>/dev/null \
+            | tr ',; ' '\n' \
+            | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' \
+            | sed '/^$/d' \
+            | sort -u > _uptime/urls.txt || true
+
+          # If file missing for any reason, create empty
+          [ -f _uptime/urls.txt ] || : > _uptime/urls.txt
+
+          count="$(wc -l < _uptime/urls.txt 2>/dev/null | tr -d ' ' || echo 0)"
+          if [ "$count" = "0" ]; then
             echo "has_urls=false" >> "$GITHUB_OUTPUT"
           else
             echo "has_urls=true"  >> "$GITHUB_OUTPUT"
             echo "count=$count"   >> "$GITHUB_OUTPUT"
           fi
+        continue-on-error: true  # <- never fail the job here
 
       - name: No URLs provided — skipping politely
         if: ${{ steps.cfg.outputs.has_urls != 'true' }}
@@ -61,19 +71,14 @@ jobs:
           while IFS= read -r url; do
             [ -z "$url" ] && continue
             code=$(curl -L -s -o /dev/null -w "%{http_code}" -X "$METHOD" "$url" || echo "000")
-            ok="❌"
             if [ -n "$EXPECT" ]; then
-              [ "$code" = "$EXPECT" ] && ok="✅" || ok="❌"
+              ok=$([ "$code" = "$EXPECT" ] && echo "✅" || echo "❌")
             else
-              case "$code" in
-                2*|3*) ok="✅" ;;
-                *)     ok="❌" ;;
-              esac
+              case "$code" in 2*|3*) ok="✅" ;; *) ok="❌" ;; esac
             fi
             [ "$ok" = "❌" ] && fail=$((fail+1))
             printf "| %s | %s | %s |\n" "$url" "$code" "$ok" >> "$GITHUB_STEP_SUMMARY"
           done < _uptime/urls.txt
-
           if [ "$fail" -gt 0 ]; then
             echo "::error title=Uptime Ping::One or more checks failed ($fail failing)."
             exit 1
