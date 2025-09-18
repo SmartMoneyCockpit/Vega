@@ -1,9 +1,17 @@
 name: Universal Report Scheduler
 
 on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'scripts/**'
+      - '.github/workflows/universal_report_scheduler.yml'
+      - '.github/actions/precheck/**'
   workflow_dispatch:
+  # Run both times daily (UTC); a local-time gate below ensures we only ACT at 07:30 PT (summer) or 08:30 PT (winter)
   schedule:
-    - cron: '15 14 * * 1-5'   # Weekdays 07:15 PT
+    - cron: '30 14 * * 1-5'   # 07:30 PT during Daylight Time (approx; local gate enforces exact time)
+    - cron: '30 16 * * 1-5'   # 08:30 PT during Standard Time (approx; local gate enforces exact time)
 
 permissions:
   contents: read
@@ -17,16 +25,33 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       ok: ${{ steps.p.outputs.ok }}
+      window_ok: ${{ steps.timegate.outputs.window_ok }}
       run_morning_report: ${{ steps.tog.outputs.run_morning_report }}
       run_color_guard: ${{ steps.tog.outputs.run_color_guard }}
       run_econ_calendar: ${{ steps.tog.outputs.run_econ_calendar }}
       run_uptime_ping: ${{ steps.tog.outputs.run_uptime_ping }}
     steps:
       - uses: actions/checkout@v4
+
       - id: p
         uses: ./.github/actions/precheck
         with:
           vega_actions_enabled: ${{ vars.VEGA_ACTIONS_ENABLED }}
+
+      - id: timegate
+        shell: bash
+        env:
+          TZ: America/Los_Angeles
+        run: |
+          now="$(date +'%H:%M')"
+          if [ "$now" = "07:30" ] || [ "$now" = "08:30" ]; then
+            echo "window_ok=true" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Time gate::Proceeding at local time $now"
+          else
+            echo "window_ok=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Time gate::Local time $now not in [07:30, 08:30]; skipping."
+          fi
+
       - id: tog
         run: |
           echo "run_morning_report=true" >> "$GITHUB_OUTPUT"
@@ -36,7 +61,7 @@ jobs:
 
   morning_report:
     needs: precheck
-    if: ${{ needs.precheck.outputs.ok == 'true' && needs.precheck.outputs.run_morning_report == 'true' }}
+    if: ${{ needs.precheck.outputs.ok == 'true' && needs.precheck.outputs.window_ok == 'true' && needs.precheck.outputs.run_morning_report == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -45,6 +70,9 @@ jobs:
         with:
           python-version: '3.11'
           cache: 'pip'
+          cache-dependency-path: |
+            requirements.txt
+            pyproject.toml
       - name: Build NA Morning Report (retry x3)
         shell: bash
         run: |
@@ -54,7 +82,6 @@ jobs:
             python scripts/morning_report_na.py --tz America/Los_Angeles --out output/morning_report.md && break
             n=$((n+1)); echo "retry $n/3"; sleep 5
           done
-          # last-resort placeholder if command above somehow didn't write:
           [ -f output/morning_report.md ] || echo "# Morning Report (placeholder)" > output/morning_report.md
       - uses: actions/upload-artifact@v4
         if: always()
@@ -69,7 +96,7 @@ jobs:
 
   color_guard:
     needs: precheck
-    if: ${{ needs.precheck.outputs.ok == 'true' && needs.precheck.outputs.run_color_guard == 'true' }}
+    if: ${{ needs.precheck.outputs.ok == 'true' && needs.precheck.outputs.window_ok == 'true' && needs.precheck.outputs.run_color_guard == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -78,19 +105,20 @@ jobs:
         with:
           python-version: '3.11'
           cache: 'pip'
+          cache-dependency-path: |
+            requirements.txt
+            pyproject.toml
       - name: Run Color Guard (robust)
         shell: bash
         run: |
           set -e
           mkdir -p output/color_guard outputs/color_guard
           ts="$(date -u +'%Y-%m-%d_%H-%M-%S')"
-          # try builder, then stub; if neither exists or fails, write placeholder
           if [ -f scripts/color_guard_build.py ]; then
             python scripts/color_guard_build.py --out "outputs/color_guard/color_guard_${ts}.json" || true
           elif [ -f scripts/color_guard.py ]; then
             python scripts/color_guard.py || true
           fi
-          # fallback placeholder if nothing created
           if ! ls outputs/color_guard/*.json 1>/dev/null 2>&1 && ! ls output/color_guard/*.json 1>/dev/null 2>&1; then
             echo '{"status":"placeholder","ts":"'"$ts"'"}' > "outputs/color_guard/color_guard_${ts}.json"
           fi
@@ -109,7 +137,7 @@ jobs:
 
   econ_calendar:
     needs: precheck
-    if: ${{ needs.precheck.outputs.ok == 'true' && needs.precheck.outputs.run_econ_calendar == 'true' }}
+    if: ${{ needs.precheck.outputs.ok == 'true' && needs.precheck.outputs.window_ok == 'true' && needs.precheck.outputs.run_econ_calendar == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -118,6 +146,9 @@ jobs:
         with:
           python-version: '3.11'
           cache: 'pip'
+          cache-dependency-path: |
+            requirements.txt
+            pyproject.toml
       - name: Run Econ Calendar (robust)
         shell: bash
         run: |
@@ -131,7 +162,6 @@ jobs:
           elif [ -f scripts/econ_calendar.py ]; then
             python scripts/econ_calendar.py || true
           fi
-          # fallback placeholder if nothing created
           if ! ls outputs/econ_calendar/* 1>/dev/null 2>&1 && ! ls output/econ_calendar/* 1>/dev/null 2>&1; then
             echo "timestamp,region,event,note" > "outputs/econ_calendar/econ_placeholder_${ts}.csv"
             echo "${ts},NA,Placeholder,No data" >> "outputs/econ_calendar/econ_placeholder_${ts}.csv"
@@ -151,7 +181,7 @@ jobs:
 
   uptime_ping:
     needs: precheck
-    if: ${{ needs.precheck.outputs.ok == 'true' && needs.precheck.outputs.run_uptime_ping == 'true' }}
+    if: ${{ needs.precheck.outputs.ok == 'true' && needs.precheck.outputs.window_ok == 'true' && needs.precheck.outputs.run_uptime_ping == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
