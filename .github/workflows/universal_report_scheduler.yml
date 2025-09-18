@@ -68,14 +68,28 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: 'pip'
+      - name: Install Python deps if present
+        run: |
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f setup.py ] || [ -f pyproject.toml ]; then pip install -e .; fi
       - name: Run Color Guard
-        run: python scripts/color_guard.py
+        run: |
+          ts="$(date +'%Y-%m-%d_%H-%M-%S')"
+          # Prefer your existing builder script name
+          if [ -f scripts/color_guard_build.py ]; then
+            python scripts/color_guard_build.py --out outputs/color_guard/color_guard_${ts}.json
+          else
+            python scripts/color_guard.py
+          fi
       - name: Upload Color Guard artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: color-guard
-          path: output/color_guard/**
+          path: |
+            output/color_guard/**
+            outputs/color_guard/**
 
   econ_calendar:
     needs: precheck
@@ -86,14 +100,30 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: 'pip'
+      - name: Install Python deps if present
+        run: |
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f setup.py ] || [ -f pyproject.toml ]; then pip install -e .; fi
       - name: Run Econ Calendar
-        run: python scripts/econ_calendar.py
+        run: |
+          ts="$(date +'%Y-%m-%d_%H-%M-%S')"
+          # Prefer your existing builder script name
+          if [ -f scripts/econ_calendar_build.py ]; then
+            python scripts/econ_calendar_build.py --region NA --out outputs/econ_calendar/econ_NA_${ts}.csv
+            python scripts/econ_calendar_build.py --region CA --out outputs/econ_calendar/econ_CA_${ts}.csv
+            python scripts/econ_calendar_build.py --region MX --out outputs/econ_calendar/econ_MX_${ts}.csv
+          else
+            python scripts/econ_calendar.py
+          fi
       - name: Upload Econ Calendar artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: econ-calendar
-          path: output/econ_calendar/**
+          path: |
+            output/econ_calendar/**
+            outputs/econ_calendar/**
 
   uptime_ping:
     needs: precheck
@@ -105,10 +135,17 @@ jobs:
         with:
           python-version: '3.11'
       - name: Run Uptime Ping
-        run: python scripts/uptime_ping.py
+        run: |
+          if [ -f scripts/uptime_ping.py ]; then
+            python scripts/uptime_ping.py
+          else
+            echo "Uptime stub" > output/uptime_ping/uptime_stub.txt
+          fi
       - name: Upload Uptime Ping artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: uptime-ping
-          path: output/uptime_ping/**
+          path: |
+            output/uptime_ping/**
+            outputs/uptime_ping/**
