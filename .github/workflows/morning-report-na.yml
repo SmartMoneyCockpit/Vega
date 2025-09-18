@@ -1,231 +1,113 @@
-name: Morning Report + Uptime Matrix + PDF
+name: Morning Report NA
 
 on:
-  workflow_dispatch:
-  # If you later want it on a schedule, uncomment and adjust UTC time:
-  # schedule:
-  #   - cron: "45 14 * * 1-5"  # 07:45 America/Mazatlan ≈ 14:45 UTC (check DST)
+  workflow_call:
+    inputs:
+      enabled: { type: string, required: false, default: 'true' }
+      timezone: { type: string, required: false, default: 'America/Los_Angeles' }
+      upload_artifacts: { type: string, required: false, default: 'true' }
+    secrets:
+      SENDGRID_API_KEY: { required: false }
 
 permissions:
   contents: read
-  actions: read
-  checks: read
-  id-token: write
-  pages: write
-  # artifacts are allowed by default on GitHub-hosted runners
-
-env:
-  # === EDIT THIS LIST OF TARGETS AS NEEDED ===
-  # Each item is name|method|url  (method supports GET or HEAD)
-  UPTIME_TARGETS: |
-    SiteA|HEAD|https://example.com/
-    APIv1|GET|https://api.example.com/health
-    Docs |HEAD|https://docs.example.com/
-  # Hard-wired report generator (replace ONLY if your repo path is different)
-  REPORT_SCRIPT: scripts/morning_report/build_report.py
-  # Output folder for the built report and collected uptime results
-  BUILD_DIR: build/morning_report
 
 jobs:
-  uptime:
-    name: Uptime Probe (${{ matrix.name }})
+  build:
+    if: ${{ inputs.enabled == 'true' }}
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include: ${{ fromJSON(join(steps.expand.outputs.matrix_json, '')) }}
-    outputs:
-      # Bubble up a list of all artifact names so the aggregator can pull them
-      artifacts_csv: ${{ steps.collect.outputs.artifacts_csv }}
-
+    env:
+      TZ: ${{ inputs.timezone }}
     steps:
-      - name: Expand UPTIME_TARGETS to matrix JSON
-        id: expand
-        shell: bash
-        run: |
-          set -euo pipefail
-          mapfile -t LINES < <(printf "%s" "${UPTIME_TARGETS}")
-          json='['
-          sep=""
-          for line in "${LINES[@]}"; do
-            # skip empty lines
-            [[ -z "${line// }" ]] && continue
-            name="$(printf "%s" "$line" | awk -F'|' '{print $1}' | xargs)"
-            method="$(printf "%s" "$line" | awk -F'|' '{print $2}' | xargs)"
-            url="$(printf "%s" "$line" | awk -F'|' '{print $3}' | xargs)"
-            json="${json}${sep}{\"name\":\"${name}\",\"method\":\"${method}\",\"url\":\"${url}\"}"
-            sep=","
-          done
-          json="${json}]"
-          echo "matrix_json<<EOF" >> "$GITHUB_OUTPUT"
-          echo "$json" >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
 
-      - name: Set current target (for readability)
-        id: target
-        run: |
-          echo "NAME=${{ matrix.name }}"  >> $GITHUB_OUTPUT
-          echo "METHOD=${{ matrix.method }}" >> $GITHUB_OUTPUT
-          echo "URL=${{ matrix.url }}" >> $GITHUB_OUTPUT
-
-      - name: Probe ${{ steps.target.outputs.NAME }}
-        id: probe
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p uptime_json
-          OUT="uptime_json/${{ steps.target.outputs.NAME }}.json"
-
-          # Use curl for timing and status
-          #  -sS: silent but show errors, --max-time 15: 15s cap, -I for HEAD when requested
-          CURL_OPTS=(-sS --max-time 15 -o /dev/null -w "%{http_code} %{time_total}")
-          if [[ "${{ steps.target.outputs.METHOD }}" == "HEAD" ]]; then
-            CURL_OPTS+=(-I)
-          fi
-
-          read -r CODE TIME <<<"$(curl "${CURL_OPTS[@]}" "${{ steps.target.outputs.URL }}" || echo "000 15.000")"
-
-          jq -n \
-            --arg name   "${{ steps.target.outputs.NAME }}" \
-            --arg url    "${{ steps.target.outputs.URL }}" \
-            --arg method "${{ steps.target.outputs.METHOD }}" \
-            --arg code   "$CODE" \
-            --arg time   "$TIME" \
-            --arg ts     "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
-            '{
-              name:   $name,
-              url:    $url,
-              method: $method,
-              status: ($code|tonumber? // 0),
-              time_s: ($time|tonumber? // 0),
-              timestamp_utc: $ts
-            }' > "$OUT"
-
-          echo "json=$OUT" >> $GITHUB_OUTPUT
-
-      - name: Upload uptime artifact (${{ steps.target.outputs.NAME }})
-        uses: actions/upload-artifact@v4
-        with:
-          name: uptime-${{ steps.target.outputs.NAME }}
-          path: ${{ steps.probe.outputs.json }}
-          if-no-files-found: error
-          retention-days: 7
-
-      - name: Collect artifact names (for parent output)
-        id: collect
-        run: |
-          # Single artifact for this matrix leg
-          echo "artifacts_csv=uptime-${{ steps.target.outputs.NAME }}" >> $GITHUB_OUTPUT
-
-  aggregate-and-build:
-    name: Aggregate Uptime + Build Morning Report + PDF
-    runs-on: ubuntu-latest
-    needs: [uptime]
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Ensure build directories
-        run: |
-          set -euo pipefail
-          mkdir -p "${BUILD_DIR}/uptime"
-
-      - name: Download all uptime artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: uptime-*
-          path: ${{ env.BUILD_DIR }}/uptime
-          merge-multiple: true
-
-      - name: Show uptime files
-        run: ls -lah "${BUILD_DIR}/uptime" || true
-
-      - name: Setup Python 3.11
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-          cache: "pip"
+          python-version: '3.11'
+          cache: 'pip'
 
-      - name: Install Python deps for report script
-        if: ${{ hashFiles('requirements.txt') != '' }}
+      - name: Install Python deps if present
+        shell: bash
         run: |
-          pip install -r requirements.txt
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f setup.py ] || [ -f pyproject.toml ]; then pip install -e .; fi
 
-      - name: Build base Morning Report (Markdown)
-        id: build_report
+      - name: Generate Morning Report (Markdown)
+        id: run
+        shell: bash
         run: |
-          set -euo pipefail
-          # Hard-wired path; fail loudly if missing (as requested)
-          if [[ ! -f "${REPORT_SCRIPT}" ]]; then
-            echo "ERROR: Report script not found at ${REPORT_SCRIPT}" >&2
-            exit 1
-          fi
-          mkdir -p "${BUILD_DIR}"
-          # Expect your script to write the Markdown to ${BUILD_DIR}/report.md
-          python "${REPORT_SCRIPT}" --out "${BUILD_DIR}/report.md"
+          set -e
+          mkdir -p artifacts/morning_report outputs/morning_report
+          ts="$(date +'%Y-%m-%d_%H-%M-%S')"
+          python scripts/morning_report_na.py --tz "$TZ" --out "outputs/morning_report/morning_na_${ts}.md"
+          cp outputs/morning_report/* artifacts/morning_report/
+          echo "ts=$ts" >> "$GITHUB_OUTPUT"
 
-          if [[ ! -s "${BUILD_DIR}/report.md" ]]; then
-            echo "ERROR: ${BUILD_DIR}/report.md was not generated by ${REPORT_SCRIPT}" >&2
-            exit 1
-          fi
-
-      - name: Append Uptime Summary to Markdown
+      - name: Convert MD → PDF with md-to-pdf
+        shell: bash
         run: |
-          set -euo pipefail
-          md="${BUILD_DIR}/report.md"
-          echo "" >> "$md"
-          echo "---" >> "$md"
-          echo "## Uptime Summary" >> "$md"
-          echo "" >> "$md"
-          echo "| Name | Method | Status | Time (s) | URL | Timestamp (UTC) |" >> "$md"
-          echo "|---|---|---:|---:|---|---|" >> "$md"
-
-          shopt -s nullglob
-          for f in "${BUILD_DIR}/uptime/"*.json; do
-            name=$(jq -r '.name' "$f")
-            method=$(jq -r '.method' "$f")
-            status=$(jq -r '.status' "$f")
-            time=$(jq -r '.time_s' "$f")
-            url=$(jq -r '.url' "$f")
-            ts=$(jq -r '.timestamp_utc' "$f")
-            printf "| %s | %s | %s | %s | %s | %s |\n" "$name" "$method" "$status" "$time" "$url" "$ts" >> "$md"
-          done
-
-      - name: Setup Node for Markdown→PDF
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: Install md-to-pdf (headless Chromium)
-        run: npm i -g md-to-pdf
-
-      - name: Convert Markdown to PDF
-        run: |
-          set -euo pipefail
-          md="${BUILD_DIR}/report.md"
-          pdf="${BUILD_DIR}/report.pdf"
-          # md-to-pdf renders Markdown to PDF using Chromium; no LaTeX needed.
-          md-to-pdf "$md" --output "$pdf"
-
-          if [[ ! -s "$pdf" ]]; then
-            echo "ERROR: PDF was not generated." >&2
-            exit 1
+          set -e
+          sudo apt-get update -y
+          sudo apt-get install -y xvfb curl ca-certificates
+          curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+          sudo apt-get install -y nodejs
+          sudo npm i -g md-to-pdf
+          MD="artifacts/morning_report/morning_na_${{ steps.run.outputs.ts }}.md"
+          if [ -f "$MD" ]; then
+            xvfb-run -a md-to-pdf "$MD" --output "artifacts/morning_report/morning_na_${{ steps.run.outputs.ts }}.pdf"
           fi
 
-      - name: Upload artifacts (Markdown + PDF)
+      - name: Job summary
+        shell: bash
+        run: |
+          echo "## Morning Report (NA)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Timezone: \`${TZ}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Timestamp: \`${{ steps.run.outputs.ts }}\`" >> "$GITHUB_STEP_SUMMARY"
+          if ls artifacts/morning_report/*.md >/dev/null 2>&1; then echo "- MD generated ✅" >> "$GITHUB_STEP_SUMMARY"; else echo "- MD missing ⚠️" >> "$GITHUB_STEP_SUMMARY"; fi
+          if ls artifacts/morning_report/*.pdf >/dev/null 2>&1; then echo "- PDF generated ✅" >> "$GITHUB_STEP_SUMMARY"; else echo "- PDF missing ⚠️" >> "$GITHUB_STEP_SUMMARY"; fi
+
+      - name: Upload artifacts
+        if: ${{ inputs.upload_artifacts == 'true' }}
         uses: actions/upload-artifact@v4
         with:
-          name: morning-report
-          path: |
-            ${{ env.BUILD_DIR }}/report.md
-            ${{ env.BUILD_DIR }}/report.pdf
-          if-no-files-found: error
+          name: morning_report_${{ steps.run.outputs.ts }}
+          path: artifacts/morning_report/**
+          if-no-files-found: warn
           retention-days: 14
 
-      - name: Job Summary
+      - name: Email Morning Report (SendGrid)
+        if: ${{ inputs.upload_artifacts == 'true' && (secrets.SENDGRID_API_KEY != '') && (vars.SENDGRID_TO != '') }}
+        env:
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          SENDGRID_TO:      ${{ vars.SENDGRID_TO }}
+          SENDGRID_FROM:    ${{ vars.SENDGRID_FROM || 'reports@vega.local' }}
+          SUBJECT:         ${{ format('Morning Report NA — {0}', steps.run.outputs.ts) }}
+        shell: bash
         run: |
-          echo "### Morning Report built" >> $GITHUB_STEP_SUMMARY
-          echo "- Markdown: \`${{ env.BUILD_DIR }}/report.md\`" >> $GITHUB_STEP_SUMMARY
-          echo "- PDF: \`${{ env.BUILD_DIR }}/report.pdf\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Download both from the **Artifacts** section of this run." >> $GITHUB_STEP_SUMMARY
+          set -e
+          MD_FILE="$(ls -1 artifacts/morning_report/*.md | head -n1 || true)"
+          if [ -z "$MD_FILE" ]; then
+            echo "No report file to email"; exit 0
+          fi
+          python - <<'PY' "$MD_FILE" > _body.html
+import sys, html
+p=sys.argv[1]
+print("<pre>"+html.escape(open(p,'r',encoding='utf-8').read())+"</pre>")
+PY
+          python - <<'PY' > payload.json
+import json, os
+with open("_body.html","r",encoding="utf-8") as f:
+    body=f.read()
+payload={
+  "personalizations":[{"to":[{"email":os.environ["SENDGRID_TO"]}]}],
+  "from":{"email":os.environ.get("SENDGRID_FROM","reports@vega.local")},
+  "subject":os.environ.get("SUBJECT","Morning Report"),
+  "content":[{"type":"text/html","value":body}]
+}
+print(json.dumps(payload))
+PY
+          curl -sS -X POST https://api.sendgrid.com/v3/mail/send \
+            -H "Authorization: Bearer $SENDGRID_API_KEY" \
+            -H "Content-Type: application/json" \
+            --data-binary @payload.json
