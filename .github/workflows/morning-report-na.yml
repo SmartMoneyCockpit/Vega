@@ -3,11 +3,18 @@ name: Morning Report NA
 on:
   workflow_call:
     inputs:
-      enabled: { type: string, required: false, default: 'true' }
-      timezone: { type: string, required: false, default: 'America/Los_Angeles' }
-      upload_artifacts: { type: string, required: false, default: 'true' }
-    secrets:
-      SENDGRID_API_KEY: { required: false }
+      enabled:
+        type: string
+        required: false
+        default: 'true'
+      timezone:
+        type: string
+        required: false
+        default: 'America/Los_Angeles'
+      upload_artifacts:
+        type: string
+        required: false
+        default: 'true'
 
 permissions:
   contents: read
@@ -44,7 +51,7 @@ jobs:
           cp outputs/morning_report/* artifacts/morning_report/
           echo "ts=$ts" >> "$GITHUB_OUTPUT"
 
-      - name: Convert MD → PDF with md-to-pdf
+      - name: Convert MD → PDF (md-to-pdf)
         shell: bash
         run: |
           set -e
@@ -75,39 +82,3 @@ jobs:
           path: artifacts/morning_report/**
           if-no-files-found: warn
           retention-days: 14
-
-      - name: Email Morning Report (SendGrid)
-        if: ${{ inputs.upload_artifacts == 'true' && (secrets.SENDGRID_API_KEY != '') && (vars.SENDGRID_TO != '') }}
-        env:
-          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
-          SENDGRID_TO:      ${{ vars.SENDGRID_TO }}
-          SENDGRID_FROM:    ${{ vars.SENDGRID_FROM || 'reports@vega.local' }}
-          SUBJECT:         ${{ format('Morning Report NA — {0}', steps.run.outputs.ts) }}
-        shell: bash
-        run: |
-          set -e
-          MD_FILE="$(ls -1 artifacts/morning_report/*.md | head -n1 || true)"
-          if [ -z "$MD_FILE" ]; then
-            echo "No report file to email"; exit 0
-          fi
-          python - <<'PY' "$MD_FILE" > _body.html
-import sys, html
-p=sys.argv[1]
-print("<pre>"+html.escape(open(p,'r',encoding='utf-8').read())+"</pre>")
-PY
-          python - <<'PY' > payload.json
-import json, os
-with open("_body.html","r",encoding="utf-8") as f:
-    body=f.read()
-payload={
-  "personalizations":[{"to":[{"email":os.environ["SENDGRID_TO"]}]}],
-  "from":{"email":os.environ.get("SENDGRID_FROM","reports@vega.local")},
-  "subject":os.environ.get("SUBJECT","Morning Report"),
-  "content":[{"type":"text/html","value":body}]
-}
-print(json.dumps(payload))
-PY
-          curl -sS -X POST https://api.sendgrid.com/v3/mail/send \
-            -H "Authorization: Bearer $SENDGRID_API_KEY" \
-            -H "Content-Type: application/json" \
-            --data-binary @payload.json
