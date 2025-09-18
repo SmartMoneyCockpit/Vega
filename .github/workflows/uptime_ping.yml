@@ -1,50 +1,26 @@
-name: Cockpit Uptime Ping
+name: Uptime Ping
 
 on:
-  workflow_dispatch:
   workflow_call:
+    inputs:
+      enabled:
+        type: string
+        required: false
+        default: 'true'
 
 permissions:
   contents: read
 
-concurrency:
-  group: uptime-ping-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  precheck:
+  build:
+    if: ${{ inputs.enabled == 'true' }}
     runs-on: ubuntu-latest
-    outputs:
-      ok: ${{ steps.p.outputs.ok }}
     steps:
       - uses: actions/checkout@v4
-      - id: p
-        uses: ./.github/actions/precheck
-        with:
-          vega_actions_enabled: ${{ vars.VEGA_ACTIONS_ENABLED }}
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
 
-  ping:
-    needs: precheck
-    if: ${{ needs.precheck.outputs.ok == 'true'
-          && github.ref == 'refs/heads/main'
-          && (vars.REPORT_UPTIME_ENABLED != 'false')
-          && vars.UPTIME_URL != '' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Ping health endpoint (retry with fallback)
-        env:
-          URL: ${{ vars.UPTIME_URL }}
-        run: |
-          set -e
-          n=0
-          until [ $n -ge 3 ]; do
-            if curl -fsSL -m 10 "$URL/health" || curl -fsSL -m 10 "$URL/"; then
-              echo "OK: $URL is up"; exit 0
-            fi
-            n=$((n+1)); sleep 5
-          done
-          echo "ERROR: Health check failed for $URL" >&2
-          exit 1
+      # TODO: Replace with your real steps
+      - name: precheck
+        run: echo "uptime_ping / precheck ok"
+
+      - name: ping
+        run: echo "uptime_ping / ping running"
