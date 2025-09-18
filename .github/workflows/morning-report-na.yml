@@ -40,14 +40,12 @@ jobs:
           ts="$(date +'%Y-%m-%d_%H-%M-%S')"
           OUT="outputs/morning_report/morning_na_${ts}.md"
           if [ -f scripts/morning_report_na.py ]; then
-            # If the script errors, fall back to a placeholder so the job continues
-            if ! python scripts/morning_report_na.py --tz "$TZ" --out "$OUT"; then
+            python scripts/morning_report_na.py --tz "$TZ" --out "$OUT" || {
               echo "# Morning Report (Placeholder)" > "$OUT"
               echo "" >> "$OUT"
-              echo "_Auto-generated placeholder because scripts/morning_report_na.py failed._" >> "$OUT"
-            fi
+              echo "_Auto-generated placeholder because morning_report_na.py failed._" >> "$OUT"
+            }
           else
-            # No script found → create a placeholder
             echo "# Morning Report (Placeholder)" > "$OUT"
             echo "" >> "$OUT"
             echo "_Auto-generated placeholder because morning_report_na.py was not found._" >> "$OUT"
@@ -55,20 +53,27 @@ jobs:
           cp outputs/morning_report/* artifacts/morning_report/
           echo "ts=$ts" >> "$GITHUB_OUTPUT"
 
-      - name: Convert MD → PDF (md-to-pdf)
+      - name: Convert MD → PDF (md-to-pdf) — tolerant
         shell: bash
         run: |
           set -e
-          sudo apt-get update -y
-          sudo apt-get install -y xvfb curl ca-certificates
-          curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-          sudo apt-get install -y nodejs
-          sudo npm i -g md-to-pdf
           MD="artifacts/morning_report/morning_na_${{ steps.run.outputs.ts }}.md"
-          if [ -f "$MD" ]; then
-            xvfb-run -a md-to-pdf "$MD" --output "artifacts/morning_report/morning_na_${{ steps.run.outputs.ts }}.pdf"
-          else
+          if [ ! -f "$MD" ]; then
             echo "::notice title=PDF::Markdown file not found; skipping PDF."
+            exit 0
+          fi
+          # Best-effort install; do not fail the job if npm/Chrome hiccups
+          sudo apt-get update -y || true
+          sudo apt-get install -y xvfb curl ca-certificates || true
+          curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - || true
+          sudo apt-get install -y nodejs || true
+          sudo npm i -g md-to-pdf || true
+          # Render if tool exists
+          if command -v md-to-pdf >/dev/null 2>&1; then
+            xvfb-run -a md-to-pdf "$MD" --output "artifacts/morning_report/morning_na_${{ steps.run.outputs.ts }}.pdf" || \
+              echo "::notice title=PDF::md-to-pdf render failed; continuing."
+          else
+            echo "::notice title=PDF::md-to-pdf not available; skipping."
           fi
 
       - name: Job summary
