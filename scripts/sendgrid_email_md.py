@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Send a Markdown file via SendGrid as HTML <pre> … </pre>.
+Send a Markdown file via SendGrid as HTML <pre>…</pre>.
 Usage:
   python scripts/sendgrid_email_md.py --api-key $SENDGRID_API_KEY \
       --to you@example.com --from reports@vega.local \
@@ -19,7 +19,7 @@ def main():
 
     if not os.path.exists(args.file):
         print(f"File not found: {args.file}", file=sys.stderr)
-        sys.exit(0)  # don’t fail the job
+        sys.exit(0)  # do not fail the job
 
     body = "<pre>" + html.escape(open(args.file, "r", encoding="utf-8").read()) + "</pre>"
     payload = {
