@@ -14,50 +14,64 @@ permissions: {}
 
 jobs:
   build:
-    # only check the simple flag at the job level
     if: ${{ inputs.enabled == 'true' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Resolve URL (input or secret)
+      - name: Resolve URL set (input, variables, secret)
         id: cfg
         shell: bash
         env:
-          U_SECRET: ${{ secrets.UPTIME_PING_URL }}
           U_INPUT:  ${{ inputs.url }}
+          U_VAR1:   ${{ vars.UPTIME_URL }}
+          U_VARS:   ${{ vars.UPTIME_URLS }}
+          U_SECRET: ${{ secrets.UPTIME_PING_URL }}
         run: |
-          url="${U_INPUT:-$U_SECRET}"
-          if [ -z "$url" ]; then
-            echo "has_url=false" >> "$GITHUB_OUTPUT"
+          set -e
+          mkdir -p _uptime
+          # Build a list: take input, single var, secret, plus multi-var list
+          {
+            [ -n "$U_INPUT"  ] && echo "$U_INPUT"
+            [ -n "$U_VAR1"   ] && echo "$U_VAR1"
+            [ -n "$U_SECRET" ] && echo "$U_SECRET"
+            [ -n "$U_VARS"   ] && printf "%s\n" "$U_VARS"
+          } | tr ',; ' '\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | sed '/^$/d' | sort -u > _uptime/urls.txt
+
+          count=$(wc -l < _uptime/urls.txt | tr -d ' ')
+          if [ "$count" -eq 0 ]; then
+            echo "has_urls=false" >> "$GITHUB_OUTPUT"
           else
-            echo "has_url=true" >> "$GITHUB_OUTPUT"
-            echo "url=$url" >> "$GITHUB_OUTPUT"
+            echo "has_urls=true" >> "$GITHUB_OUTPUT"
+            echo "count=$count" >> "$GITHUB_OUTPUT"
+            echo "urls<<EOF" >> "$GITHUB_OUTPUT"
+            cat _uptime/urls.txt >> "$GITHUB_OUTPUT"
+            echo "EOF" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: No URL provided — skipping politely
-        if: ${{ steps.cfg.outputs.has_url != 'true' }}
-        run: echo "::notice title=Uptime Ping::No URL provided via input or secret. Skipping."
+      - name: No URLs provided — skipping politely
+        if: ${{ steps.cfg.outputs.has_urls != 'true' }}
+        run: echo "::notice title=Uptime Ping::No URLs found via input, variables, or secret. Skipping."
 
-      - name: Ping
-        if: ${{ steps.cfg.outputs.has_url == 'true' }}
+      - name: Ping all URLs
+        if: ${{ steps.cfg.outputs.has_urls == 'true' }}
         id: ping
         shell: bash
         env:
-          URL:    ${{ steps.cfg.outputs.url }}
           METHOD: ${{ inputs.method }}
           EXPECT: ${{ inputs.expect }}
         run: |
           set -e
-          code=$(curl -s -o /dev/null -w "%{http_code}" -X "$METHOD" "$URL")
-          echo "status_code=$code" >> "$GITHUB_OUTPUT"
-          if [ "$code" != "$EXPECT" ]; then
-            echo "::error title=Uptime Ping::Expected $EXPECT but got $code ($METHOD $URL)"
+          echo "## Uptime Ping Results" >> "$GITHUB_STEP_SUMMARY"
+          printf "| URL | Status | OK? |\n|---|---:|:---:|\n" >> "$GITHUB_STEP_SUMMARY"
+          fail=0
+          while IFS= read -r url; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" -X "$METHOD" "$url" || echo "000")
+            ok="❌"
+            if [ "$code" = "$EXPECT" ]; then ok="✅"; else fail=$((fail+1)); fi
+            printf "| %s | %s | %s |\n" "$url" "$code" "$ok" >> "$GITHUB_STEP_SUMMARY"
+          done <<EOF
+${{ steps.cfg.outputs.urls }}
+EOF
+          if [ "$fail" -gt 0 ]; then
+            echo "::error title=Uptime Ping::One or more checks failed ($fail failing)."
             exit 1
           fi
-          echo "OK ($code)"
-
-      - name: Job summary
-        if: ${{ steps.cfg.outputs.has_url == 'true' }}
-        run: |
-          echo "## Uptime Ping" >> "$GITHUB_STEP_SUMMARY"
-          echo "- URL: \`${{ steps.cfg.outputs.url }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- HTTP status: \`${{ steps.ping.outputs.status_code }}\`" >> "$GITHUB_STEP_SUMMARY"
