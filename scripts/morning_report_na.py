@@ -1,9 +1,4 @@
 #!/usr/bin/env python3
-'''
-Minimal Morning Report generator (NA).
-Writes a Markdown file with timestamp and sections.
-Usage: python scripts/morning_report_na.py --tz America/Los_Angeles --out outputs/morning_report/file.md
-'''
 import argparse, datetime, os
 
 def main():
