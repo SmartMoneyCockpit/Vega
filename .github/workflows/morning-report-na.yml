@@ -44,25 +44,18 @@ jobs:
           cp outputs/morning_report/* artifacts/morning_report/
           echo "ts=$ts" >> "$GITHUB_OUTPUT"
 
-      - name: Convert MD → PDF (md-to-pdf)
+      - name: Convert MD → PDF with md-to-pdf
         shell: bash
         run: |
           set -e
-          echo "::group::Install Node + md-to-pdf"
           sudo apt-get update -y
-          sudo apt-get install -y xvfb
-          # Use Node 20
-          echo "::endgroup::"
-          echo "::group::Setup Node"
+          sudo apt-get install -y xvfb curl ca-certificates
           curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
           sudo apt-get install -y nodejs
-          echo "::endgroup::"
-          echo "::group::md-to-pdf"
           sudo npm i -g md-to-pdf
-          echo "::endgroup::"
-          FILE="artifacts/morning_report/morning_na_${{ steps.run.outputs.ts }}.md"
-          if [ -f "$FILE" ]; then
-            xvfb-run -a md-to-pdf "$FILE" --output "artifacts/morning_report/morning_na_${{ steps.run.outputs.ts }}.pdf"
+          MD="artifacts/morning_report/morning_na_${{ steps.run.outputs.ts }}.md"
+          if [ -f "$MD" ]; then
+            xvfb-run -a md-to-pdf "$MD" --output "artifacts/morning_report/morning_na_${{ steps.run.outputs.ts }}.pdf"
           else
             echo "::notice title=PDF::Markdown file not found; skipping PDF."
           fi
@@ -95,24 +88,37 @@ jobs:
         shell: bash
         run: |
           set -e
-          FILE=$(ls -1 artifacts/morning_report/*.md | head -n1 || true)
-          if [ -z "$FILE" ]; then echo "No report file to email"; exit 0; fi
-          BODY=$(python - <<'PY'
+          MD_FILE="$(ls -1 artifacts/morning_report/*.md | head -n1 || true)"
+          if [ -z "$MD_FILE" ]; then
+            echo "No report file to email"; exit 0
+          fi
+
+          # Build a small HTML body from the Markdown (escaped)
+          python - <<'PY' "$MD_FILE" > _email_body.html
 import sys, html
 p=sys.argv[1]
 print("<pre>"+html.escape(open(p,'r',encoding='utf-8').read())+"</pre>")
 PY
- "$FILE")
-          curl -sS -X POST https://api.sendgrid.com/v3/mail/send \
-            -H "Authorization: Bearer $SENDGRID_API_KEY" -H "Content-Type: application/json" \
-            -d "$(
-              python - <<'PY'
+
+          # Create JSON payload safely with Python -> payload.json
+          python - <<'PY' > payload.json
 import json, os, sys
-payload={"personalizations":[{"to":[{"email":os.environ["SENDGRID_TO"]}]}],
-         "from":{"email":os.environ.get("SENDGRID_FROM","reports@vega.local")},
-         "subject":os.environ.get("SUBJECT","Morning Report"),
-         "content":[{"type":"text/html","value":sys.stdin.read()}]}
+to      = os.environ["SENDGRID_TO"]
+sender  = os.environ.get("SENDGRID_FROM","reports@vega.local")
+subject = os.environ.get("SUBJECT","Morning Report")
+with open("_email_body.html","r",encoding="utf-8") as f:
+    body = f.read()
+payload = {
+  "personalizations": [{"to": [{"email": to}]}],
+  "from": {"email": sender},
+  "subject": subject,
+  "content": [{"type":"text/html","value": body}]
+}
 print(json.dumps(payload))
 PY
-<<<"$BODY"
-            )"
+
+          # Send
+          curl -sS -X POST https://api.sendgrid.com/v3/mail/send \
+            -H "Authorization: Bearer $SENDGRID_API_KEY" \
+            -H "Content-Type: application/json" \
+            --data-binary @payload.json
