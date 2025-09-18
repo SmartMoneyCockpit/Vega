@@ -18,19 +18,19 @@ def main():
 ---
 
 ## Macro & Calendar
-- Placeholder: add CPI/Fed/earnings pulls here.
+- Placeholder for CPI/Fed/earnings.
 
 ## Breadth & Internals
-- Placeholder: advance/decline, new highs/lows, VIX, put/call.
+- Placeholder internals.
 
 ## Sector Rotation
-- Placeholder: leaders/laggards.
+- Placeholder.
 
 ## Watchlist Highlights
-- Placeholder: tickers to watch today.
+- Placeholder.
 
 ## Actionables
-- Placeholder: Buy Today / Wait / Avoid.
+- Buy Today / Wait / Avoid.
 """
 
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
