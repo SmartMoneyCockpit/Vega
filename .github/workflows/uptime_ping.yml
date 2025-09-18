@@ -28,23 +28,23 @@ jobs:
         run: |
           set -e
           mkdir -p _uptime
-          # Build a list: take input, single var, secret, plus multi-var list
+          # Build the list: input, single var, secret, plus multi-var list
           {
             [ -n "$U_INPUT"  ] && echo "$U_INPUT"
             [ -n "$U_VAR1"   ] && echo "$U_VAR1"
             [ -n "$U_SECRET" ] && echo "$U_SECRET"
             [ -n "$U_VARS"   ] && printf "%s\n" "$U_VARS"
-          } | tr ',; ' '\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | sed '/^$/d' | sort -u > _uptime/urls.txt
+          } | tr ',; ' '\n' \
+            | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' \
+            | sed '/^$/d' \
+            | sort -u > _uptime/urls.txt
 
           count=$(wc -l < _uptime/urls.txt | tr -d ' ')
           if [ "$count" -eq 0 ]; then
             echo "has_urls=false" >> "$GITHUB_OUTPUT"
           else
-            echo "has_urls=true" >> "$GITHUB_OUTPUT"
-            echo "count=$count" >> "$GITHUB_OUTPUT"
-            echo "urls<<EOF" >> "$GITHUB_OUTPUT"
-            cat _uptime/urls.txt >> "$GITHUB_OUTPUT"
-            echo "EOF" >> "$GITHUB_OUTPUT"
+            echo "has_urls=true"  >> "$GITHUB_OUTPUT"
+            echo "count=$count"   >> "$GITHUB_OUTPUT"
           fi
 
       - name: No URLs provided — skipping politely
@@ -64,13 +64,16 @@ jobs:
           printf "| URL | Status | OK? |\n|---|---:|:---:|\n" >> "$GITHUB_STEP_SUMMARY"
           fail=0
           while IFS= read -r url; do
+            [ -z "$url" ] && continue
             code=$(curl -s -o /dev/null -w "%{http_code}" -X "$METHOD" "$url" || echo "000")
-            ok="❌"
-            if [ "$code" = "$EXPECT" ]; then ok="✅"; else fail=$((fail+1)); fi
+            if [ "$code" = "$EXPECT" ]; then
+              ok="✅"
+            else
+              ok="❌"; fail=$((fail+1))
+            fi
             printf "| %s | %s | %s |\n" "$url" "$code" "$ok" >> "$GITHUB_STEP_SUMMARY"
-          done <<EOF
-${{ steps.cfg.outputs.urls }}
-EOF
+          done < _uptime/urls.txt
+
           if [ "$fail" -gt 0 ]; then
             echo "::error title=Uptime Ping::One or more checks failed ($fail failing)."
             exit 1
