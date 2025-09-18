@@ -21,11 +21,3 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 streamlit run app.py
-
----
-
-✅ This adds:
-- A **status badge** at the top (links directly to your scheduler runs).  
-- A bullet in **Features** about the new daily reports and artifacts.  
-
-Would you like me to also add a little **“Artifacts & Reports”** section at the bottom with instructions on where to find/download them in GitHub Actions?
