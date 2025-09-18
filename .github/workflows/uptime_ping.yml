@@ -28,17 +28,12 @@ jobs:
         run: |
           set -e
           mkdir -p _uptime
-          # Build the list: input, single var, secret, plus multi-var list
           {
             [ -n "$U_INPUT"  ] && echo "$U_INPUT"
             [ -n "$U_VAR1"   ] && echo "$U_VAR1"
             [ -n "$U_SECRET" ] && echo "$U_SECRET"
             [ -n "$U_VARS"   ] && printf "%s\n" "$U_VARS"
-          } | tr ',; ' '\n' \
-            | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' \
-            | sed '/^$/d' \
-            | sort -u > _uptime/urls.txt
-
+          } | tr ',; ' '\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | sed '/^$/d' | sort -u > _uptime/urls.txt
           count=$(wc -l < _uptime/urls.txt | tr -d ' ')
           if [ "$count" -eq 0 ]; then
             echo "has_urls=false" >> "$GITHUB_OUTPUT"
@@ -66,14 +61,9 @@ jobs:
           while IFS= read -r url; do
             [ -z "$url" ] && continue
             code=$(curl -s -o /dev/null -w "%{http_code}" -X "$METHOD" "$url" || echo "000")
-            if [ "$code" = "$EXPECT" ]; then
-              ok="✅"
-            else
-              ok="❌"; fail=$((fail+1))
-            fi
+            if [ "$code" = "$EXPECT" ]; then ok="✅"; else ok="❌"; fail=$((fail+1)); fi
             printf "| %s | %s | %s |\n" "$url" "$code" "$ok" >> "$GITHUB_STEP_SUMMARY"
           done < _uptime/urls.txt
-
           if [ "$fail" -gt 0 ]; then
             echo "::error title=Uptime Ping::One or more checks failed ($fail failing)."
             exit 1
