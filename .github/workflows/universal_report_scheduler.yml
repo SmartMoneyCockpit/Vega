@@ -52,12 +52,12 @@ jobs:
           if [ -f setup.py ] || [ -f pyproject.toml ]; then pip install -e .; fi
       - name: Build NA Morning Report
         run: python scripts/morning_report_na.py --tz America/Los_Angeles --out output/morning_report.md
-      - name: Upload artifacts
+      - name: Upload Morning Report artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: morning-report-na
-          path: output/**
+          path: output/morning_report.md
 
   color_guard:
     needs: precheck
@@ -65,8 +65,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
       - name: Run Color Guard
         run: python scripts/color_guard.py
+      - name: Upload Color Guard artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: color-guard
+          path: output/color_guard/**
 
   econ_calendar:
     needs: precheck
@@ -74,8 +83,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
       - name: Run Econ Calendar
         run: python scripts/econ_calendar.py
+      - name: Upload Econ Calendar artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: econ-calendar
+          path: output/econ_calendar/**
 
   uptime_ping:
     needs: precheck
@@ -83,5 +101,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
       - name: Run Uptime Ping
         run: python scripts/uptime_ping.py
+      - name: Upload Uptime Ping artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: uptime-ping
+          path: output/uptime_ping/**
