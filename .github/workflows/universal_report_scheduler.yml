@@ -28,8 +28,8 @@ on:
         type: choice
         options: ["true","false"]
   schedule:
-    - cron: '30 14 * 3-10 1-5'
-    - cron: '30 16 * 11,12,1,2 1-5'
+    - cron: '30 14 * 3-10 1-5'      # 07:30 AM PDT (Mar–Oct)
+    - cron: '30 16 * 11,12,1,2 1-5' # 08:30 AM PST (Nov–Feb)
 
 permissions:
   contents: read
@@ -70,6 +70,8 @@ jobs:
     uses: ./.github/workflows/morning-report-na.yml
     with:
       enabled: 'true'
+      upload_artifacts: 'true'
+      timezone: 'America/Los_Angeles'
     secrets: inherit
 
   color_guard:
@@ -78,6 +80,7 @@ jobs:
     uses: ./.github/workflows/color_guard_prep.yml
     with:
       enabled: 'true'
+      upload_artifacts: 'true'
     secrets: inherit
 
   econ_calendar:
@@ -86,6 +89,7 @@ jobs:
     uses: ./.github/workflows/econ_calendar.yml
     with:
       enabled: 'true'
+      upload_artifacts: 'true'
     secrets: inherit
 
   uptime_ping:
@@ -94,6 +98,11 @@ jobs:
     uses: ./.github/workflows/uptime_ping.yml
     with:
       enabled: 'true'
+      # Optional: you can override here; otherwise the reusable workflow will
+      # read vars.UPTIME_URL and vars.UPTIME_URLS automatically.
+      url: ''
+      method: 'GET'
+      expect: '200'
     secrets: inherit
 
   failure_digest:
@@ -108,12 +117,7 @@ jobs:
           echo "## Failure Digest" >> "$GITHUB_STEP_SUMMARY"
           echo "Run: $RUN_URL" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          list_fail() {
-            job="$1"; result="$2"
-            if [ "$result" = "failure" ]; then
-              echo "- **$job** failed → $RUN_URL" >> "$GITHUB_STEP_SUMMARY"
-            fi
-          }
+          list_fail() { job="$1"; result="$2"; if [ "$result" = "failure" ]; then echo "- **$job** failed → $RUN_URL" >> "$GITHUB_STEP_SUMMARY"; fi; }
           list_fail "Morning Report"   "${{ needs.morning_report.result }}"
           list_fail "Color Guard"      "${{ needs.color_guard.result }}"
           list_fail "Econ Calendar"    "${{ needs.econ_calendar.result }}"
