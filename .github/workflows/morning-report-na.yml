@@ -3,125 +3,57 @@ name: Morning Report NA
 on:
   workflow_call:
     inputs:
-      enabled:
+      run_morning_report:
         type: string
         required: false
         default: 'true'
-      timezone:
-        type: string
-        required: false
-        default: 'America/Los_Angeles'
-      upload_artifacts:
+      run_color_guard:
         type: string
         required: false
         default: 'true'
-    secrets:
-      SENDGRID_API_KEY:
+      run_econ_calendar:
+        type: string
         required: false
+        default: 'true'
+      run_uptime_ping:
+        type: string
+        required: false
+        default: 'true'
 
 permissions:
   contents: read
 
+concurrency:
+  group: universal-report-scheduler
+  cancel-in-progress: true
+
 jobs:
-  build:
-    if: ${{ inputs.enabled == 'true' }}
+  precheck:
     runs-on: ubuntu-latest
-    env:
-      TZ: ${{ inputs.timezone }}
+    outputs:
+      ok: ${{ steps.p.outputs.ok }}
+      run_morning_report: ${{ steps.tog.outputs.run_morning_report }}
+      run_color_guard: ${{ steps.tog.outputs.run_color_guard }}
+      run_econ_calendar: ${{ steps.tog.outputs.run_econ_calendar }}
+      run_uptime_ping: ${{ steps.tog.outputs.run_uptime_ping }}
     steps:
       - uses: actions/checkout@v4
 
-      # Ensure requests exists for the email helper (no heredocs)
-      - name: Ensure Python 'requests'
-        shell: bash
-        run: |
-          python - <<PY
-import importlib, subprocess, sys
-try:
-    importlib.import_module("requests")
-except Exception:
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "requests"])
-PY
-
-      - name: Generate Morning Report (Markdown)
-        id: run
-        shell: bash
-        run: |
-          set -e
-          mkdir -p artifacts/morning_report outputs/morning_report
-          ts="$(date +'%Y-%m-%d_%H-%M-%S')"
-          out="outputs/morning_report/morning_na_${ts}.md"
-          if [ -f scripts/morning_report_na.py ]; then
-            python scripts/morning_report_na.py --tz "$TZ" --out "$out" || {
-              echo "# Morning Report (Placeholder)" > "$out"
-              echo "" >> "$out"
-              echo "_Auto-generated placeholder because morning_report_na.py failed._" >> "$out"
-            }
-          else
-            echo "# Morning Report (Placeholder)" > "$out"
-            echo "" >> "$out"
-            echo "_Auto-generated placeholder because morning_report_na.py was not found._" >> "$out"
-          fi
-          cp outputs/morning_report/* artifacts/morning_report/
-          echo "ts=$ts" >> "$GITHUB_OUTPUT"
-
-      # Simple PDF attempt only (no heredocs, no fallbacks). Will not fail the job.
-      - name: Convert MD to PDF (best-effort)
-        shell: bash
-        run: |
-          set -e
-          md="artifacts/morning_report/morning_na_${{ steps.run.outputs.ts }}.md"
-          pdf="artifacts/morning_report/morning_na_${{ steps.run.outputs.ts }}.pdf"
-          if [ ! -f "$md" ]; then
-            echo "::notice title=PDF::Markdown file not found; skipping."
-            exit 0
-          fi
-          sudo apt-get update -y || true
-          sudo apt-get install -y xvfb curl ca-certificates || true
-          curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - || true
-          sudo apt-get install -y nodejs || true
-          sudo npm i -g md-to-pdf || true
-          if command -v md-to-pdf >/dev/null 2>&1; then
-            xvfb-run -a md-to-pdf "$md" --output "$pdf" || echo "::notice title=PDF::md-to-pdf failed; continuing."
-          else
-            echo "::notice title=PDF::md-to-pdf not available; skipping."
-          fi
-
-      - name: Job summary
-        shell: bash
-        run: |
-          echo "## Morning Report (NA)" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Timezone: ${TZ}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Timestamp: ${{ steps.run.outputs.ts }}" >> "$GITHUB_STEP_SUMMARY"
-          if ls artifacts/morning_report/*.md >/dev/null 2>&1; then echo "- MD generated: YES" >> "$GITHUB_STEP_SUMMARY"; else echo "- MD generated: NO" >> "$GITHUB_STEP_SUMMARY"; fi
-          if ls artifacts/morning_report/*.pdf >/dev/null 2>&1; then echo "- PDF generated: YES" >> "$GITHUB_STEP_SUMMARY"; else echo "- PDF generated: NO" >> "$GITHUB_STEP_SUMMARY"; fi
-
-      - name: Upload artifacts
-        if: ${{ inputs.upload_artifacts == 'true' }}
-        uses: actions/upload-artifact@v4
+      - id: p
+        uses: ./.github/actions/precheck
         with:
-          name: morning_report_${{ steps.run.outputs.ts }}
-          path: artifacts/morning_report/**
-          if-no-files-found: warn
-          retention-days: 14
+          vega_actions_enabled: ${{ vars.VEGA_ACTIONS_ENABLED }}
 
-      # Email the Markdown via helper script (runs only if configured). No heredocs.
-      - name: Email Morning Report (SendGrid)
-        if: ${{ inputs.upload_artifacts == 'true' && (secrets.SENDGRID_API_KEY != '') && (vars.SENDGRID_TO != '') }}
+      - id: tog
         env:
-          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
-          SENDGRID_TO:      ${{ vars.SENDGRID_TO }}
-          SENDGRID_FROM:    ${{ vars.SENDGRID_FROM || 'reports@vega.local' }}
-        shell: bash
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
-          set -e
-          file="$(ls -1 artifacts/morning_report/*.md | head -n1 || true)"
-          if [ -z "$file" ]; then
-            echo "No report file to email"; exit 0
-          fi
-          python scripts/sendgrid_email_md.py \
-            --api-key "$SENDGRID_API_KEY" \
-            --to "$SENDGRID_TO" \
-            --from "$SENDGRID_FROM" \
-            --subject "Morning Report NA — ${{ steps.run.outputs.ts }}" \
-            --file "$file"
+          echo "run_morning_report=${{ inputs.run_morning_report || 'true' }}" >> "$GITHUB_OUTPUT"
+          echo "run_color_guard=${{ inputs.run_color_guard || 'true' }}" >> "$GITHUB_OUTPUT"
+          echo "run_econ_calendar=${{ inputs.run_econ_calendar || 'true' }}" >> "$GITHUB_OUTPUT"
+          echo "run_uptime_ping=${{ inputs.run_uptime_ping || 'true' }}" >> "$GITHUB_OUTPUT"
+
+  morning_report:
+    needs: precheck
+    if: ${{ needs.precheck.outputs.ok == 'true' && needs.precheck.outputs.run_morning_report == 'true' }}
+    uses: ./.github/workflows/morning-report-na.yml
