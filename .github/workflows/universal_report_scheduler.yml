@@ -27,9 +27,6 @@ on:
         default: "true"
         type: choice
         options: ["true","false"]
-  schedule:
-    - cron: '30 14 * 3-10 1-5'
-    - cron: '30 16 * 11,12,1,2 1-5'
 
 permissions:
   contents: read
@@ -49,20 +46,18 @@ jobs:
       run_uptime_ping:     ${{ steps.tog.outputs.run_uptime_ping }}
     steps:
       - uses: actions/checkout@v4
-
       - id: p
         uses: ./.github/actions/precheck
         with:
           vega_actions_enabled: ${{ vars.VEGA_ACTIONS_ENABLED }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
-
       - id: tog
         run: |
           echo "run_morning_report=${{ github.event.inputs.run_morning_report || 'true' }}" >> "$GITHUB_OUTPUT"
-          echo "run_color_guard=${{ github.event.inputs.run_color_guard   || 'true' }}" >> "$GITHUB_OUTPUT"
+          echo "run_color_guard=${{ github.event.inputs.run_color_guard || 'true' }}" >> "$GITHUB_OUTPUT"
           echo "run_econ_calendar=${{ github.event.inputs.run_econ_calendar || 'true' }}" >> "$GITHUB_OUTPUT"
-          echo "run_uptime_ping=${{ github.event.inputs.run_uptime_ping   || 'true' }}" >> "$GITHUB_OUTPUT"
+          echo "run_uptime_ping=${{ github.event.inputs.run_uptime_ping || 'true' }}" >> "$GITHUB_OUTPUT"
 
   morning_report:
     needs: precheck
