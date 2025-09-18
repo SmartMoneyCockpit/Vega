@@ -48,4 +48,40 @@ jobs:
           cache: 'pip'
       - name: Install Python deps if present
         run: |
-          if [ -f requirements.txt ]; then pip install -r re
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f setup.py ] || [ -f pyproject.toml ]; then pip install -e .; fi
+      - name: Build NA Morning Report
+        run: python scripts/morning_report_na.py --tz America/Los_Angeles --out output/morning_report.md
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: morning-report-na
+          path: output/**
+
+  color_guard:
+    needs: precheck
+    if: ${{ needs.precheck.outputs.ok == 'true' && needs.precheck.outputs.run_color_guard == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Color Guard
+        run: python scripts/color_guard.py
+
+  econ_calendar:
+    needs: precheck
+    if: ${{ needs.precheck.outputs.ok == 'true' && needs.precheck.outputs.run_econ_calendar == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Econ Calendar
+        run: python scripts/econ_calendar.py
+
+  uptime_ping:
+    needs: precheck
+    if: ${{ needs.precheck.outputs.ok == 'true' && needs.precheck.outputs.run_uptime_ping == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Uptime Ping
+        run: python scripts/uptime_ping.py
