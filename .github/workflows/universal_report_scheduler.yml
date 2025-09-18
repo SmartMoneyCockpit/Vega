@@ -28,8 +28,8 @@ on:
         type: choice
         options: ["true","false"]
   schedule:
-    - cron: '30 14 * 3-10 1-5'      # 07:30 AM PDT (Mar–Oct)
-    - cron: '30 16 * 11,12,1,2 1-5' # 08:30 AM PST (Nov–Feb)
+    - cron: '30 14 * 3-10 1-5'
+    - cron: '30 16 * 11,12,1,2 1-5'
 
 permissions:
   contents: read
@@ -98,8 +98,6 @@ jobs:
     uses: ./.github/workflows/uptime_ping.yml
     with:
       enabled: 'true'
-      # Optional: you can override here; otherwise the reusable workflow will
-      # read vars.UPTIME_URL and vars.UPTIME_URLS automatically.
       url: ''
       method: 'GET'
       expect: '200'
@@ -116,7 +114,6 @@ jobs:
         run: |
           echo "## Failure Digest" >> "$GITHUB_STEP_SUMMARY"
           echo "Run: $RUN_URL" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
           list_fail() { job="$1"; result="$2"; if [ "$result" = "failure" ]; then echo "- **$job** failed → $RUN_URL" >> "$GITHUB_STEP_SUMMARY"; fi; }
           list_fail "Morning Report"   "${{ needs.morning_report.result }}"
           list_fail "Color Guard"      "${{ needs.color_guard.result }}"
