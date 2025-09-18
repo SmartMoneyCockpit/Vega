@@ -1,0 +1,47 @@
+#!/usr/bin/env python3
+'''
+Minimal Morning Report generator (NA).
+Writes a Markdown file with timestamp and sections.
+Usage: python scripts/morning_report_na.py --tz America/Los_Angeles --out outputs/morning_report/file.md
+'''
+import argparse, datetime, os
+
+def main():
+    p = argparse.ArgumentParser()
+    p.add_argument("--tz", default=os.environ.get("TZ","America/Los_Angeles"))
+    p.add_argument("--out", required=True)
+    args = p.parse_args()
+
+    now = datetime.datetime.utcnow()
+    ts = now.strftime("%Y-%m-%d %H:%M UTC")
+
+    md = f"""# Morning Report — North America
+
+**Generated:** {ts}  
+**Timezone (requested):** `{args.tz}`
+
+---
+
+## Macro & Calendar
+- Placeholder: add CPI/Fed/earnings pulls here.
+
+## Breadth & Internals
+- Placeholder: advance/decline, new highs/lows, VIX, put/call.
+
+## Sector Rotation
+- Placeholder: leaders/laggards.
+
+## Watchlist Highlights
+- Placeholder: tickers to watch today.
+
+## Actionables
+- Placeholder: Buy Today / Wait / Avoid.
+"""
+
+    os.makedirs(os.path.dirname(args.out), exist_ok=True)
+    with open(args.out, "w", encoding="utf-8") as f:
+        f.write(md)
+    print(f"Wrote {args.out}")
+
+if __name__ == "__main__":
+    main()
