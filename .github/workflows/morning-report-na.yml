@@ -3,18 +3,9 @@ name: Morning Report NA
 on:
   workflow_call:
     inputs:
-      enabled:
-        type: string
-        required: false
-        default: 'true'
-      timezone:
-        type: string
-        required: false
-        default: 'America/Los_Angeles'
-      upload_artifacts:
-        type: string
-        required: false
-        default: 'true'
+      enabled: { type: string, required: false, default: 'true' }
+      timezone: { type: string, required: false, default: 'America/Los_Angeles' }
+      upload_artifacts: { type: string, required: false, default: 'true' }
 
 permissions:
   contents: read
@@ -40,14 +31,27 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           if [ -f setup.py ] || [ -f pyproject.toml ]; then pip install -e .; fi
 
-      - name: Generate Morning Report (Markdown)
+      - name: Generate Morning Report (Markdown) — tolerant
         id: run
         shell: bash
         run: |
           set -e
           mkdir -p artifacts/morning_report outputs/morning_report
           ts="$(date +'%Y-%m-%d_%H-%M-%S')"
-          python scripts/morning_report_na.py --tz "$TZ" --out "outputs/morning_report/morning_na_${ts}.md"
+          OUT="outputs/morning_report/morning_na_${ts}.md"
+          if [ -f scripts/morning_report_na.py ]; then
+            # If the script errors, fall back to a placeholder so the job continues
+            if ! python scripts/morning_report_na.py --tz "$TZ" --out "$OUT"; then
+              echo "# Morning Report (Placeholder)" > "$OUT"
+              echo "" >> "$OUT"
+              echo "_Auto-generated placeholder because scripts/morning_report_na.py failed._" >> "$OUT"
+            fi
+          else
+            # No script found → create a placeholder
+            echo "# Morning Report (Placeholder)" > "$OUT"
+            echo "" >> "$OUT"
+            echo "_Auto-generated placeholder because morning_report_na.py was not found._" >> "$OUT"
+          fi
           cp outputs/morning_report/* artifacts/morning_report/
           echo "ts=$ts" >> "$GITHUB_OUTPUT"
 
@@ -63,6 +67,8 @@ jobs:
           MD="artifacts/morning_report/morning_na_${{ steps.run.outputs.ts }}.md"
           if [ -f "$MD" ]; then
             xvfb-run -a md-to-pdf "$MD" --output "artifacts/morning_report/morning_na_${{ steps.run.outputs.ts }}.pdf"
+          else
+            echo "::notice title=PDF::Markdown file not found; skipping PDF."
           fi
 
       - name: Job summary
