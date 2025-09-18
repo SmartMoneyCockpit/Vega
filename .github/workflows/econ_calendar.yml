@@ -4,7 +4,6 @@ on:
   workflow_call:
     inputs:
       enabled: { type: string, required: false, default: 'true' }
-      region:  { type: string, required: false, default: 'NA' }
       upload_artifacts: { type: string, required: false, default: 'true' }
 
 permissions:
@@ -14,6 +13,9 @@ jobs:
   build:
     if: ${{ inputs.enabled == 'true' }}
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        region: [NA, CA, MX]
     steps:
       - uses: actions/checkout@v4
 
@@ -29,9 +31,8 @@ jobs:
 
       - name: Build economic calendar dataset
         id: run
-        shell: bash
         env:
-          REGION: ${{ inputs.region }}
+          REGION: ${{ matrix.region }}
         run: |
           set -e
           mkdir -p artifacts/econ_calendar outputs/econ_calendar
@@ -48,8 +49,8 @@ jobs:
 
       - name: Job summary
         run: |
-          echo "## Economic Calendar (${{ inputs.region }})" >> "$GITHUB_STEP_SUMMARY"
-          if ls artifacts/econ_calendar/* >/dev/null 2>&1; then
+          echo "## Economic Calendar (${{ matrix.region }})" >> "$GITHUB_STEP_SUMMARY"
+          if ls artifacts/econ_calendar/*_${{ matrix.region }}_* >/dev/null 2>&1; then
             echo "- Calendar file generated ✅" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "- No calendar output ⚠️" >> "$GITHUB_STEP_SUMMARY"
@@ -59,6 +60,7 @@ jobs:
         if: ${{ inputs.upload_artifacts == 'true' }}
         uses: actions/upload-artifact@v4
         with:
-          name: econ_calendar_${{ inputs.region }}_${{ steps.run.outputs.ts }}
+          name: econ_calendar_${{ matrix.region }}_${{ steps.run.outputs.ts }}
           path: artifacts/econ_calendar/**
           if-no-files-found: warn
+          retention-days: 14

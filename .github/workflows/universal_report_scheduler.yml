@@ -28,7 +28,6 @@ on:
         type: choice
         options: ["true","false"]
   schedule:
-    # One hour after open, Pacific time (DST-aware)
     - cron: '30 14 * 3-10 1-5'      # 07:30 AM PDT (Mar–Oct)
     - cron: '30 16 * 11,12,1,2 1-5' # 08:30 AM PST (Nov–Feb)
 
@@ -102,5 +101,21 @@ jobs:
     runs-on: ubuntu-latest
     needs: [morning_report, color_guard, econ_calendar, uptime_ping]
     steps:
-      - name: Summarize failures
-        run: echo "One or more report jobs failed. Open the failing job(s) above for logs."
+      - name: Summarize failures with job URLs
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          echo "## Failure Digest" >> "$GITHUB_STEP_SUMMARY"
+          echo "Run: $RUN_URL" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          list_fail() {
+            job="$1"
+            result="$2"
+            if [ "$result" = "failure" ]; then
+              echo "- **$job** failed → $RUN_URL" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          }
+          list_fail "Morning Report"   "${{ needs.morning_report.result }}"
+          list_fail "Color Guard"      "${{ needs.color_guard.result }}"
+          list_fail "Econ Calendar"    "${{ needs.econ_calendar.result }}"
+          list_fail "Uptime Ping"      "${{ needs.uptime_ping.result }}"

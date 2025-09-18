@@ -69,6 +69,32 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: morning_report_na_${{ steps.run.outputs.ts }}
-          path: |
-            artifacts/morning_report/**
+          path: artifacts/morning_report/**
           if-no-files-found: warn
+          retention-days: 14
+
+      - name: Email Morning Report (SendGrid)
+        if: ${{ inputs.upload_artifacts == 'true' && (secrets.SENDGRID_API_KEY != '' ) && (vars.SENDGRID_TO != '') }}
+        env:
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          SENDGRID_TO: ${{ vars.SENDGRID_TO }}
+          SENDGRID_FROM: ${{ vars.SENDGRID_FROM || 'reports@vega.local' }}
+        run: |
+          set -e
+          FILE=$(ls -1 artifacts/morning_report/*.md | head -n1 || true)
+          if [ -z "$FILE" ]; then
+            echo "No report file to email"; exit 0
+          fi
+          SUBJECT="Morning Report NA — $(date +'%Y-%m-%d')"
+          BODY=$(python - <<'PY'
+import sys,html
+p=sys.argv[1]
+print("<pre>"+html.escape(open(p,'r',encoding='utf-8').read())+"</pre>")
+PY
+ "$FILE")
+          curl -sS -X POST https://api.sendgrid.com/v3/mail/send             -H "Authorization: Bearer $SENDGRID_API_KEY" -H "Content-Type: application/json"             -d "{"personalizations":[{"to":[{"email":"$SENDGRID_TO"}]}],"from":{"email":"$SENDGRID_FROM"},"subject":"$SUBJECT","content":[{"type":"text/html","value":$(
+              python - <<'PY'
+import json,sys; print(json.dumps(sys.stdin.read()))
+PY
+ <<<"$BODY"
+            )}]}"
