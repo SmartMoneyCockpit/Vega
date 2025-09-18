@@ -7,32 +7,36 @@ inputs:
     required: false
     default: "true"
 
+# ⬇️ Expose outputs to the caller step (steps.p.outputs.ok)
+outputs:
+  ok:
+    description: "String 'true' or 'false' to gate downstream jobs"
+    value: ${{ steps.gate.outputs.ok }}
+
 runs:
   using: "composite"
   steps:
     - shell: bash
-      id: p
+      id: gate
       env:
-        # The workflow passes this input; default is "true" if the repo var is unset.
+        # Carries the input into the shell env
         VEGA_ACTIONS_ENABLED: ${{ inputs.vega_actions_enabled }}
+        GITHUB_TOKEN: ${{ env.GITHUB_TOKEN }}
       run: |
         set -e
-        missing=()
-        need() { [ -n "${!1}" ] || missing+=("$1"); }
 
-        # Require only the token (pass it from the workflow via env:)
+        missing() { [ -z "${!1}" ]; }
+        need() { if missing "$1"; then echo "::notice title=Precheck::Missing -> $1"; echo "ok=false" >> "$GITHUB_OUTPUT"; exit 0; fi; }
+
+        # Require only the token (the workflow passes it via env)
         need GITHUB_TOKEN
 
-        if [ "${#missing[@]}" -gt 0 ]; then
-          echo "::notice title=Precheck::Missing -> ${missing[*]}"
-          echo "ok=false" >> "$GITHUB_OUTPUT"
-          exit 0
-        fi
-
+        # Global enable/disable flag
         if [ "${VEGA_ACTIONS_ENABLED}" != "true" ]; then
           echo "::notice title=Precheck::VEGA_ACTIONS_ENABLED=false (skipping)"
           echo "ok=false" >> "$GITHUB_OUTPUT"
           exit 0
         fi
 
+        # If we get here, we're good to run
         echo "ok=true" >> "$GITHUB_OUTPUT"
