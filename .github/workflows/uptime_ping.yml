@@ -6,7 +6,7 @@ on:
       enabled: { type: string, required: false, default: 'true' }
       url:     { type: string, required: false, default: '' }
       method:  { type: string, required: false, default: 'GET' }
-      expect:  { type: string, required: false, default: '200' }
+      expect:  { type: string, required: false, default: '' }   # empty = accept 2xx/3xx
     secrets:
       UPTIME_PING_URL: { required: false }
 
@@ -46,7 +46,7 @@ jobs:
         if: ${{ steps.cfg.outputs.has_urls != 'true' }}
         run: echo "::notice title=Uptime Ping::No URLs found via input, variables, or secret. Skipping."
 
-      - name: Ping all URLs
+      - name: Ping all URLs (follow redirects; 2xx/3xx = OK unless 'expect' set)
         if: ${{ steps.cfg.outputs.has_urls == 'true' }}
         id: ping
         shell: bash
@@ -60,10 +60,20 @@ jobs:
           fail=0
           while IFS= read -r url; do
             [ -z "$url" ] && continue
-            code=$(curl -s -o /dev/null -w "%{http_code}" -X "$METHOD" "$url" || echo "000")
-            if [ "$code" = "$EXPECT" ]; then ok="✅"; else ok="❌"; fail=$((fail+1)); fi
+            code=$(curl -L -s -o /dev/null -w "%{http_code}" -X "$METHOD" "$url" || echo "000")
+            ok="❌"
+            if [ -n "$EXPECT" ]; then
+              [ "$code" = "$EXPECT" ] && ok="✅" || ok="❌"
+            else
+              case "$code" in
+                2*|3*) ok="✅" ;;
+                *)     ok="❌" ;;
+              esac
+            fi
+            [ "$ok" = "❌" ] && fail=$((fail+1))
             printf "| %s | %s | %s |\n" "$url" "$code" "$ok" >> "$GITHUB_STEP_SUMMARY"
           done < _uptime/urls.txt
+
           if [ "$fail" -gt 0 ]; then
             echo "::error title=Uptime Ping::One or more checks failed ($fail failing)."
             exit 1
