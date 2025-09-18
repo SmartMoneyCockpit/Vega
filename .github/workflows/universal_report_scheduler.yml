@@ -3,7 +3,7 @@ name: Universal Report Scheduler
 on:
   workflow_dispatch:
   schedule:
-    - cron: '15 14 * * 1-5'   # adjust timing as needed
+    - cron: '15 14 * * 1-5'   # Weekdays 14:15 UTC ≈ 07:15 PT. Change if you want.
 
 permissions:
   contents: read
@@ -40,45 +40,66 @@ jobs:
     needs: precheck
     if: ${{ needs.precheck.outputs.ok == 'true' && needs.precheck.outputs.run_morning_report == 'true' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
+          cache-dependency-path: |
+            requirements.txt
+            pyproject.toml
       - name: Install Python deps if present
         run: |
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           if [ -f setup.py ] || [ -f pyproject.toml ]; then pip install -e .; fi
-      - name: Build NA Morning Report
-        run: python scripts/morning_report_na.py --tz America/Los_Angeles --out output/morning_report.md
+      - name: Build NA Morning Report (retry x3)
+        shell: bash
+        run: |
+          n=0
+          until [ $n -ge 3 ]; do
+            python scripts/morning_report_na.py --tz America/Los_Angeles --out output/morning_report.md && break
+            n=$((n+1)); echo "retry $n/3"; sleep 5
+          done
       - name: Upload Morning Report artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: morning-report-na
           path: output/morning_report.md
+          retention-days: 14
+          compression-level: 6
+      - name: Summary
+        run: |
+          echo "### Morning Report ✅" >> $GITHUB_STEP_SUMMARY
+          echo "- File: output/morning_report.md" >> $GITHUB_STEP_SUMMARY
 
   color_guard:
     needs: precheck
     if: ${{ needs.precheck.outputs.ok == 'true' && needs.precheck.outputs.run_color_guard == 'true' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
+          cache-dependency-path: |
+            requirements.txt
+            pyproject.toml
       - name: Install Python deps if present
         run: |
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           if [ -f setup.py ] || [ -f pyproject.toml ]; then pip install -e .; fi
       - name: Run Color Guard
+        shell: bash
         run: |
           ts="$(date +'%Y-%m-%d_%H-%M-%S')"
-          # Prefer your existing builder script name
           if [ -f scripts/color_guard_build.py ]; then
-            python scripts/color_guard_build.py --out outputs/color_guard/color_guard_${ts}.json
+            mkdir -p outputs/color_guard
+            python scripts/color_guard_build.py --out "outputs/color_guard/color_guard_${ts}.json"
           else
             python scripts/color_guard.py
           fi
@@ -90,29 +111,40 @@ jobs:
           path: |
             output/color_guard/**
             outputs/color_guard/**
+          retention-days: 14
+          compression-level: 6
+      - name: Summary
+        run: |
+          echo "### Color Guard ✅" >> $GITHUB_STEP_SUMMARY
+          echo "- Files: output(s)/color_guard/*" >> $GITHUB_STEP_SUMMARY
 
   econ_calendar:
     needs: precheck
     if: ${{ needs.precheck.outputs.ok == 'true' && needs.precheck.outputs.run_econ_calendar == 'true' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
+          cache-dependency-path: |
+            requirements.txt
+            pyproject.toml
       - name: Install Python deps if present
         run: |
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           if [ -f setup.py ] || [ -f pyproject.toml ]; then pip install -e .; fi
       - name: Run Econ Calendar
+        shell: bash
         run: |
           ts="$(date +'%Y-%m-%d_%H-%M-%S')"
-          # Prefer your existing builder script name
           if [ -f scripts/econ_calendar_build.py ]; then
-            python scripts/econ_calendar_build.py --region NA --out outputs/econ_calendar/econ_NA_${ts}.csv
-            python scripts/econ_calendar_build.py --region CA --out outputs/econ_calendar/econ_CA_${ts}.csv
-            python scripts/econ_calendar_build.py --region MX --out outputs/econ_calendar/econ_MX_${ts}.csv
+            mkdir -p outputs/econ_calendar
+            python scripts/econ_calendar_build.py --region NA --out "outputs/econ_calendar/econ_NA_${ts}.csv"
+            python scripts/econ_calendar_build.py --region CA --out "outputs/econ_calendar/econ_CA_${ts}.csv"
+            python scripts/econ_calendar_build.py --region MX --out "outputs/econ_calendar/econ_MX_${ts}.csv"
           else
             python scripts/econ_calendar.py
           fi
@@ -124,22 +156,32 @@ jobs:
           path: |
             output/econ_calendar/**
             outputs/econ_calendar/**
+          retention-days: 14
+          compression-level: 6
+      - name: Summary
+        run: |
+          echo "### Econ Calendar ✅" >> $GITHUB_STEP_SUMMARY
+          echo "- Files: output(s)/econ_calendar/*" >> $GITHUB_STEP_SUMMARY
 
   uptime_ping:
     needs: precheck
     if: ${{ needs.precheck.outputs.ok == 'true' && needs.precheck.outputs.run_uptime_ping == 'true' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: 'pip'
       - name: Run Uptime Ping
+        shell: bash
         run: |
+          mkdir -p output/uptime_ping
           if [ -f scripts/uptime_ping.py ]; then
             python scripts/uptime_ping.py
           else
-            echo "Uptime stub" > output/uptime_ping/uptime_stub.txt
+            echo "Uptime stub $(date -u +'%Y-%m-%d_%H-%M-%S')" > output/uptime_ping/uptime_stub.txt
           fi
       - name: Upload Uptime Ping artifact
         if: always()
@@ -149,3 +191,9 @@ jobs:
           path: |
             output/uptime_ping/**
             outputs/uptime_ping/**
+          retention-days: 14
+          compression-level: 6
+      - name: Summary
+        run: |
+          echo "### Uptime Ping ✅" >> $GITHUB_STEP_SUMMARY
+          echo "- Files: output(s)/uptime_ping/*" >> $GITHUB_STEP_SUMMARY
