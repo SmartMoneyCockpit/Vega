@@ -25,6 +25,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TZ: ${{ inputs.timezone }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
 
@@ -39,7 +42,7 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           if [ -f setup.py ] || [ -f pyproject.toml ]; then pip install -e .; fi
 
-      - name: Generate Morning Report (Markdown) — tolerant
+      - name: Generate Morning Report (Markdown) - tolerant
         id: run
         run: |
           set -e
@@ -60,7 +63,7 @@ jobs:
           cp outputs/morning_report/* artifacts/morning_report/
           echo "ts=$ts" >> "$GITHUB_OUTPUT"
 
-      - name: Convert MD → PDF (robust fallback)
+      - name: Convert MD to PDF (robust fallback)
         run: |
           set -e
           MD="artifacts/morning_report/morning_na_${{ steps.run.outputs.ts }}.md"
@@ -73,7 +76,7 @@ jobs:
 
           ok_pdf() { [ -f "$OUTPDF" ] && [ -s "$OUTPDF" ]; }
 
-          # Attempt 1: md-to-pdf
+          # Attempt 1: md-to-pdf (Chromium/Puppeteer)
           sudo apt-get update -y || true
           sudo apt-get install -y xvfb curl ca-certificates || true
           curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - || true
@@ -83,13 +86,15 @@ jobs:
             xvfb-run -a md-to-pdf "$MD" --output "$OUTPDF" || true
           fi
 
-          # Attempt 2: Python markdown + wkhtmltopdf fallback
+          # Attempt 2: Python markdown + wkhtmltopdf
           if ! ok_pdf ; then
             echo "::notice title=PDF::md-to-pdf failed; trying wkhtmltopdf fallback."
             python - <<'PY'
 import importlib, subprocess, sys
-try: importlib.import_module("markdown")
-except Exception: subprocess.check_call([sys.executable,"-m","pip","install","markdown"])
+try:
+    importlib.import_module("markdown")
+except Exception:
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "markdown"])
 PY
             sudo apt-get install -y wkhtmltopdf || true
             TMPHTML="$(mktemp --suffix=.html)"
@@ -99,7 +104,8 @@ md_path, html_path = sys.argv[1], sys.argv[2]
 html = markdown.markdown(pathlib.Path(md_path).read_text(encoding="utf-8"))
 pathlib.Path(html_path).write_text(
     "<meta charset='utf-8'><div style='font-family:Arial,Helvetica,sans-serif;white-space:pre-wrap'>"
-    + html + "</div>", encoding="utf-8"
+    + html + "</div>",
+    encoding="utf-8",
 )
 PY
             if command -v wkhtmltopdf >/dev/null 2>&1; then
@@ -118,10 +124,10 @@ PY
       - name: Job summary
         run: |
           echo "## Morning Report (NA)" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Timezone: \`${TZ}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Timestamp: \`${{ steps.run.outputs.ts }}\`" >> "$GITHUB_STEP_SUMMARY"
-          if ls artifacts/morning_report/*.md >/dev/null 2>&1; then echo "- MD generated ✅" >> "$GITHUB_STEP_SUMMARY"; else echo "- MD missing ⚠️" >> "$GITHUB_STEP_SUMMARY"; fi
-          if ls artifacts/morning_report/*.pdf >/dev/null 2>&1; then echo "- PDF generated ✅" >> "$GITHUB_STEP_SUMMARY"; else echo "- PDF missing ⚠️" >> "$GITHUB_STEP_SUMMARY"; fi
+          echo "- Timezone: ${TZ}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Timestamp: ${{ steps.run.outputs.ts }}" >> "$GITHUB_STEP_SUMMARY"
+          if ls artifacts/morning_report/*.md >/dev/null 2>&1; then echo "- MD generated: YES" >> "$GITHUB_STEP_SUMMARY"; else echo "- MD generated: NO" >> "$GITHUB_STEP_SUMMARY"; fi
+          if ls artifacts/morning_report/*.pdf >/dev/null 2>&1; then echo "- PDF generated: YES" >> "$GITHUB_STEP_SUMMARY"; else echo "- PDF generated: NO" >> "$GITHUB_STEP_SUMMARY"; fi
 
       - name: Upload artifacts
         if: ${{ inputs.upload_artifacts == 'true' }}
