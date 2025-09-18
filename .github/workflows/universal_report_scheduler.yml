@@ -2,6 +2,31 @@ name: Universal Report Scheduler
 
 on:
   workflow_dispatch:
+    inputs:
+      run_morning_report:
+        description: "Run Morning Report (NA)?"
+        required: true
+        default: "true"
+        type: choice
+        options: ["true","false"]
+      run_color_guard:
+        description: "Run Color Guard?"
+        required: true
+        default: "true"
+        type: choice
+        options: ["true","false"]
+      run_econ_calendar:
+        description: "Run Econ Calendar?"
+        required: true
+        default: "true"
+        type: choice
+        options: ["true","false"]
+      run_uptime_ping:
+        description: "Run Uptime Ping?"
+        required: true
+        default: "true"
+        type: choice
+        options: ["true","false"]
   schedule:
     # One hour after open, Pacific time (DST-aware)
     - cron: '30 14 * 3-10 1-5'      # 07:30 AM PDT (Mar–Oct)
@@ -18,9 +43,15 @@ jobs:
   precheck:
     runs-on: ubuntu-latest
     outputs:
-      ok: ${{ steps.p.outputs.ok }}
+      ok:                  ${{ steps.p.outputs.ok }}
+      run_morning_report:  ${{ steps.tog.outputs.run_morning_report }}
+      run_color_guard:     ${{ steps.tog.outputs.run_color_guard }}
+      run_econ_calendar:   ${{ steps.tog.outputs.run_econ_calendar }}
+      run_uptime_ping:     ${{ steps.tog.outputs.run_uptime_ping }}
     steps:
       - uses: actions/checkout@v4
+
+      # Your existing repo-level precheck
       - id: p
         uses: ./.github/actions/precheck
         with:
@@ -28,25 +59,45 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
-  # Call each workflow unconditionally; each one has its own toggle gate
+      # Normalize toggles (strings!) to job outputs
+      - id: tog
+        run: |
+          echo "run_morning_report=${{ github.event.inputs.run_morning_report || 'true' }}" >> "$GITHUB_OUTPUT"
+          echo "run_color_guard=${{ github.event.inputs.run_color_guard   || 'true' }}" >> "$GITHUB_OUTPUT"
+          echo "run_econ_calendar=${{ github.event.inputs.run_econ_calendar || 'true' }}" >> "$GITHUB_OUTPUT"
+          echo "run_uptime_ping=${{ github.event.inputs.run_uptime_ping   || 'true' }}" >> "$GITHUB_OUTPUT"
+
+  # Caller-level gating + pass toggles down to callees
   morning_report:
     needs: precheck
+    if: ${{ needs.precheck.outputs.ok == 'true' && needs.precheck.outputs.run_morning_report == 'true' }}
     uses: ./.github/workflows/morning-report-na.yml
+    with:
+      enabled: true
     secrets: inherit
 
   color_guard:
     needs: precheck
+    if: ${{ needs.precheck.outputs.ok == 'true' && needs.precheck.outputs.run_color_guard == 'true' }}
     uses: ./.github/workflows/color_guard_prep.yml
+    with:
+      enabled: true
     secrets: inherit
 
   econ_calendar:
     needs: precheck
+    if: ${{ needs.precheck.outputs.ok == 'true' && needs.precheck.outputs.run_econ_calendar == 'true' }}
     uses: ./.github/workflows/econ_calendar.yml
+    with:
+      enabled: true
     secrets: inherit
 
   uptime_ping:
     needs: precheck
+    if: ${{ needs.precheck.outputs.ok == 'true' && needs.precheck.outputs.run_uptime_ping == 'true' }}
     uses: ./.github/workflows/uptime_ping.yml
+    with:
+      enabled: true
     secrets: inherit
 
   failure_digest:
