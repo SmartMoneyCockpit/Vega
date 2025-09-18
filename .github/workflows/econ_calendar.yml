@@ -18,43 +18,32 @@ jobs:
         region: [NA, CA, MX]
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip'
+        with: { python-version: '3.11', cache: 'pip' }
 
-      - name: Install deps if present
+      - name: Install Python deps if present
+        shell: bash
         run: |
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           if [ -f setup.py ] || [ -f pyproject.toml ]; then pip install -e .; fi
 
       - name: Build economic calendar dataset
         id: run
-        env:
-          REGION: ${{ matrix.region }}
+        env: { REGION: ${{ matrix.region }} }
+        shell: bash
         run: |
           set -e
           mkdir -p artifacts/econ_calendar outputs/econ_calendar
           ts="$(date +'%Y-%m-%d_%H-%M-%S')"
-          if python -c "import vega.reports.econ_calendar" 2>/dev/null; then
-            python -m vega.reports.econ_calendar --region "$REGION" --out "outputs/econ_calendar/econ_${REGION}_${ts}.csv" || true
-          elif [ -f scripts/econ_calendar_build.py ]; then
-            python scripts/econ_calendar_build.py --region "$REGION" --out "outputs/econ_calendar/econ_${REGION}_${ts}.csv" || true
-          else
-            echo "::notice title=Econ Calendar::No known script found (vega.reports.econ_calendar or scripts/econ_calendar_build.py)."
-          fi
-          cp -r outputs/econ_calendar/* artifacts/econ_calendar/ 2>/dev/null || true
+          python scripts/econ_calendar_build.py --region "$REGION" --out "outputs/econ_calendar/econ_${REGION}_${ts}.csv"
+          cp -r outputs/econ_calendar/* artifacts/econ_calendar/
           echo "ts=$ts" >> "$GITHUB_OUTPUT"
 
       - name: Job summary
+        shell: bash
         run: |
           echo "## Economic Calendar (${{ matrix.region }})" >> "$GITHUB_STEP_SUMMARY"
-          if ls artifacts/econ_calendar/*_${{ matrix.region }}_* >/dev/null 2>&1; then
-            echo "- Calendar file generated ✅" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "- No calendar output ⚠️" >> "$GITHUB_STEP_SUMMARY"
-          fi
+          if ls artifacts/econ_calendar/*_${{ matrix.region }}_* >/dev/null 2>&1; then echo "- Calendar file generated ✅" >> "$GITHUB_STEP_SUMMARY"; else echo "- No calendar output ⚠️" >> "$GITHUB_STEP_SUMMARY"; fi
 
       - name: Upload artifacts
         if: ${{ inputs.upload_artifacts == 'true' }}
