@@ -6,6 +6,8 @@ on:
       enabled: { type: string, required: false, default: 'true' }
       timezone: { type: string, required: false, default: 'America/Los_Angeles' }
       upload_artifacts: { type: string, required: false, default: 'true' }
+    secrets:
+      SENDGRID_API_KEY: { required: false }
 
 permissions:
   contents: read
@@ -25,30 +27,45 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
-      - name: Install deps if present
+      - name: Install Python deps if present
         shell: bash
         run: |
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           if [ -f setup.py ] || [ -f pyproject.toml ]; then pip install -e .; fi
 
-      - name: Run Morning Report (auto-detect entrypoint)
+      - name: Generate Morning Report (Markdown)
         id: run
         shell: bash
         run: |
           set -e
           mkdir -p artifacts/morning_report outputs/morning_report
           ts="$(date +'%Y-%m-%d_%H-%M-%S')"
-          if python -c "import vega.reports.morning_na" 2>/dev/null; then
-            python -m vega.reports.morning_na --tz "$TZ" --out "outputs/morning_report/morning_na_${ts}.md" || true
-          elif [ -f scripts/morning_report_na.py ]; then
-            python scripts/morning_report_na.py --tz "$TZ" --out "outputs/morning_report/morning_na_${ts}.md" || true
-          else
-            echo "::notice title=Morning Report::No known script found (vega.reports.morning_na or scripts/morning_report_na.py)."
-          fi
-          if [ -f "outputs/morning_report/morning_na_${ts}.md" ]; then
-            cp outputs/morning_report/* artifacts/morning_report/
-          fi
+          python scripts/morning_report_na.py --tz "$TZ" --out "outputs/morning_report/morning_na_${ts}.md"
+          cp outputs/morning_report/* artifacts/morning_report/
           echo "ts=$ts" >> "$GITHUB_OUTPUT"
+
+      - name: Convert MD → PDF (md-to-pdf)
+        shell: bash
+        run: |
+          set -e
+          echo "::group::Install Node + md-to-pdf"
+          sudo apt-get update -y
+          sudo apt-get install -y xvfb
+          # Use Node 20
+          echo "::endgroup::"
+          echo "::group::Setup Node"
+          curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+          sudo apt-get install -y nodejs
+          echo "::endgroup::"
+          echo "::group::md-to-pdf"
+          sudo npm i -g md-to-pdf
+          echo "::endgroup::"
+          FILE="artifacts/morning_report/morning_na_${{ steps.run.outputs.ts }}.md"
+          if [ -f "$FILE" ]; then
+            xvfb-run -a md-to-pdf "$FILE" --output "artifacts/morning_report/morning_na_${{ steps.run.outputs.ts }}.pdf"
+          else
+            echo "::notice title=PDF::Markdown file not found; skipping PDF."
+          fi
 
       - name: Job summary
         shell: bash
@@ -56,54 +73,45 @@ jobs:
           echo "## Morning Report (NA)" >> "$GITHUB_STEP_SUMMARY"
           echo "- Timezone: \`${TZ}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Timestamp: \`${{ steps.run.outputs.ts }}\`" >> "$GITHUB_STEP_SUMMARY"
-          if ls artifacts/morning_report/* >/dev/null 2>&1; then
-            echo "- Artifacts prepared ✅" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "- No artifacts produced (nothing to upload) ⚠️" >> "$GITHUB_STEP_SUMMARY"
-          fi
+          if ls artifacts/morning_report/*.md >/dev/null 2>&1; then echo "- MD generated ✅" >> "$GITHUB_STEP_SUMMARY"; else echo "- MD missing ⚠️" >> "$GITHUB_STEP_SUMMARY"; fi
+          if ls artifacts/morning_report/*.pdf >/dev/null 2>&1; then echo "- PDF generated ✅" >> "$GITHUB_STEP_SUMMARY"; else echo "- PDF missing ⚠️" >> "$GITHUB_STEP_SUMMARY"; fi
 
       - name: Upload artifacts
         if: ${{ inputs.upload_artifacts == 'true' }}
         uses: actions/upload-artifact@v4
         with:
-          name: morning_report_na_${{ steps.run.outputs.ts }}
+          name: morning_report_${{ steps.run.outputs.ts }}
           path: artifacts/morning_report/**
           if-no-files-found: warn
           retention-days: 14
 
-      # ---- NEW: Email the report via SendGrid (auto-skips unless configured) ----
       - name: Email Morning Report (SendGrid)
         if: ${{ inputs.upload_artifacts == 'true' && (secrets.SENDGRID_API_KEY != '') && (vars.SENDGRID_TO != '') }}
         env:
           SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
           SENDGRID_TO:      ${{ vars.SENDGRID_TO }}
           SENDGRID_FROM:    ${{ vars.SENDGRID_FROM || 'reports@vega.local' }}
+          SUBJECT:         ${{ format('Morning Report NA — {0}', steps.run.outputs.ts) }}
         shell: bash
         run: |
           set -e
           FILE=$(ls -1 artifacts/morning_report/*.md | head -n1 || true)
-          if [ -z "$FILE" ]; then
-            echo "No report file to email"; exit 0
-          fi
-          SUBJECT="Morning Report NA — $(date +'%Y-%m-%d')"
+          if [ -z "$FILE" ]; then echo "No report file to email"; exit 0; fi
           BODY=$(python - <<'PY'
 import sys, html
-path = sys.argv[1]
-print("<pre>" + html.escape(open(path, "r", encoding="utf-8").read()) + "</pre>")
+p=sys.argv[1]
+print("<pre>"+html.escape(open(p,'r',encoding='utf-8').read())+"</pre>")
 PY
  "$FILE")
           curl -sS -X POST https://api.sendgrid.com/v3/mail/send \
-            -H "Authorization: Bearer $SENDGRID_API_KEY" \
-            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $SENDGRID_API_KEY" -H "Content-Type: application/json" \
             -d "$(
               python - <<'PY'
 import json, os, sys
-payload = {
-  "personalizations": [{"to": [{"email": os.environ["SENDGRID_TO"]}]}],
-  "from": {"email": os.environ.get("SENDGRID_FROM","reports@vega.local")},
-  "subject": os.environ.get("SUBJECT","Morning Report"),
-  "content": [{"type": "text/html", "value": sys.stdin.read()}]
-}
+payload={"personalizations":[{"to":[{"email":os.environ["SENDGRID_TO"]}]}],
+         "from":{"email":os.environ.get("SENDGRID_FROM","reports@vega.local")},
+         "subject":os.environ.get("SUBJECT","Morning Report"),
+         "content":[{"type":"text/html","value":sys.stdin.read()}]}
 print(json.dumps(payload))
 PY
 <<<"$BODY"
