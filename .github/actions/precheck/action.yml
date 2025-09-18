@@ -21,13 +21,9 @@ runs:
         VEGA_ACTIONS_ENABLED: ${{ inputs.vega_actions_enabled }}
       run: |
         set -e
-
-        # Global enable/disable flag
         if [ "${VEGA_ACTIONS_ENABLED}" != "true" ]; then
           echo "::notice title=Precheck::VEGA_ACTIONS_ENABLED=false (skipping)"
           echo "ok=false" >> "$GITHUB_OUTPUT"
           exit 0
         fi
-
-        # If we get here, we're good to run
         echo "ok=true" >> "$GITHUB_OUTPUT"
