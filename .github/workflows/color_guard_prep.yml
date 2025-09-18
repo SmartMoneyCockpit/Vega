@@ -3,10 +3,8 @@ name: Color Guard
 on:
   workflow_call:
     inputs:
-      enabled:
-        type: string
-        required: false
-        default: 'true'
+      enabled: { type: string, required: false, default: 'true' }
+      upload_artifacts: { type: string, required: false, default: 'true' }
 
 permissions:
   contents: read
@@ -18,9 +16,46 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # TODO: Replace with your real steps
-      - name: precheck
-        run: echo "color_guard / precheck ok"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
 
-      - name: build
-        run: echo "color_guard / build running"
+      - name: Install deps if present
+        run: |
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f setup.py ] || [ -f pyproject.toml ]; then pip install -e .; fi
+
+      - name: Build Color Guard snapshot
+        id: run
+        shell: bash
+        run: |
+          set -e
+          mkdir -p artifacts/color_guard outputs/color_guard
+          ts="$(date +'%Y-%m-%d_%H-%M-%S')"
+          if python -c "import vega.reports.color_guard" 2>/dev/null; then
+            python -m vega.reports.color_guard --out "outputs/color_guard/color_guard_${ts}.json" || true
+          elif [ -f scripts/color_guard_build.py ]; then
+            python scripts/color_guard_build.py --out "outputs/color_guard/color_guard_${ts}.json" || true
+          else
+            echo "::notice title=Color Guard::No known script found (vega.reports.color_guard or scripts/color_guard_build.py)."
+          fi
+          cp -r outputs/color_guard/* artifacts/color_guard/ 2>/dev/null || true
+          echo "ts=$ts" >> "$GITHUB_OUTPUT"
+
+      - name: Job summary
+        run: |
+          echo "## Color Guard" >> "$GITHUB_STEP_SUMMARY"
+          if ls artifacts/color_guard/* >/dev/null 2>&1; then
+            echo "- Snapshot generated ✅" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- No snapshot generated ⚠️" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload artifacts
+        if: ${{ inputs.upload_artifacts == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: color_guard_${{ steps.run.outputs.ts }}
+          path: artifacts/color_guard/**
+          if-no-files-found: warn

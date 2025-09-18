@@ -51,7 +51,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Your existing repo-level precheck (must set ok=true in $GITHUB_OUTPUT)
       - id: p
         uses: ./.github/actions/precheck
         with:
@@ -59,7 +58,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
-      # Normalize dispatch inputs (strings) into job outputs
       - id: tog
         run: |
           echo "run_morning_report=${{ github.event.inputs.run_morning_report || 'true' }}" >> "$GITHUB_OUTPUT"

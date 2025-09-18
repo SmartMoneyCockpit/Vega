@@ -3,24 +3,59 @@ name: Uptime Ping
 on:
   workflow_call:
     inputs:
-      enabled:
-        type: string
-        required: false
-        default: 'true'
+      enabled: { type: string, required: false, default: 'true' }
+      url:     { type: string, required: false, default: '' }
+      method:  { type: string, required: false, default: 'GET' }
+      expect:  { type: string, required: false, default: '200' }
+    secrets:
+      UPTIME_PING_URL: { required: false }
 
-permissions:
-  contents: read
+permissions: {}
 
 jobs:
   build:
     if: ${{ inputs.enabled == 'true' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Resolve URL
+        id: cfg
+        shell: bash
+        env:
+          U_SECRET: ${{ secrets.UPTIME_PING_URL }}
+          U_INPUT:  ${{ inputs.url }}
+        run: |
+          url="${U_INPUT:-$U_SECRET}"
+          if [ -z "$url" ]; then
+            echo "::notice title=Uptime Ping::No URL provided via input or secret."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "url=$url" >> "$GITHUB_OUTPUT"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
 
-      # TODO: Replace with your real steps
-      - name: precheck
-        run: echo "uptime_ping / precheck ok"
+      - name: Ping
+        if: ${{ steps.cfg.outputs.skip != 'true' }}
+        id: ping
+        shell: bash
+        env:
+          URL:    ${{ steps.cfg.outputs.url }}
+          METHOD: ${{ inputs.method }}
+          EXPECT: ${{ inputs.expect }}
+        run: |
+          set -e
+          code=$(curl -s -o /dev/null -w "%{http_code}" -X "$METHOD" "$URL")
+          echo "status_code=$code" >> "$GITHUB_OUTPUT"
+          if [ "$code" != "$EXPECT" ]; then
+            echo "::error title=Uptime Ping::Expected $EXPECT but got $code ($METHOD $URL)"
+            exit 1
+          fi
+          echo "OK ($code)"
 
-      - name: ping
-        run: echo "uptime_ping / ping running"
+      - name: Job summary
+        run: |
+          echo "## Uptime Ping" >> "$GITHUB_STEP_SUMMARY"
+          echo "- URL: \`${{ steps.cfg.outputs.url || 'n/a' }}\`" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.cfg.outputs.skip }}" = "true" ]; then
+            echo "- Skipped (no URL provided)" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- HTTP status: \`${{ steps.ping.outputs.status_code }}\`" >> "$GITHUB_STEP_SUMMARY"

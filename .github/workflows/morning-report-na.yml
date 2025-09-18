@@ -3,10 +3,11 @@ name: Morning Report NA
 on:
   workflow_call:
     inputs:
-      enabled:
-        type: string
-        required: false
-        default: 'true'
+      enabled: { type: string, required: false, default: 'true' }
+      timezone: { type: string, required: false, default: 'America/Los_Angeles' }
+      upload_artifacts: { type: string, required: false, default: 'true' }
+    secrets:
+      SENDGRID_API_KEY: { required: false }
 
 permissions:
   contents: read
@@ -15,12 +16,59 @@ jobs:
   build:
     if: ${{ inputs.enabled == 'true' }}
     runs-on: ubuntu-latest
+    env:
+      TZ: ${{ inputs.timezone }}
     steps:
       - uses: actions/checkout@v4
 
-      # TODO: Replace with your real steps
-      - name: precheck
-        run: echo "morning_report / precheck ok"
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
 
-      - name: build
-        run: echo "morning_report / build running"
+      - name: Install deps if present
+        run: |
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
+          if [ -f setup.py ] || [ -f pyproject.toml ]; then
+            pip install -e .
+          fi
+
+      - name: Run Morning Report (auto-detect entrypoint)
+        id: run
+        shell: bash
+        run: |
+          set -e
+          mkdir -p artifacts/morning_report outputs/morning_report
+          ts="$(date +'%Y-%m-%d_%H-%M-%S')"
+          if python -c "import vega.reports.morning_na" 2>/dev/null; then
+            python -m vega.reports.morning_na --tz "$TZ" --out "outputs/morning_report/morning_na_${ts}.md" || true
+          elif [ -f scripts/morning_report_na.py ]; then
+            python scripts/morning_report_na.py --tz "$TZ" --out "outputs/morning_report/morning_na_${ts}.md" || true
+          else
+            echo "::notice title=Morning Report::No known script found (vega.reports.morning_na or scripts/morning_report_na.py)."
+          fi
+          [ -f outputs/morning_report/morning_na_${ts}.md ] && cp outputs/morning_report/* artifacts/morning_report/ || true
+          echo "ts=$ts" >> "$GITHUB_OUTPUT"
+
+      - name: Job summary
+        run: |
+          echo "## Morning Report (NA)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Timezone: \`${TZ}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Timestamp: \`${{ steps.run.outputs.ts }}\`" >> "$GITHUB_STEP_SUMMARY"
+          if ls artifacts/morning_report/* >/dev/null 2>&1; then
+            echo "- Artifacts prepared ✅" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- No artifacts produced (nothing to upload) ⚠️" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload artifacts
+        if: ${{ inputs.upload_artifacts == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: morning_report_na_${{ steps.run.outputs.ts }}
+          path: |
+            artifacts/morning_report/**
+          if-no-files-found: warn
