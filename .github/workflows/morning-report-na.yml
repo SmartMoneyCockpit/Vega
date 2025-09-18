@@ -31,13 +31,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Ensure Python deps if repo needs them AND make sure 'requests' exists for email helper
-      - name: Install Python deps if present
+      # Ensure requests exists for the email helper (no heredocs)
+      - name: Ensure Python 'requests'
         shell: bash
         run: |
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          if [ -f setup.py ] || [ -f pyproject.toml ]; then pip install -e .; fi
-          python - <<'PY'
+          python - <<PY
 import importlib, subprocess, sys
 try:
     importlib.import_module("requests")
@@ -52,76 +50,41 @@ PY
           set -e
           mkdir -p artifacts/morning_report outputs/morning_report
           ts="$(date +'%Y-%m-%d_%H-%M-%S')"
-          OUT="outputs/morning_report/morning_na_${ts}.md"
+          out="outputs/morning_report/morning_na_${ts}.md"
           if [ -f scripts/morning_report_na.py ]; then
-            python scripts/morning_report_na.py --tz "$TZ" --out "$OUT" || {
-              echo "# Morning Report (Placeholder)" > "$OUT"
-              echo "" >> "$OUT"
-              echo "_Auto-generated placeholder because morning_report_na.py failed._" >> "$OUT"
+            python scripts/morning_report_na.py --tz "$TZ" --out "$out" || {
+              echo "# Morning Report (Placeholder)" > "$out"
+              echo "" >> "$out"
+              echo "_Auto-generated placeholder because morning_report_na.py failed._" >> "$out"
             }
           else
-            echo "# Morning Report (Placeholder)" > "$OUT"
-            echo "" >> "$OUT"
-            echo "_Auto-generated placeholder because morning_report_na.py was not found._" >> "$OUT"
+            echo "# Morning Report (Placeholder)" > "$out"
+            echo "" >> "$out"
+            echo "_Auto-generated placeholder because morning_report_na.py was not found._" >> "$out"
           fi
           cp outputs/morning_report/* artifacts/morning_report/
           echo "ts=$ts" >> "$GITHUB_OUTPUT"
 
-      - name: Convert MD to PDF (robust fallback)
+      # Simple PDF attempt only (no heredocs, no fallbacks). Will not fail the job.
+      - name: Convert MD to PDF (best-effort)
         shell: bash
         run: |
           set -e
-          MD="artifacts/morning_report/morning_na_${{ steps.run.outputs.ts }}.md"
-          OUTPDF="artifacts/morning_report/morning_na_${{ steps.run.outputs.ts }}.pdf"
-          if [ ! -f "$MD" ]; then
-            echo "::notice title=PDF::Markdown file not found; skipping PDF."
+          md="artifacts/morning_report/morning_na_${{ steps.run.outputs.ts }}.md"
+          pdf="artifacts/morning_report/morning_na_${{ steps.run.outputs.ts }}.pdf"
+          if [ ! -f "$md" ]; then
+            echo "::notice title=PDF::Markdown file not found; skipping."
             exit 0
           fi
-          ok_pdf() { [ -f "$OUTPDF" ] && [ -s "$OUTPDF" ]; }
-
-          # Attempt 1: md-to-pdf
           sudo apt-get update -y || true
           sudo apt-get install -y xvfb curl ca-certificates || true
           curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - || true
           sudo apt-get install -y nodejs || true
           sudo npm i -g md-to-pdf || true
           if command -v md-to-pdf >/dev/null 2>&1; then
-            xvfb-run -a md-to-pdf "$MD" --output "$OUTPDF" || true
-          fi
-
-          # Attempt 2: python-markdown + wkhtmltopdf
-          if ! ok_pdf ; then
-            echo "::notice title=PDF::md-to-pdf failed; trying wkhtmltopdf fallback."
-            python - <<'PY'
-import importlib, subprocess, sys
-try:
-    importlib.import_module("markdown")
-except Exception:
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "markdown"])
-PY
-            sudo apt-get install -y wkhtmltopdf || true
-            TMPHTML="$(mktemp --suffix=.html)"
-            python - <<'PY' "$MD" "$TMPHTML"
-import sys, pathlib, markdown
-md_path, html_path = sys.argv[1], sys.argv[2]
-html = markdown.markdown(pathlib.Path(md_path).read_text(encoding="utf-8"))
-pathlib.Path(html_path).write_text(
-    "<meta charset='utf-8'><div style='font-family:Arial,Helvetica,sans-serif;white-space:pre-wrap'>"
-    + html + "</div>",
-    encoding="utf-8",
-)
-PY
-            if command -v wkhtmltopdf >/dev/null 2>&1; then
-              wkhtmltopdf "$TMPHTML" "$OUTPDF" || true
-            else
-              echo "::notice title=PDF::wkhtmltopdf not available; skipping."
-            fi
-          fi
-
-          if ok_pdf ; then
-            echo "PDF created at $OUTPDF"
+            xvfb-run -a md-to-pdf "$md" --output "$pdf" || echo "::notice title=PDF::md-to-pdf failed; continuing."
           else
-            echo "::notice title=PDF::All converters failed; continuing without PDF."
+            echo "::notice title=PDF::md-to-pdf not available; skipping."
           fi
 
       - name: Job summary
@@ -130,7 +93,7 @@ PY
           echo "## Morning Report (NA)" >> "$GITHUB_STEP_SUMMARY"
           echo "- Timezone: ${TZ}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Timestamp: ${{ steps.run.outputs.ts }}" >> "$GITHUB_STEP_SUMMARY"
-          if ls artifacts/morning_report/*.md  >/dev/null 2>&1; then echo "- MD generated: YES"  >> "$GITHUB_STEP_SUMMARY"; else echo "- MD generated: NO"  >> "$GITHUB_STEP_SUMMARY"; fi
+          if ls artifacts/morning_report/*.md >/dev/null 2>&1; then echo "- MD generated: YES" >> "$GITHUB_STEP_SUMMARY"; else echo "- MD generated: NO" >> "$GITHUB_STEP_SUMMARY"; fi
           if ls artifacts/morning_report/*.pdf >/dev/null 2>&1; then echo "- PDF generated: YES" >> "$GITHUB_STEP_SUMMARY"; else echo "- PDF generated: NO" >> "$GITHUB_STEP_SUMMARY"; fi
 
       - name: Upload artifacts
@@ -142,7 +105,7 @@ PY
           if-no-files-found: warn
           retention-days: 14
 
-      # Email (safe; runs only if configured)
+      # Email the Markdown via helper script (runs only if configured). No heredocs.
       - name: Email Morning Report (SendGrid)
         if: ${{ inputs.upload_artifacts == 'true' && (secrets.SENDGRID_API_KEY != '') && (vars.SENDGRID_TO != '') }}
         env:
@@ -152,8 +115,8 @@ PY
         shell: bash
         run: |
           set -e
-          FILE=$(ls -1 artifacts/morning_report/*.md | head -n1 || true)
-          if [ -z "$FILE" ]; then
+          file="$(ls -1 artifacts/morning_report/*.md | head -n1 || true)"
+          if [ -z "$file" ]; then
             echo "No report file to email"; exit 0
           fi
           python scripts/sendgrid_email_md.py \
@@ -161,4 +124,4 @@ PY
             --to "$SENDGRID_TO" \
             --from "$SENDGRID_FROM" \
             --subject "Morning Report NA — ${{ steps.run.outputs.ts }}" \
-            --file "$FILE"
+            --file "$file"
