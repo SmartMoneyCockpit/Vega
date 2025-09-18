@@ -3,7 +3,7 @@ name: Universal Report Scheduler
 on:
   workflow_dispatch:
   schedule:
-    - cron: '15 14 * * 1-5'   # Weekdays 14:15 UTC ≈ 07:15 PT. Change if you want.
+    - cron: '15 14 * * 1-5'   # Weekdays 07:15 PT
 
 permissions:
   contents: read
@@ -23,12 +23,10 @@ jobs:
       run_uptime_ping: ${{ steps.tog.outputs.run_uptime_ping }}
     steps:
       - uses: actions/checkout@v4
-
       - id: p
         uses: ./.github/actions/precheck
         with:
           vega_actions_enabled: ${{ vars.VEGA_ACTIONS_ENABLED }}
-
       - id: tog
         run: |
           echo "run_morning_report=true" >> "$GITHUB_OUTPUT"
@@ -50,28 +48,16 @@ jobs:
           cache-dependency-path: |
             requirements.txt
             pyproject.toml
-      - name: Install Python deps if present
-        run: |
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          if [ -f setup.py ] || [ -f pyproject.toml ]; then pip install -e .; fi
-      - name: Build NA Morning Report (retry x3)
-        shell: bash
-        run: |
-          n=0
-          until [ $n -ge 3 ]; do
-            python scripts/morning_report_na.py --tz America/Los_Angeles --out output/morning_report.md && break
-            n=$((n+1)); echo "retry $n/3"; sleep 5
-          done
-      - name: Upload Morning Report artifact
+      - name: Build NA Morning Report
+        run: python scripts/morning_report_na.py --tz America/Los_Angeles --out output/morning_report.md
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
         with:
           name: morning-report-na
           path: output/morning_report.md
           retention-days: 14
           compression-level: 6
-      - name: Summary
-        run: |
+      - run: |
           echo "### Morning Report ✅" >> $GITHUB_STEP_SUMMARY
           echo "- File: output/morning_report.md" >> $GITHUB_STEP_SUMMARY
 
@@ -86,26 +72,12 @@ jobs:
         with:
           python-version: '3.11'
           cache: 'pip'
-          cache-dependency-path: |
-            requirements.txt
-            pyproject.toml
-      - name: Install Python deps if present
-        run: |
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          if [ -f setup.py ] || [ -f pyproject.toml ]; then pip install -e .; fi
       - name: Run Color Guard
-        shell: bash
         run: |
-          ts="$(date +'%Y-%m-%d_%H-%M-%S')"
-          if [ -f scripts/color_guard_build.py ]; then
-            mkdir -p outputs/color_guard
-            python scripts/color_guard_build.py --out "outputs/color_guard/color_guard_${ts}.json"
-          else
-            python scripts/color_guard.py
-          fi
-      - name: Upload Color Guard artifact
+          mkdir -p outputs/color_guard
+          python scripts/color_guard.py
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
         with:
           name: color-guard
           path: |
@@ -113,8 +85,7 @@ jobs:
             outputs/color_guard/**
           retention-days: 14
           compression-level: 6
-      - name: Summary
-        run: |
+      - run: |
           echo "### Color Guard ✅" >> $GITHUB_STEP_SUMMARY
           echo "- Files: output(s)/color_guard/*" >> $GITHUB_STEP_SUMMARY
 
@@ -129,28 +100,12 @@ jobs:
         with:
           python-version: '3.11'
           cache: 'pip'
-          cache-dependency-path: |
-            requirements.txt
-            pyproject.toml
-      - name: Install Python deps if present
-        run: |
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          if [ -f setup.py ] || [ -f pyproject.toml ]; then pip install -e .; fi
       - name: Run Econ Calendar
-        shell: bash
         run: |
-          ts="$(date +'%Y-%m-%d_%H-%M-%S')"
-          if [ -f scripts/econ_calendar_build.py ]; then
-            mkdir -p outputs/econ_calendar
-            python scripts/econ_calendar_build.py --region NA --out "outputs/econ_calendar/econ_NA_${ts}.csv"
-            python scripts/econ_calendar_build.py --region CA --out "outputs/econ_calendar/econ_CA_${ts}.csv"
-            python scripts/econ_calendar_build.py --region MX --out "outputs/econ_calendar/econ_MX_${ts}.csv"
-          else
-            python scripts/econ_calendar.py
-          fi
-      - name: Upload Econ Calendar artifact
+          mkdir -p outputs/econ_calendar
+          python scripts/econ_calendar.py
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
         with:
           name: econ-calendar
           path: |
@@ -158,8 +113,7 @@ jobs:
             outputs/econ_calendar/**
           retention-days: 14
           compression-level: 6
-      - name: Summary
-        run: |
+      - run: |
           echo "### Econ Calendar ✅" >> $GITHUB_STEP_SUMMARY
           echo "- Files: output(s)/econ_calendar/*" >> $GITHUB_STEP_SUMMARY
 
@@ -175,17 +129,9 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
       - name: Run Uptime Ping
-        shell: bash
-        run: |
-          mkdir -p output/uptime_ping
-          if [ -f scripts/uptime_ping.py ]; then
-            python scripts/uptime_ping.py
-          else
-            echo "Uptime stub $(date -u +'%Y-%m-%d_%H-%M-%S')" > output/uptime_ping/uptime_stub.txt
-          fi
-      - name: Upload Uptime Ping artifact
+        run: python scripts/uptime_ping.py
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
         with:
           name: uptime-ping
           path: |
@@ -193,7 +139,32 @@ jobs:
             outputs/uptime_ping/**
           retention-days: 14
           compression-level: 6
-      - name: Summary
-        run: |
+      - run: |
           echo "### Uptime Ping ✅" >> $GITHUB_STEP_SUMMARY
           echo "- Files: output(s)/uptime_ping/*" >> $GITHUB_STEP_SUMMARY
+
+  notify_on_fail:
+    needs: [precheck, morning_report, color_guard, econ_calendar, uptime_ping]
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send failure email (SendGrid)
+        env:
+          SG_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          FROM:  ${{ vars.SENDGRID_FROM }}
+          TO:    ${{ vars.SENDGRID_TO }}
+          RUNURL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BRANCH: ${{ github.ref_name }}
+          WORKFLOW: ${{ github.workflow }}
+        run: |
+          if [ -z "${SG_KEY:-}" ]; then
+            echo "No SENDGRID_API_KEY secret; skipping email."
+            exit 0
+          fi
+          body=$(jq -n --arg s "❌ $WORKFLOW failed on $BRANCH" \
+                       --arg c "See run: $RUNURL" \
+                 '{personalizations:[{to:[{email:env.TO}]}],from:{email:env.FROM},
+                   subject:$s,content:[{type:"text/plain",value:$c}]}')
+          curl -sS -X POST https://api.sendgrid.com/v3/mail/send \
+            -H "Authorization: Bearer $SG_KEY" -H "Content-Type: application/json" \
+            -d "$body"
