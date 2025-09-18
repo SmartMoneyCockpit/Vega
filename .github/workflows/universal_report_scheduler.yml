@@ -1,76 +1,120 @@
-name: Morning Report NA
+name: Universal Report Scheduler
 
 on:
-  workflow_call:
+  workflow_dispatch:
     inputs:
-      enabled: { type: string, required: false, default: 'true' }
-      timezone: { type: string, required: false, default: 'America/Los_Angeles' }
-      upload_artifacts: { type: string, required: false, default: 'true' }
+      run_morning_report:
+        description: "Run Morning Report (NA)?"
+        required: true
+        default: "true"
+        type: choice
+        options: ["true","false"]
+      run_color_guard:
+        description: "Run Color Guard?"
+        required: true
+        default: "true"
+        type: choice
+        options: ["true","false"]
+      run_econ_calendar:
+        description: "Run Econ Calendar?"
+        required: true
+        default: "true"
+        type: choice
+        options: ["true","false"]
+      run_uptime_ping:
+        description: "Run Uptime Ping?"
+        required: true
+        default: "true"
+        type: choice
+        options: ["true","false"]
+  schedule:
+    - cron: '30 14 * 3-10 1-5'
+    - cron: '30 16 * 11,12,1,2 1-5'
 
 permissions:
   contents: read
 
+concurrency:
+  group: universal-report-scheduler
+  cancel-in-progress: true
+
 jobs:
-  build:
-    if: ${{ inputs.enabled == 'true' }}
+  precheck:
     runs-on: ubuntu-latest
-    env:
-      TZ: ${{ inputs.timezone }}
+    outputs:
+      ok:                  ${{ steps.p.outputs.ok }}
+      run_morning_report:  ${{ steps.tog.outputs.run_morning_report }}
+      run_color_guard:     ${{ steps.tog.outputs.run_color_guard }}
+      run_econ_calendar:   ${{ steps.tog.outputs.run_econ_calendar }}
+      run_uptime_ping:     ${{ steps.tog.outputs.run_uptime_ping }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - id: p
+        uses: ./.github/actions/precheck
         with:
-          python-version: '3.11'
-          cache: 'pip'
+          vega_actions_enabled: ${{ vars.VEGA_ACTIONS_ENABLED }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
-      - name: Install deps if present
-        shell: bash
+      - id: tog
         run: |
-          if [ -f requirements.txt ]; then
-            pip install -r requirements.txt
-          fi
-          if [ -f setup.py ] || [ -f pyproject.toml ]; then
-            pip install -e .
-          fi
+          echo "run_morning_report=${{ github.event.inputs.run_morning_report || 'true' }}" >> "$GITHUB_OUTPUT"
+          echo "run_color_guard=${{ github.event.inputs.run_color_guard   || 'true' }}" >> "$GITHUB_OUTPUT"
+          echo "run_econ_calendar=${{ github.event.inputs.run_econ_calendar || 'true' }}" >> "$GITHUB_OUTPUT"
+          echo "run_uptime_ping=${{ github.event.inputs.run_uptime_ping   || 'true' }}" >> "$GITHUB_OUTPUT"
 
-      - name: Run Morning Report (auto-detect entrypoint)
-        id: run
-        shell: bash
+  morning_report:
+    needs: precheck
+    if: ${{ needs.precheck.outputs.ok == 'true' && needs.precheck.outputs.run_morning_report == 'true' }}
+    uses: ./.github/workflows/morning-report-na.yml
+    with:
+      enabled: 'true'
+    secrets: inherit
+
+  color_guard:
+    needs: precheck
+    if: ${{ needs.precheck.outputs.ok == 'true' && needs.precheck.outputs.run_color_guard == 'true' }}
+    uses: ./.github/workflows/color_guard_prep.yml
+    with:
+      enabled: 'true'
+    secrets: inherit
+
+  econ_calendar:
+    needs: precheck
+    if: ${{ needs.precheck.outputs.ok == 'true' && needs.precheck.outputs.run_econ_calendar == 'true' }}
+    uses: ./.github/workflows/econ_calendar.yml
+    with:
+      enabled: 'true'
+    secrets: inherit
+
+  uptime_ping:
+    needs: precheck
+    if: ${{ needs.precheck.outputs.ok == 'true' && needs.precheck.outputs.run_uptime_ping == 'true' }}
+    uses: ./.github/workflows/uptime_ping.yml
+    with:
+      enabled: 'true'
+    secrets: inherit
+
+  failure_digest:
+    if: ${{ failure() }}
+    runs-on: ubuntu-latest
+    needs: [morning_report, color_guard, econ_calendar, uptime_ping]
+    steps:
+      - name: Summarize failures with job URLs
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          set -e
-          mkdir -p artifacts/morning_report outputs/morning_report
-          ts="$(date +'%Y-%m-%d_%H-%M-%S')"
-          if python -c "import vega.reports.morning_na" 2>/dev/null; then
-            python -m vega.reports.morning_na --tz "$TZ" --out "outputs/morning_report/morning_na_${ts}.md" || true
-          elif [ -f scripts/morning_report_na.py ]; then
-            python scripts/morning_report_na.py --tz "$TZ" --out "outputs/morning_report/morning_na_${ts}.md" || true
-          else
-            echo "::notice title=Morning Report::No known script found (vega.reports.morning_na or scripts/morning_report_na.py)."
-          fi
-          if [ -f "outputs/morning_report/morning_na_${ts}.md" ]; then
-            cp outputs/morning_report/* artifacts/morning_report/
-          fi
-          echo "ts=$ts" >> "$GITHUB_OUTPUT"
-
-      - name: Job summary
-        shell: bash
-        run: |
-          echo "## Morning Report (NA)" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Timezone: \`${TZ}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Timestamp: \`${{ steps.run.outputs.ts }}\`" >> "$GITHUB_STEP_SUMMARY"
-          if ls artifacts/morning_report/* >/dev/null 2>&1; then
-            echo "- Artifacts prepared ✅" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "- No artifacts produced (nothing to upload) ⚠️" >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-      - name: Upload artifacts
-        if: ${{ inputs.upload_artifacts == 'true' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: morning_report_na_${{ steps.run.outputs.ts }}
-          path: artifacts/morning_report/**
-          if-no-files-found: warn
-          retention-days: 14
+          echo "## Failure Digest" >> "$GITHUB_STEP_SUMMARY"
+          echo "Run: $RUN_URL" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          list_fail() {
+            job="$1"; result="$2"
+            if [ "$result" = "failure" ]; then
+              echo "- **$job** failed → $RUN_URL" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          }
+          list_fail "Morning Report"   "${{ needs.morning_report.result }}"
+          list_fail "Color Guard"      "${{ needs.color_guard.result }}"
+          list_fail "Econ Calendar"    "${{ needs.econ_calendar.result }}"
+          list_fail "Uptime Ping"      "${{ needs.uptime_ping.result }}"
