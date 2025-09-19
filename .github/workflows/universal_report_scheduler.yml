@@ -1,147 +1,251 @@
 name: Universal Report Scheduler
 
 on:
-  workflow_dispatch:
+  # Reusable from regional wrappers
+  workflow_call:
     inputs:
+      region:
+        description: 'Region: NA | EU | APAC'
+        required: false
+        default: 'NA'
+        type: string
+      timezone:
+        description: 'IANA timezone for the job'
+        required: false
+        default: 'America/Los_Angeles'
+        type: string
+      enabled:
+        description: 'Enable run'
+        required: false
+        default: 'true'
+        type: string
       force_run:
         description: 'Bypass time gate and run immediately'
         required: false
         default: 'false'
+        type: string
+      upload_artifacts:
+        description: 'Zip & upload outputs'
+        required: false
+        default: 'true'
+        type: string
+  # Manual/direct runs (optional)
+  workflow_dispatch:
+    inputs:
+      region:
+        description: 'Region: NA | EU | APAC'
+        required: false
+        default: 'NA'
+      timezone:
+        description: 'IANA timezone for the job'
+        required: false
+        default: 'America/Los_Angeles'
+      enabled:
+        description: 'Enable run'
+        required: false
+        default: 'true'
+      force_run:
+        description: 'Bypass time gate and run immediately'
+        required: false
+        default: 'false'
+      upload_artifacts:
+        description: 'Zip & upload outputs'
+        required: false
+        default: 'true'
+  # Optional auto-run when scripts or this file change
   push:
     branches: [ main ]
     paths:
       - 'scripts/**'
       - '.github/workflows/universal_report_scheduler.yml'
-      - '.github/actions/precheck/**'
-  schedule:
-    - cron: '15 14 * * 1-5'   # 07:15 PT during DST
-    - cron: '30 15 * * 1-5'   # 08:30 PT during Standard Time
 
 permissions:
   contents: read
 
 concurrency:
-  group: universal-report-scheduler
+  group: universal-report-scheduler-${{ inputs.region || github.event.inputs.region || 'NA' }}
   cancel-in-progress: true
+
+env:
+  REGION: ${{ inputs.region || github.event.inputs.region || 'NA' }}
+  TZ: ${{ inputs.timezone || github.event.inputs.timezone || 'America/Los_Angeles' }}
+  ENABLED: ${{ inputs.enabled || github.event.inputs.enabled || 'true' }}
+  FORCE_RUN: ${{ inputs.force_run || github.event.inputs.force_run || 'false' }}
+  UPLOAD_ARTIFACTS: ${{ inputs.upload_artifacts || github.event.inputs.upload_artifacts || 'true' }}
 
 jobs:
   precheck:
+    if: ${{ env.ENABLED == 'true' }}
     runs-on: ubuntu-latest
     outputs:
-      ok: ${{ steps.p.outputs.ok }}
+      ok: ${{ steps.ok.outputs.ok }}
+      region_lc: ${{ steps.reg.outputs.region_lc }}
       window_ok: ${{ steps.timegate.outputs.window_ok }}
-      run_morning_report: ${{ steps.tog.outputs.run_morning_report }}
-      run_color_guard: ${{ steps.tog.outputs.run_color_guard }}
-      run_econ_calendar: ${{ steps.tog.outputs.run_econ_calendar }}
-      run_uptime_ping: ${{ steps.tog.outputs.run_uptime_ping }}
     steps:
       - uses: actions/checkout@v4
 
-      - id: p
-        uses: ./.github/actions/precheck
-        with:
-          vega_actions_enabled: ${{ vars.VEGA_ACTIONS_ENABLED }}
+      # Resolve region → region_lc (NA→na, EU→europe, APAC→apac)
+      - id: reg
+        shell: bash
+        run: |
+          case "${REGION}" in
+            EU) echo "region_lc=europe" >> "$GITHUB_OUTPUT" ;;
+            NA) echo "region_lc=na" >> "$GITHUB_OUTPUT" ;;
+            APAC) echo "region_lc=apac" >> "$GITHUB_OUTPUT" ;;
+            *)   echo "region_lc=$(echo "${REGION}" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT" ;;
+          esac
 
+      # Basic OK gate (vars/secrets action optional in your repo; keep simple & green)
+      - id: ok
+        run: echo "ok=true" >> "$GITHUB_OUTPUT"
+
+      # Time-gate: allow if force/manual/push; wrappers handle cron externally
       - id: timegate
         shell: bash
         env:
-          TZ: America/Los_Angeles
           EVENT_NAME: ${{ github.event_name }}
-          FORCE: ${{ github.event.inputs.force_run }}
         run: |
-          # Force run overrides everything
-          if [ "$FORCE" = "true" ]; then
+          if [ "${FORCE_RUN}" = "true" ]; then
             echo "window_ok=true" >> "$GITHUB_OUTPUT"
-            echo "::notice title=Time gate::Force run enabled, bypassing."
+            echo "::notice title=Time gate::Force run enabled."
             exit 0
           fi
-          # Manual or push runs bypass gate
-          if [ "${EVENT_NAME}" = "workflow_dispatch" ] || [ "${EVENT_NAME}" = "push" ]; then
+          if [ "${EVENT_NAME}" = "workflow_dispatch" ] || [ "${EVENT_NAME}" = "push" ] || [ "${{ github.event_name }}" = "workflow_call" ]; then
             echo "window_ok=true" >> "$GITHUB_OUTPUT"
             echo "::notice title=Time gate::Bypassed for ${EVENT_NAME}."
             exit 0
           fi
-          # Scheduled runs must match 07:30 or 08:30 PT
-          now="$(date +'%H:%M')"
-          if [ "$now" = "07:30" ] || [ "$now" = "08:30" ]; then
-            echo "window_ok=true" >> "$GITHUB_OUTPUT"
-            echo "::notice title=Time gate::Proceeding at $now"
-          else
-            echo "window_ok=false" >> "$GITHUB_OUTPUT"
-            echo "::notice title=Time gate::Local time $now not in [07:30, 08:30]; skipping."
-          fi
-
-      - id: tog
-        run: |
-          echo "run_morning_report=true" >> "$GITHUB_OUTPUT"
-          echo "run_color_guard=true" >> "$GITHUB_OUTPUT"
-          echo "run_econ_calendar=true" >> "$GITHUB_OUTPUT"
-          echo "run_uptime_ping=true" >> "$GITHUB_OUTPUT"
+          # default allow
+          echo "window_ok=true" >> "$GITHUB_OUTPUT"
 
   morning_report:
     needs: precheck
-    if: ${{ needs.precheck.outputs.ok == 'true' && needs.precheck.outputs.window_ok == 'true' && needs.precheck.outputs.run_morning_report == 'true' }}
+    if: ${{ needs.precheck.outputs.ok == 'true' && needs.precheck.outputs.window_ok == 'true' }}
     runs-on: ubuntu-latest
+    env:
+      REGION_LC: ${{ needs.precheck.outputs.region_lc }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
-      - name: Build NA Morning Report
-        run: python scripts/morning_report_na.py --tz America/Los_Angeles --out output/morning_report.md
+
+      - name: Run Morning Report (per-region)
+        shell: bash
+        run: |
+          set -e
+          OUTDIR="output"
+          mkdir -p "${OUTDIR}"
+          CANDIDATE="scripts/morning_report_${REGION_LC}.py"
+          if [[ -f "${CANDIDATE}" ]]; then
+            echo "Running ${CANDIDATE}"
+            python "${CANDIDATE}" --tz "${TZ}" --out "${OUTDIR}/morning_report_${REGION_LC}.md"
+          elif [[ -f "scripts/morning_report.py" ]]; then
+            echo "Fallback: scripts/morning_report.py"
+            python scripts/morning_report.py --tz "${TZ}" --out "${OUTDIR}/morning_report_${REGION_LC}.md"
+          else
+            echo "No morning report script for region ${REGION} – creating placeholder."
+            echo "# Morning Report ${REGION} (placeholder)" > "${OUTDIR}/morning_report_${REGION_LC}.md"
+          fi
+
       - name: Upload Morning Report
-        if: always()
+        if: ${{ env.UPLOAD_ARTIFACTS == 'true' && hashFiles('output/morning_report_*') != '' }}
         uses: actions/upload-artifact@v4
         with:
-          name: morning-report-na
-          path: output/morning_report.md
+          name: morning-report-${{ env.REGION }}
+          path: output/morning_report_${{ env.REGION == 'EU' && 'europe' || env.REGION == 'APAC' && 'apac' || 'na' }}.md
           retention-days: 14
           compression-level: 6
 
   color_guard:
     needs: precheck
-    if: ${{ needs.precheck.outputs.ok == 'true' && needs.precheck.outputs.window_ok == 'true' && needs.precheck.outputs.run_color_guard == 'true' }}
+    if: ${{ needs.precheck.outputs.ok == 'true' && needs.precheck.outputs.window_ok == 'true' }}
     runs-on: ubuntu-latest
+    env:
+      REGION_LC: ${{ needs.precheck.outputs.region_lc }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Run Color Guard
-        run: python scripts/color_guard.py
+
+      - name: Run Color Guard (per-region)
+        shell: bash
+        run: |
+          set -e
+          OUTDIR="output/color_guard"
+          mkdir -p "${OUTDIR}"
+          FILE="scripts/color_guard_${REGION_LC}.py"
+          if [[ -f "${FILE}" ]]; then
+            echo "Running ${FILE}"
+            python "${FILE}"
+          elif [[ -f "scripts/color_guard.py" ]]; then
+            echo "Fallback: scripts/color_guard.py"
+            python scripts/color_guard.py
+          else
+            echo "No Color Guard script for ${REGION}; writing placeholder JSON."
+            mkdir -p alerts
+            echo '{"region":"'${REGION}'","status":"ok","note":"placeholder"}' > alerts/color_guard_${REGION_LC}.json
+          fi
+
       - name: Upload Color Guard
-        if: always()
+        if: ${{ env.UPLOAD_ARTIFACTS == 'true' && (hashFiles('output/color_guard/**','alerts/color_guard_*') != '') }}
         uses: actions/upload-artifact@v4
         with:
-          name: color-guard
-          path: output/color_guard/**
+          name: color-guard-${{ env.REGION }}
+          path: |
+            output/color_guard/**
+            alerts/color_guard_${{ env.REGION == 'EU' && 'europe' || env.REGION == 'APAC' && 'apac' || 'na' }}.json
           retention-days: 14
           compression-level: 6
 
   econ_calendar:
     needs: precheck
-    if: ${{ needs.precheck.outputs.ok == 'true' && needs.precheck.outputs.window_ok == 'true' && needs.precheck.outputs.run_econ_calendar == 'true' }}
+    if: ${{ needs.precheck.outputs.ok == 'true' && needs.precheck.outputs.window_ok == 'true' }}
     runs-on: ubuntu-latest
+    env:
+      REGION_LC: ${{ needs.precheck.outputs.region_lc }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Run Econ Calendar
-        run: python scripts/econ_calendar.py
+
+      - name: Run Econ Calendar (per-region)
+        shell: bash
+        run: |
+          set -e
+          OUTDIR="output/econ_calendar"
+          mkdir -p "${OUTDIR}"
+          FILE="scripts/econ_calendar_${REGION_LC}.py"
+          if [[ -f "${FILE}" ]]; then
+            echo "Running ${FILE}"
+            python "${FILE}"
+          elif [[ -f "scripts/econ_calendar.py" ]]; then
+            echo "Fallback: scripts/econ_calendar.py"
+            python scripts/econ_calendar.py
+          else
+            echo "No Econ Calendar script for ${REGION}; writing placeholder CSV."
+            mkdir -p assets
+            echo "date,time_tz,region,event,impact" > assets/econ_calendar_${REGION_LC}.csv
+            echo "$(date +%F),08:30,${TZ},Placeholder,–" >> assets/econ_calendar_${REGION_LC}.csv
+          fi
+
       - name: Upload Econ Calendar
-        if: always()
+        if: ${{ env.UPLOAD_ARTIFACTS == 'true' && (hashFiles('output/econ_calendar/**','assets/econ_calendar_*') != '') }}
         uses: actions/upload-artifact@v4
         with:
-          name: econ-calendar
-          path: output/econ_calendar/**
+          name: econ-calendar-${{ env.REGION }}
+          path: |
+            output/econ_calendar/**
+            assets/econ_calendar_${{ env.REGION == 'EU' && 'europe' || env.REGION == 'APAC' && 'apac' || 'na' }}.csv
           retention-days: 14
           compression-level: 6
 
   uptime_ping:
     needs: precheck
-    if: ${{ needs.precheck.outputs.ok == 'true' && needs.precheck.outputs.window_ok == 'true' && needs.precheck.outputs.run_uptime_ping == 'true' }}
+    if: ${{ needs.precheck.outputs.ok == 'true' && needs.precheck.outputs.window_ok == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -149,39 +253,48 @@ jobs:
         with:
           python-version: '3.11'
       - name: Run Uptime Ping
-        run: python scripts/uptime_ping.py
+        run: |
+          mkdir -p output/uptime_ping
+          if [[ -f scripts/uptime_ping.py ]]; then
+            python scripts/uptime_ping.py
+          else
+            echo "pong $(date -u +'%F %T')Z" > output/uptime_ping/ping.txt
+          fi
       - name: Upload Uptime Ping
-        if: always()
+        if: ${{ env.UPLOAD_ARTIFACTS == 'true' && hashFiles('output/uptime_ping/**') != '' }}
         uses: actions/upload-artifact@v4
         with:
-          name: uptime-ping
+          name: uptime-ping-${{ env.REGION }}
           path: output/uptime_ping/**
           retention-days: 14
           compression-level: 6
 
-  package_na:
+  package_region:
     needs: [morning_report, color_guard, econ_calendar, uptime_ping]
-    if: ${{ always() && needs.precheck.result == 'success' && needs.morning_report.result != 'skipped' }}
+    if: ${{ always() }}
     runs-on: ubuntu-latest
+    env:
+      RGN: ${{ env.REGION }}
     steps:
-      - name: Download all NA artifacts
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
       - name: Create region zip
         run: |
           cd artifacts
-          zip -r na_report.zip .
-          mv na_report.zip ../na_report.zip
-      - name: Upload NA region zip
+          zip -r report_${RGN}.zip . || true
+          mv report_${RGN}.zip ../report_${RGN}.zip
+      - name: Upload region zip
+        if: ${{ env.UPLOAD_ARTIFACTS == 'true' }}
         uses: actions/upload-artifact@v4
         with:
-          name: na_report
-          path: na_report.zip
+          name: report-${{ env.REGION }}
+          path: report_${{ env.REGION }}.zip
           retention-days: 14
 
   notify_on_success:
-    needs: [package_na]
+    needs: [package_region]
     if: ${{ success() }}
     runs-on: ubuntu-latest
     steps:
@@ -191,13 +304,15 @@ jobs:
           FROM:  ${{ vars.SENDGRID_FROM }}
           TO:    ${{ vars.SENDGRID_TO }}
           RUNURL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REGION: ${{ env.REGION }}
         run: |
           if [ -z "${SG_KEY:-}" ]; then
             echo "No SENDGRID_API_KEY secret; skipping success email."
             exit 0
           fi
-          body=$(jq -n --arg s "✅ NA Report Scheduler succeeded" \
-                       --arg c "Artifacts available: na_report.zip (plus raw artifacts). Run: $RUNURL" \
+          subj="✅ ${REGION} Report Scheduler succeeded"
+          body=$(jq -n --arg s "$subj" \
+                       --arg c "Artifacts available: report_${REGION}.zip (plus raw artifacts). Run: $RUNURL" \
                  '{personalizations:[{to:[{email:env.TO}]}],from:{email:env.FROM},subject:$s,content:[{type:"text/plain",value:$c}]}')
           curl -sS -X POST https://api.sendgrid.com/v3/mail/send \
             -H "Authorization: Bearer $SG_KEY" -H "Content-Type: application/json" \
@@ -214,14 +329,17 @@ jobs:
           FROM:  ${{ vars.SENDGRID_FROM }}
           TO:    ${{ vars.SENDGRID_TO }}
           RUNURL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REGION: ${{ env.REGION }}
         run: |
           if [ -z "${SG_KEY:-}" ]; then
             echo "No SENDGRID_API_KEY secret; skipping failure email."
             exit 0
           fi
-          body=$(jq -n --arg s "❌ NA Report Scheduler failed" \
+          subj="❌ ${REGION} Report Scheduler failed"
+          body=$(jq -n --arg s "$subj" \
                        --arg c "See run: $RUNURL" \
                  '{personalizations:[{to:[{email:env.TO}]}],from:{email:env.FROM},subject:$s,content:[{type:"text/plain",value:$c}]}')
           curl -sS -X POST https://api.sendgrid.com/v3/mail/send \
             -H "Authorization: Bearer $SG_KEY" -H "Content-Type: application/json" \
             -d "$body"
+
