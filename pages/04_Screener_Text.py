@@ -1,8 +1,5 @@
 # pages/04_Screener_Text.py
-import os
-import glob
-import pandas as pd
-import streamlit as st
+import os, glob, pandas as pd, streamlit as st
 
 st.set_page_config(page_title="Screener — Text", layout="wide")
 st.title("Screener — Text")
@@ -40,9 +37,11 @@ def _load_latest_csv():
     candidates += glob.glob("data/*screener*.csv", recursive=True)
     candidates += glob.glob("reports/*screener*.csv", recursive=True)
     candidates += glob.glob("output/*screener*.csv", recursive=True)
-    candidates += glob.glob("*.csv")
+    candidates += glob.glob("*screener*.csv")
     for path in candidates:
         try:
+            if not os.path.isfile(path):
+                continue
             df = pd.read_csv(path)
             if len(df.columns) > 0:
                 return df, path
