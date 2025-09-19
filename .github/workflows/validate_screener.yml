@@ -1,0 +1,43 @@
+name: Validate Screener CSV
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [ main ]
+    paths:
+      - 'data/**/*.csv'
+      - 'reports/**/*.csv'
+      - 'output/**/*.csv'
+      - '*screener*.csv'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install pandas
+        run: |
+          python -m pip install --upgrade pip
+          pip install -q pandas
+
+      - name: Validate & clean screener CSV
+        run: |
+          python scripts/validate_screener_csv.py
+
+      - name: Upload cleaned screener CSV
+        uses: actions/upload-artifact@v4
+        with:
+          name: screener-clean
+          path: out/screener_clean.csv
+          if-no-files-found: error
+          retention-days: 7
