@@ -7,7 +7,6 @@ on:
         description: 'Force-create a Monthly Release on this run (even if not 1st of month)'
         required: false
         default: 'false'
-      # Optional manual toggles (default ON)
       run_na:
         description: 'Run NA job'
         type: boolean
@@ -25,12 +24,9 @@ on:
         type: string
         default: ''
   schedule:
-    # Weekday auto-runs ~07:55–08:55 AM PT
     - cron: '55 14 * * 1-5'
     - cron: '55 15 * * 1-5'
-    # Saturday cleanup ~09:00 AM PT (16:00 UTC)
     - cron: '0 16 * * 6'
-    # 1st of month ~09:00 AM PT for monthly release
     - cron: '0 16 1 * *'
 
 permissions:
@@ -362,37 +358,21 @@ jobs:
             exit 1
           fi
 
-      - name: Fallback via Gmail SMTP (only if SG skipped/failed)
+      # Gmail SMTP fallback WITHOUT heredoc (avoids YAML parse issues)
+      - name: Fallback via Gmail SMTP (runs if SG skipped/failed)
         if: failure() || steps.sg.outputs.no_sg == 'true'
-        env:
-          MAIL_USER:         ${{ secrets.MAIL_USER }}
-          MAIL_APP_PASSWORD: ${{ secrets.MAIL_APP_PASSWORD }}
-          MAIL_TO:           ${{ secrets.MAIL_TO }}
-        shell: bash
-        run: |
-          set -e
-          if [[ -z "${MAIL_USER:-}" || -z "${MAIL_APP_PASSWORD:-}" || -z "${MAIL_TO:-}" ]]; then
-            echo "::warning::No Gmail SMTP secrets; cannot send fallback."
-            exit 0
-          fi
-          python - <<'PY'
-import os, smtplib, ssl, base64
-from email.message import EmailMessage
-FILE = "dl/reports-all-regions.zip"
-msg = EmailMessage()
-msg['Subject'] = "Reports - All Regions (fallback SMTP)"
-msg['From'] = os.environ['MAIL_USER']
-msg['To'] = os.environ['MAIL_TO']
-msg.set_content("Combined bundle attached if within provider limits.")
-if os.path.exists(FILE):
-    with open(FILE, 'rb') as f:
-        data = f.read()
-    msg.add_attachment(data, maintype="application", subtype="zip", filename="reports-all-regions.zip")
-with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=ssl.create_default_context()) as s:
-    s.login(os.environ['MAIL_USER'], os.environ['MAIL_APP_PASSWORD'])
-    s.send_message(msg)
-print("[smtp] sent fallback email")
-PY
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.MAIL_USER }}
+          password: ${{ secrets.MAIL_APP_PASSWORD }}
+          subject: ${{ github.event.inputs.email_subject || env.DEFAULT_EMAIL_SUBJECT }}
+          to: ${{ secrets.MAIL_TO }}
+          from: ${{ secrets.MAIL_USER }}
+          body: ${{ env.DEFAULT_EMAIL_BODY }}
+          attachments: dl/reports-all-regions.zip
 
   monthly_release:
     needs: aggregate
