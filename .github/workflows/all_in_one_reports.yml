@@ -1,0 +1,371 @@
+name: All-in-One Reports & Cleanup
+
+on:
+  workflow_dispatch: {}
+  # Weekday auto-run near ~07:55 AM PT
+  schedule:
+    - cron: '55 14 * * 1-5'
+    - cron: '55 15 * * 1-5'
+    # Saturday cleanup ~09:00 AM PT (16:00 UTC)
+    - cron: '0 16 * * 6'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: all-in-one-reports
+  cancel-in-progress: true
+
+jobs:
+  # --- Generate reports for all regions in parallel ---
+  regions:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { region: 'NA',   region_lc: 'na',     timezone: 'America/Los_Angeles' }
+          - { region: 'EU',   region_lc: 'europe', timezone: 'Europe/London' }
+          - { region: 'APAC', region_lc: 'apac',   timezone: 'America/Los_Angeles' } # APAC session keyed off PT
+    env:
+      REGION: ${{ matrix.region }}
+      REGION_LC: ${{ matrix.region_lc }}
+      TZ: ${{ matrix.timezone }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      # --- Morning (or Afternoon APAC) Report ---
+      - name: Run Morning Report (per-region)
+        shell: bash
+        run: |
+          set -e
+          OUT="output/morning_report_${REGION_LC}.md"
+          mkdir -p output
+
+          if [[ -f "scripts/morning_report_${REGION_LC}.py" ]]; then
+            python "scripts/morning_report_${REGION_LC}.py" --tz "${TZ}" --out "${OUT}" || true
+          elif [[ -f "scripts/morning_report.py" ]]; then
+            python scripts/morning_report.py --tz "${TZ}" --out "${OUT}" || true
+          fi
+
+          if [[ ! -s "${OUT}" ]]; then
+            for CAND in \
+              "reports/morning_report_${REGION_LC}.md" \
+              "reports/${REGION_LC}/morning_report.md" \
+              "reports/morning_report.md" \
+              "output/morning_report.md" ; do
+              [[ -s "${CAND}" ]] && { cp -f "${CAND}" "${OUT}"; break; }
+            done
+          fi
+
+          [[ -s "${OUT}" ]] || echo "# Morning Report ${REGION} (placeholder)" > "${OUT}"
+
+      - name: Upload Morning Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: morning-report-${{ env.REGION }}
+          path: output/morning_report_${{ env.REGION_LC }}.md
+          retention-days: 14
+          compression-level: 6
+
+      # --- Color Guard ---
+      - name: Run Color Guard (per-region)
+        shell: bash
+        run: |
+          set -e
+          mkdir -p alerts output/color_guard
+          FILE="scripts/color_guard_${REGION_LC}.py"
+          if [[ -f "${FILE}" ]]; then
+            python "${FILE}" || true
+          elif [[ -f "scripts/color_guard.py" ]]; then
+            python scripts/color_guard.py || true
+          fi
+
+          OUT="alerts/color_guard_${REGION_LC}.json"
+          if [[ ! -s "${OUT}" ]]; then
+            for CAND in \
+              "guards/color_guard_${REGION_LC}.json" \
+              "output/color_guard/color_guard_${REGION_LC}.json" \
+              "output/color_guard.json" ; do
+              [[ -s "${CAND}" ]] && { cp -f "${CAND}" "${OUT}"; break; }
+            done
+          fi
+
+          [[ -s "${OUT}" ]] || echo '{"region":"'"${REGION}"'","status":"ok","note":"placeholder"}' > "${OUT}"
+
+      - name: Upload Color Guard
+        uses: actions/upload-artifact@v4
+        with:
+          name: color-guard-${{ env.REGION }}
+          path: |
+            output/color_guard/**
+            alerts/color_guard_${{ env.REGION_LC }}.json
+          retention-days: 14
+          compression-level: 6
+
+      # --- Economic Calendar ---
+      - name: Run Econ Calendar (per-region)
+        shell: bash
+        run: |
+          set -e
+          mkdir -p assets output/econ_calendar
+          FILE="scripts/econ_calendar_${REGION_LC}.py"
+          if [[ -f "${FILE}" ]]; then
+            python "${FILE}" || true
+          elif [[ -f "scripts/econ_calendar.py" ]]; then
+            python scripts/econ_calendar.py || true
+          fi
+
+          OUT="assets/econ_calendar_${REGION_LC}.csv"
+          if [[ ! -s "${OUT}" ]]; then
+            for CAND in \
+              "reports/econ_calendar_${REGION_LC}.csv" \
+              "reports/${REGION_LC}/econ_calendar.csv" \
+              "output/econ_calendar/econ_calendar_${REGION_LC}.csv" ; do
+              [[ -s "${CAND}" ]] && { cp -f "${CAND}" "${OUT}"; break; }
+            done
+          fi
+
+          if [[ ! -s "${OUT}" ]]; then
+            echo "date,time_tz,region,event,impact" > "${OUT}"
+            echo "$(date +%F),08:30,${TZ},Placeholder,–" >> "${OUT}"
+          fi
+
+          cp -f "${OUT}" "output/econ_calendar/" 2>/dev/null || true
+
+      - name: Upload Econ Calendar
+        uses: actions/upload-artifact@v4
+        with:
+          name: econ-calendar-${{ env.REGION }}
+          path: |
+            output/econ_calendar/**
+            assets/econ_calendar_${{ env.REGION_LC }}.csv
+          retention-days: 14
+          compression-level: 6
+
+      # --- Uptime Ping ---
+      - name: Run Uptime Ping
+        shell: bash
+        run: |
+          mkdir -p output/uptime_ping
+          if [[ -f scripts/uptime_ping.py ]]; then
+            python scripts/uptime_ping.py
+          else
+            echo "pong $(date -u +'%F %T')Z" > output/uptime_ping/ping.txt
+          fi
+
+      - name: Upload Uptime Ping
+        uses: actions/upload-artifact@v4
+        with:
+          name: uptime-ping-${{ env.REGION }}
+          path: output/uptime_ping/**
+          retention-days: 14
+          compression-level: 6
+
+      # --- Per-region ZIP ---
+      - name: Create region zip
+        shell: bash
+        run: |
+          set -e
+          mkdir -p pack
+          cp -rf alerts assets output pack/ 2>/dev/null || true
+          cd pack
+          zip -r ../report_${REGION}.zip . || true
+          cd ..
+      - name: Upload region zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: report-${{ env.REGION }}
+          path: report_${{ env.REGION }}.zip
+          retention-days: 14
+
+  # --- Aggregate all regions into one bundle ---
+  aggregate:
+    needs: regions
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts from this run
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Build global_summary.md and combined zip
+        shell: bash
+        run: |
+          set -e
+          mkdir -p summary
+
+          MR_NA="$(find artifacts -type f -iname 'morning_report_na.md' -print -quit || true)"
+          MR_EU="$(find artifacts -type f -iname 'morning_report_europe.md' -print -quit || true)"
+          MR_AP="$(find artifacts -type f -iname 'morning_report_apac.md' -print -quit || true)"
+
+          {
+            echo "# Global Summary"
+            echo
+            if [[ -s "$MR_NA" ]]; then
+              echo "## NA"; echo; cat "$MR_NA"; echo
+            fi
+            if [[ -s "$MR_EU" ]]; then
+              echo; echo "## Europe"; echo; cat "$MR_EU"; echo
+            fi
+            if [[ -s "$MR_AP" ]]; then
+              echo; echo "## APAC"; echo; cat "$MR_AP"; echo
+            fi
+          } > summary/global_summary.md
+
+          zip -r reports-all-regions.zip artifacts summary/global_summary.md
+
+      - name: Upload combined bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports-all-regions
+          path: reports-all-regions.zip
+          retention-days: 14
+
+  # --- Email the bundle (auto-skips if SendGrid not configured) ---
+  email_bundle:
+    needs: aggregate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download combined bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: reports-all-regions
+          path: dl
+
+      - name: Email bundle via SendGrid
+        env:
+          SG_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          FROM:   ${{ vars.SENDGRID_FROM }}
+          TO:     ${{ vars.SENDGRID_TO }}
+          RUNURL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          if [[ -z "${SG_KEY:-}" || -z "${FROM:-}" || -z "${TO:-}" ]]; then
+            echo "SendGrid not configured; skipping email."
+            exit 0
+          fi
+          FILE="dl/reports-all-regions.zip"
+          if [[ ! -s "$FILE" ]]; then
+            echo "No bundle found; skipping email."
+            exit 0
+          fi
+          B64="$(base64 -w 0 "$FILE")"
+          SUBJECT="📦 Reports – All Regions (Run ${{ github.run_number }})"
+          BODY="Your combined bundle is attached.\nRun details: ${RUNURL}"
+          payload=$(jq -n \
+            --arg from "$FROM" \
+            --arg to "$TO" \
+            --arg subject "$SUBJECT" \
+            --arg content "$BODY" \
+            --arg b64 "$B64" \
+            '{
+              personalizations: [{ to: [{ email: $to }] }],
+              from: { email: $from },
+              subject: $subject,
+              content: [{ type: "text/plain", value: $content }],
+              attachments: [{
+                content: $b64,
+                type: "application/zip",
+                filename: "reports-all-regions.zip"
+              }]
+            }')
+          curl -sS -X POST https://api.sendgrid.com/v3/mail/send \
+            -H "Authorization: Bearer ${SG_KEY}" \
+            -H "Content-Type: application/json" \
+            -d "$payload"
+
+  # --- Weekly cleanup (only runs on Saturday schedule) ---
+  cleanup:
+    needs: [aggregate]
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Check if Saturday (UTC)
+        id: daycheck
+        shell: bash
+        run: |
+          # ISO weekday: Mon=1 ... Sun=7 ; Saturday=6
+          DOW="$(date -u +%u)"
+          if [[ "${GITHUB_EVENT_NAME}" != "schedule" || "$DOW" != "6" ]]; then
+            echo "run_cleanup=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run_cleanup=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Delete artifacts older than 14 days
+        if: steps.daycheck.outputs.run_cleanup == 'true'
+        uses: actions/github-script@v7
+        env:
+          RETAIN_DAYS: '14'
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo  = context.repo.repo;
+            const days  = parseInt(process.env.RETAIN_DAYS || '14', 10);
+            const cutoff = Date.now() - days*24*60*60*1000;
+            let deleted = 0, kept = 0;
+            for await (const page of github.paginate.iterator(
+              github.rest.actions.listArtifactsForRepo,
+              { owner, repo, per_page: 100 }
+            )) {
+              for (const a of page.data) {
+                const created = Date.parse(a.created_at);
+                if (!a.expired && created < cutoff) {
+                  await github.rest.actions.deleteArtifact({ owner, repo, artifact_id: a.id });
+                  core.info(`Deleted artifact ${a.name} (${a.id})`);
+                  deleted++;
+                } else { kept++; }
+              }
+            }
+            core.summary.addHeading('Artifact Cleanup')
+              .addRaw(`Deleted: ${deleted} • Kept: ${kept} • Cutoff: ${new Date(cutoff).toISOString()}`)
+              .write();
+
+      - name: Delete old workflow runs (keep 20, only if >30 days old)
+        if: steps.daycheck.outputs.run_cleanup == 'true'
+        uses: actions/github-script@v7
+        env:
+          KEEP_PER_WF: '20'
+          RUNS_MAX_AGE_DAYS: '30'
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo  = context.repo.repo;
+            const keep  = parseInt(process.env.KEEP_PER_WF || '20', 10);
+            const maxAgeDays = parseInt(process.env.RUNS_MAX_AGE_DAYS || '30', 10);
+            const cutoff = Date.now() - maxAgeDays*24*60*60*1000;
+
+            const runs = await github.paginate(
+              github.rest.actions.listWorkflowRunsForRepo,
+              { owner, repo, per_page: 100, status: 'completed' }
+            );
+
+            const groups = {};
+            for (const r of runs) {
+              const key = `${r.workflow_id}:${r.name || ''}`;
+              (groups[key] ||= []).push(r);
+            }
+
+            let deleted = 0, kept = 0;
+            for (const key of Object.keys(groups)) {
+              const list = groups[key].sort((a,b)=> new Date(b.created_at) - new Date(a.created_at));
+              for (const [i, run] of list.entries()) {
+                const isOld = Date.parse(run.created_at) < cutoff;
+                if (i >= keep && isOld) {
+                  await github.rest.actions.deleteWorkflowRun({ owner, repo, run_id: run.id });
+                  core.info(`Deleted run ${run.name} #${run.run_number} (${run.id})`);
+                  deleted++;
+                } else { kept++; }
+              }
+            }
+            core.summary.addHeading('Run Cleanup')
+              .addRaw(`Deleted runs: ${deleted} • Kept: ${kept} • Cutoff: ${new Date(cutoff).toISOString()} • Keep per WF: ${keep}`)
+              .write();
