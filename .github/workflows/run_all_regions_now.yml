@@ -1,0 +1,103 @@
+name: Run All Regions Now
+
+on:
+  workflow_dispatch:
+    inputs:
+      force_run:
+        description: 'Bypass time gate for all regions'
+        required: false
+        default: 'true'
+
+permissions:
+  contents: read
+
+jobs:
+  # NA
+  na:
+    uses: ./.github/workflows/universal_report_scheduler.yml
+    secrets: inherit
+    with:
+      region: 'NA'
+      timezone: 'America/Los_Angeles'
+      enabled: 'true'
+      force_run: ${{ inputs.force_run }}
+      upload_artifacts: 'true'
+
+  # Europe
+  eu:
+    uses: ./.github/workflows/universal_report_scheduler.yml
+    secrets: inherit
+    with:
+      region: 'EU'
+      timezone: 'Europe/London'
+      enabled: 'true'
+      force_run: ${{ inputs.force_run }}
+      upload_artifacts: 'true'
+
+  # APAC (your APAC window is keyed off PT)
+  apac:
+    uses: ./.github/workflows/universal_report_scheduler.yml
+    secrets: inherit
+    with:
+      region: 'APAC'
+      timezone: 'America/Los_Angeles'
+      enabled: 'true'
+      force_run: ${{ inputs.force_run }}
+      upload_artifacts: 'true'
+
+  # Aggregate outputs from all three
+  aggregate:
+    needs: [na, eu, apac]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Grab all artifacts from this run
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Build global_summary.md and zip everything
+        shell: bash
+        run: |
+          set -e
+          mkdir -p summary
+
+          # Find morning reports produced by the universal workflow
+          MR_NA="$(find artifacts -type f -iname 'morning_report_na.md' -print -quit || true)"
+          MR_EU="$(find artifacts -type f -iname 'morning_report_europe.md' -print -quit || true)"
+          MR_AP="$(find artifacts -type f -iname 'morning_report_apac.md' -print -quit || true)"
+
+          # Compose a simple combined summary (present whatever exists)
+          {
+            echo "# Global Summary"
+            echo
+            if [[ -s "$MR_NA" ]]; then
+              echo "## NA"
+              echo
+              cat "$MR_NA"
+              echo
+            fi
+            if [[ -s "$MR_EU" ]]; then
+              echo
+              echo "## Europe"
+              echo
+              cat "$MR_EU"
+              echo
+            fi
+            if [[ -s "$MR_AP" ]]; then
+              echo
+              echo "## APAC"
+              echo
+              cat "$MR_AP"
+              echo
+            fi
+          } > summary/global_summary.md
+
+          # Final bundle that includes all region artifacts + the summary
+          zip -r reports-all-regions.zip artifacts summary/global_summary.md
+
+      - name: Upload combined bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports-all-regions
+          path: reports-all-regions.zip
+          retention-days: 14
