@@ -1,13 +1,24 @@
 name: File Scheduler APAC
+
 on:
-  workflow_dispatch: {}
-  schedule:
-    # Every weekday at 06:30 Asia/Tokyo
-    - cron: '30 21 * * 0-4'
+  workflow_dispatch:
+    inputs:
+      force_run:
+        description: 'Bypass time gate'
+        required: false
+        default: 'true'
+        type: string
+
+permissions:
+  contents: read
+
 jobs:
   call:
-    uses: ./.github/workflows/file-scheduler-reusable.yml
+    uses: ./.github/workflows/universal_report_scheduler.yml
+    secrets: inherit
     with:
-      enabled: 'true'
-      timezone: 'Asia/Tokyo'
       region: 'APAC'
+      timezone: 'America/Los_Angeles'   # your APAC window = 6 PM PT
+      enabled: 'true'
+      force_run: ${{ inputs.force_run }}
+      upload_artifacts: 'true'
