@@ -45,11 +45,6 @@ env:
 
 jobs:
   regions:
-    if: ${{ !(github.event_name == 'workflow_dispatch' && (
-            (matrix.region == 'NA'   && !inputs.run_na) ||
-            (matrix.region == 'EU'   && !inputs.run_eu) ||
-            (matrix.region == 'APAC' && !inputs.run_apac)
-          )) }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -71,17 +66,42 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # ---------- REGION GATE (replaces job-level "if" that referenced matrix.*) ----------
+      - name: Gate this region based on dispatch inputs
+        id: gate
+        shell: bash
+        env:
+          # If not dispatch, all regions run. If dispatch, respect toggles.
+          RUN_NA:  ${{ (github.event_name != 'workflow_dispatch') || inputs.run_na }}
+          RUN_EU:  ${{ (github.event_name != 'workflow_dispatch') || inputs.run_eu }}
+          RUN_AP:  ${{ (github.event_name != 'workflow_dispatch') || inputs.run_apac }}
+          REGION:  ${{ matrix.region }}
+        run: |
+          set -e
+          en=false
+          case "$REGION" in
+            NA)   [[ "$RUN_NA" == "true" ]] && en=true ;;
+            EU)   [[ "$RUN_EU" == "true" ]] && en=true ;;
+            APAC) [[ "$RUN_AP" == "true" ]] && en=true ;;
+          esac
+          echo "enabled=$en" >> "$GITHUB_OUTPUT"
+          echo "Region=$REGION enabled? $en"
+      # -----------------------------------------------------------------------------------
+
       - uses: actions/setup-python@v5
+        if: steps.gate.outputs.enabled == 'true'
         with:
           python-version: '3.11'
           cache: 'pip'
 
       - name: Install optional deps (yfinance, pandas)
+        if: steps.gate.outputs.enabled == 'true'
         run: |
           python -m pip install --upgrade pip
           pip install -q yfinance pandas
 
       - name: Run Morning Report (per-region)
+        if: steps.gate.outputs.enabled == 'true'
         shell: bash
         run: |
           set -e
@@ -104,6 +124,7 @@ jobs:
           [[ -s "${OUT}" ]] || echo "# Morning Report ${REGION} (placeholder)" > "${OUT}"
 
       - name: Upload Morning Report
+        if: steps.gate.outputs.enabled == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: morning-report-${{ env.REGION }}
@@ -112,6 +133,7 @@ jobs:
           compression-level: 6
 
       - name: Run Color Guard (per-region)
+        if: steps.gate.outputs.enabled == 'true'
         shell: bash
         run: |
           set -e
@@ -134,6 +156,7 @@ jobs:
           [[ -s "${OUT}" ]] || echo '{"region":"'"${REGION}"'","status":"ok","note":"placeholder"}' > "${OUT}"
 
       - name: Upload Color Guard
+        if: steps.gate.outputs.enabled == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: color-guard-${{ env.REGION }}
@@ -144,6 +167,7 @@ jobs:
           compression-level: 6
 
       - name: Run Econ Calendar (per-region)
+        if: steps.gate.outputs.enabled == 'true'
         shell: bash
         run: |
           set -e
@@ -170,6 +194,7 @@ jobs:
           cp -f "${OUT}" "output/econ_calendar/" 2>/dev/null || true
 
       - name: Upload Econ Calendar
+        if: steps.gate.outputs.enabled == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: econ-calendar-${{ env.REGION }}
@@ -180,6 +205,7 @@ jobs:
           compression-level: 6
 
       - name: Run Uptime Ping
+        if: steps.gate.outputs.enabled == 'true'
         shell: bash
         run: |
           mkdir -p output/uptime_ping
@@ -190,6 +216,7 @@ jobs:
           fi
 
       - name: Upload Uptime Ping
+        if: steps.gate.outputs.enabled == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: uptime-ping-${{ env.REGION }}
@@ -198,6 +225,7 @@ jobs:
           compression-level: 6
 
       - name: Create region zip
+        if: steps.gate.outputs.enabled == 'true'
         shell: bash
         run: |
           set -e
@@ -206,6 +234,7 @@ jobs:
           ( cd pack && zip -r ../report_${REGION}.zip . || true )
 
       - name: Upload region zip
+        if: steps.gate.outputs.enabled == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: report-${{ env.REGION }}
@@ -358,7 +387,6 @@ jobs:
             exit 1
           fi
 
-      # Gmail SMTP fallback WITHOUT heredoc (avoids YAML parse issues)
       - name: Fallback via Gmail SMTP (runs if SG skipped/failed)
         if: failure() || steps.sg.outputs.no_sg == 'true'
         uses: dawidd6/action-send-mail@v3
