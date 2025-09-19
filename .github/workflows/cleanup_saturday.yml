@@ -1,0 +1,110 @@
+name: Cleanup Saturday
+
+on:
+  # 09:00 AM PT during DST (16:00 UTC) / 08:00 AM PT during Standard (16:00 UTC still ok).
+  schedule:
+    - cron: '0 16 * * 6'
+  workflow_dispatch:
+    inputs:
+      retain_days:
+        description: 'Delete artifacts older than N days'
+        required: false
+        default: '14'
+      keep_runs:
+        description: 'Keep this many recent runs per workflow'
+        required: false
+        default: '20'
+      runs_max_age_days:
+        description: 'Only delete runs older than this many days'
+        required: false
+        default: '30'
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: cleanup-saturday
+  cancel-in-progress: true
+
+jobs:
+  artifacts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete artifacts older than ${{ github.event.inputs.retain_days || '14' }} days
+        uses: actions/github-script@v7
+        env:
+          RETAIN_DAYS: ${{ github.event.inputs.retain_days || '14' }}
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo  = context.repo.repo;
+            const days  = parseInt(process.env.RETAIN_DAYS || '14', 10);
+            const cutoff = Date.now() - days*24*60*60*1000;
+            let deleted = 0, kept = 0;
+
+            for await (const page of github.paginate.iterator(
+              github.rest.actions.listArtifactsForRepo,
+              { owner, repo, per_page: 100 }
+            )) {
+              for (const a of page.data) {
+                const created = Date.parse(a.created_at);
+                if (!a.expired && created < cutoff) {
+                  await github.rest.actions.deleteArtifact({ owner, repo, artifact_id: a.id });
+                  core.info(`Deleted artifact ${a.name} (${a.id})`);
+                  deleted++;
+                } else {
+                  kept++;
+                }
+              }
+            }
+
+            core.summary.addHeading('Artifact Cleanup')
+              .addRaw(`Deleted: ${deleted} • Kept: ${kept} • Cutoff: ${new Date(cutoff).toISOString()}`)
+              .write();
+
+  runs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete old workflow runs
+        uses: actions/github-script@v7
+        env:
+          KEEP_PER_WF: ${{ github.event.inputs.keep_runs || '20' }}
+          RUNS_MAX_AGE_DAYS: ${{ github.event.inputs.runs_max_age_days || '30' }}
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo  = context.repo.repo;
+            const keep  = parseInt(process.env.KEEP_PER_WF || '20', 10);
+            const maxAgeDays = parseInt(process.env.RUNS_MAX_AGE_DAYS || '30', 10);
+            const cutoff = Date.now() - maxAgeDays*24*60*60*1000;
+
+            const runs = await github.paginate(
+              github.rest.actions.listWorkflowRunsForRepo,
+              { owner, repo, per_page: 100, status: 'completed' }
+            );
+
+            const groups = {};
+            for (const r of runs) {
+              const key = `${r.workflow_id}:${r.name || ''}`;
+              (groups[key] ||= []).push(r);
+            }
+
+            let deleted = 0, kept = 0;
+            for (const key of Object.keys(groups)) {
+              const list = groups[key].sort((a,b)=> new Date(b.created_at) - new Date(a.created_at));
+              for (const [i, run] of list.entries()) {
+                const isOld = Date.parse(run.created_at) < cutoff;
+                if (i >= keep && isOld) {
+                  await github.rest.actions.deleteWorkflowRun({ owner, repo, run_id: run.id });
+                  core.info(`Deleted run ${run.name} #${run.run_number} (${run.id})`);
+                  deleted++;
+                } else {
+                  kept++;
+                }
+              }
+            }
+
+            core.summary.addHeading('Run Cleanup')
+              .addRaw(`Deleted runs: ${deleted} • Kept (incl. protected): ${kept} • Cutoff: ${new Date(cutoff).toISOString()} • Keep per WF: ${keep}`)
+              .write();
