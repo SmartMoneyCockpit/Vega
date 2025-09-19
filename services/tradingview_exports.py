@@ -1,10 +1,10 @@
 from pathlib import Path
 from urllib.parse import urlencode
-from typing import Iterable, Dict, Optional, List
+from typing import Iterable, Dict, Optional
 
 TV_BASE = "https://www.tradingview.com/chart/"
 
-# Common exchange codes for TradingView
+# Common exchange codes for TradingView (normalization)
 EXCHANGE_ALIASES = {
     # US
     "NYSE": "NYSE", "NASD": "NASDAQ", "NASDAQ": "NASDAQ",
@@ -20,7 +20,7 @@ EXCHANGE_ALIASES = {
     "LSE": "LSE",
 }
 
-def normalize_exchange(exchange: str | None) -> str | None:
+def normalize_exchange(exchange: Optional[str]) -> Optional[str]:
     if not exchange:
         return None
     return EXCHANGE_ALIASES.get(exchange.strip().upper(), exchange.strip().upper())
@@ -40,7 +40,6 @@ def tv_deeplink(symbol: str, exchange: Optional[str] = None, interval: str = "D"
 def export_watchlist(symbols: Iterable[str], export_path: str) -> str:
     p = Path(export_path)
     p.parent.mkdir(parents=True, exist_ok=True)
-    # one symbol per line, final newline for easy import
     p.write_text("\n".join([s.strip().upper() for s in symbols if s]) + "\n", encoding="utf-8")
     return str(p)
 
@@ -58,8 +57,9 @@ def export_trades(rows: Iterable[Dict], export_path: str) -> str:
         w.writeheader()
         for r in rows:
             link = tv_deeplink(r.get("symbol",""), r.get("exchange"), r.get("interval","D"))
-            r = {**{k: r.get(k, "") for k in fieldnames}, **{"tv_url": link}}
-            w.writerow(r)
+            row = {k: r.get(k, "") for k in fieldnames}
+            row["tv_url"] = link
+            w.writerow(row)
     return str(p)
 
 def export_links(symbols: Iterable[str], export_path: str, exchange: Optional[str] = None, interval: str = "D") -> str:
