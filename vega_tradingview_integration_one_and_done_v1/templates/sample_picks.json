@@ -1,0 +1,56 @@
+{
+  "NA": [
+    {
+      "symbol": "AMZN",
+      "exchange": "NASDAQ",
+      "side": "BUY",
+      "entry": 181.5,
+      "stop": 174.0,
+      "target1": 195.0,
+      "target2": 205.0,
+      "rr": "1:3.1",
+      "reason_tags": "Momentum;RS>SPY",
+      "notes": "A+ setup"
+    },
+    {
+      "symbol": "NEE",
+      "exchange": "NYSE",
+      "side": "BUY",
+      "entry": 78.2,
+      "stop": 74.0,
+      "target1": 84.0,
+      "target2": 88.5,
+      "rr": "1:2.6",
+      "reason_tags": "Utilities;Yield",
+      "notes": ""
+    }
+  ],
+  "EU": [
+    {
+      "symbol": "SAP",
+      "exchange": "XETR",
+      "side": "BUY",
+      "entry": 185.0,
+      "stop": 178.0,
+      "target1": 198.0,
+      "target2": 205.0,
+      "rr": "1:2.0",
+      "reason_tags": "Software;Earnings Beat",
+      "notes": ""
+    }
+  ],
+  "APAC": [
+    {
+      "symbol": "7203",
+      "exchange": "TSE",
+      "side": "BUY",
+      "entry": 3310,
+      "stop": 3180,
+      "target1": 3490,
+      "target2": 3600,
+      "rr": "1:2.4",
+      "reason_tags": "JPY tailwind",
+      "notes": ""
+    }
+  ]
+}
