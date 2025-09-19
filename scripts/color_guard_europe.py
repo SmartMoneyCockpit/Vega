@@ -3,10 +3,10 @@ import datetime, os
 
 def main():
     now = datetime.datetime.utcnow().strftime("%Y-%m-%d_%H-%M-%S")
-    os.makedirs("output/na/morning_report", exist_ok=True)
-    out_file = f"output/na/morning_report/morning_report_{now}.txt"
+    os.makedirs("output/europe/color_guard", exist_ok=True)
+    out_file = f"output/europe/color_guard/color_guard_{now}.txt"
     with open(out_file, "w") as f:
-        f.write("morning_report na stub run at " + now + "\n")
+        f.write("color_guard europe stub run at " + now + "\n")
     print(f"Wrote {out_file}")
 
 if __name__ == "__main__":
