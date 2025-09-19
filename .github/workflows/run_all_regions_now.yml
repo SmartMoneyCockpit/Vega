@@ -7,9 +7,18 @@ on:
         description: 'Bypass time gate for all regions'
         required: false
         default: 'true'
+  # Weekday auto-run near 07:55 AM PT.
+  # 14:55 UTC hits during Daylight; 15:55 UTC covers Standard time season.
+  schedule:
+    - cron: '55 14 * * 1-5'
+    - cron: '55 15 * * 1-5'
 
 permissions:
   contents: read
+
+concurrency:
+  group: run-all-regions
+  cancel-in-progress: true
 
 jobs:
   # NA
@@ -20,7 +29,8 @@ jobs:
       region: 'NA'
       timezone: 'America/Los_Angeles'
       enabled: 'true'
-      force_run: ${{ inputs.force_run }}
+      # For scheduled runs, inputs.force_run is empty → defaults to 'true'
+      force_run: ${{ inputs.force_run || 'true' }}
       upload_artifacts: 'true'
 
   # Europe
@@ -31,7 +41,7 @@ jobs:
       region: 'EU'
       timezone: 'Europe/London'
       enabled: 'true'
-      force_run: ${{ inputs.force_run }}
+      force_run: ${{ inputs.force_run || 'true' }}
       upload_artifacts: 'true'
 
   # APAC (your APAC window is keyed off PT)
@@ -42,7 +52,7 @@ jobs:
       region: 'APAC'
       timezone: 'America/Los_Angeles'
       enabled: 'true'
-      force_run: ${{ inputs.force_run }}
+      force_run: ${{ inputs.force_run || 'true' }}
       upload_artifacts: 'true'
 
   # Aggregate outputs from all three
@@ -71,24 +81,13 @@ jobs:
             echo "# Global Summary"
             echo
             if [[ -s "$MR_NA" ]]; then
-              echo "## NA"
-              echo
-              cat "$MR_NA"
-              echo
+              echo "## NA"; echo; cat "$MR_NA"; echo
             fi
             if [[ -s "$MR_EU" ]]; then
-              echo
-              echo "## Europe"
-              echo
-              cat "$MR_EU"
-              echo
+              echo; echo "## Europe"; echo; cat "$MR_EU"; echo
             fi
             if [[ -s "$MR_AP" ]]; then
-              echo
-              echo "## APAC"
-              echo
-              cat "$MR_AP"
-              echo
+              echo; echo "## APAC"; echo; cat "$MR_AP"; echo
             fi
           } > summary/global_summary.md
 
