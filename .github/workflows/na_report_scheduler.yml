@@ -1,0 +1,47 @@
+name: Morning Report NA
+
+on:
+  schedule:
+    # 07:45 AM PT, Mon–Fri (≈ 14:45 UTC standard)
+    - cron: '45 14 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      enabled:
+        description: 'Enable run'
+        required: false
+        default: 'true'
+        type: string
+      force_run:
+        description: 'Ignore internal skip logic'
+        required: false
+        default: 'false'
+        type: string
+      upload_artifacts:
+        description: 'Zip & upload outputs'
+        required: false
+        default: 'true'
+        type: string
+      timezone:
+        description: 'IANA TZ for job'
+        required: false
+        default: 'America/Los_Angeles'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vega-na
+  cancel-in-progress: false
+
+jobs:
+  run:
+    if: ${{ inputs.enabled == '' || inputs.enabled == 'true' }}
+    uses: ./.github/workflows/universal_report_scheduler.yml
+    secrets: inherit
+    with:
+      region: 'NA'
+      enabled: ${{ inputs.enabled || 'true' }}
+      force_run: ${{ inputs.force_run || 'false' }}
+      upload_artifacts: ${{ inputs.upload_artifacts || 'true' }}
+      timezone: ${{ inputs.timezone || 'America/Los_Angeles' }}
