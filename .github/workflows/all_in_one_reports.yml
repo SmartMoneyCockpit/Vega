@@ -66,12 +66,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ---------- REGION GATE (replaces job-level "if" that referenced matrix.*) ----------
+      # ---------- REGION GATE ----------
       - name: Gate this region based on dispatch inputs
         id: gate
         shell: bash
         env:
-          # If not dispatch, all regions run. If dispatch, respect toggles.
           RUN_NA:  ${{ (github.event_name != 'workflow_dispatch') || inputs.run_na }}
           RUN_EU:  ${{ (github.event_name != 'workflow_dispatch') || inputs.run_eu }}
           RUN_AP:  ${{ (github.event_name != 'workflow_dispatch') || inputs.run_apac }}
@@ -86,7 +85,7 @@ jobs:
           esac
           echo "enabled=$en" >> "$GITHUB_OUTPUT"
           echo "Region=$REGION enabled? $en"
-      # -----------------------------------------------------------------------------------
+      # ---------------------------------
 
       - uses: actions/setup-python@v5
         if: steps.gate.outputs.enabled == 'true'
@@ -275,6 +274,60 @@ jobs:
           path: reports-all-regions.zip
           retention-days: 14
 
+  # 👇 NEW: commit snapshot CSVs into the repo so the Streamlit app sees them
+  commit_snapshots:
+    name: Commit snapshot CSVs into repo
+    needs: regions
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts from region jobs
+        uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+
+      - name: Stage CSVs to expected repo paths
+        shell: bash
+        run: |
+          set -e
+          mkdir -p data/snapshots/na data/snapshots/eu data/snapshots/apac
+
+          # Preferred direct names (adjust if your scripts use different names)
+          cp -f out/na_index_snapshot.csv   data/snapshots/na/index_snapshot.csv   2>/dev/null || true
+          cp -f out/eu_index_snapshot.csv   data/snapshots/eu/index_snapshot.csv   2>/dev/null || true
+          cp -f out/apac_index_snapshot.csv data/snapshots/apac/index_snapshot.csv 2>/dev/null || true
+
+          # Fallback: try to discover by pattern if not present
+          [[ -s data/snapshots/na/index_snapshot.csv ]] || \
+            (f="$(find out -maxdepth 2 -type f -iname '*na*index*snapshot*.csv' -o -iname 'index_snapshot_na.csv' -print -quit)"; \
+             [[ -n "$f" ]] && cp -f "$f" data/snapshots/na/index_snapshot.csv || true)
+
+          [[ -s data/snapshots/eu/index_snapshot.csv ]] || \
+            (f="$(find out -maxdepth 2 -type f -iname '*eu*index*snapshot*.csv' -o -iname '*europe*index*snapshot*.csv' -o -iname 'index_snapshot_eu.csv' -print -quit)"; \
+             [[ -n "$f" ]] && cp -f "$f" data/snapshots/eu/index_snapshot.csv || true)
+
+          [[ -s data/snapshots/apac/index_snapshot.csv ]] || \
+            (f="$(find out -maxdepth 2 -type f -iname '*apac*index*snapshot*.csv' -o -iname 'index_snapshot_apac.csv' -print -quit)"; \
+             [[ -n "$f" ]] && cp -f "$f" data/snapshots/apac/index_snapshot.csv || true)
+
+      - name: Commit & push if there are changes
+        shell: bash
+        run: |
+          set -e
+          if [ -n "$(git status --porcelain data/snapshots)" ]; then
+            git config user.name  "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add data/snapshots
+            git commit -m "chore(snapshot): update NA/EU/APAC CSVs [skip ci]"
+            git push
+          else
+            echo "No snapshot changes to commit."
+          fi
+
+  # (Leave email in place; you said we’ll come back to it)
   email_bundle:
     needs: aggregate
     runs-on: ubuntu-latest
