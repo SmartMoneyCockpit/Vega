@@ -1,4 +1,4 @@
-name: Validate Screener CSV
+name: Validate Screener CSV (v2 strict)
 
 on:
   workflow_dispatch: {}
@@ -30,11 +30,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -q pandas
 
-      - name: Validate & clean screener CSV
+      - name: Validate + derive tickers
         run: |
           python scripts/validate_screener_csv.py
 
       - name: Upload cleaned screener CSV
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: screener-clean
