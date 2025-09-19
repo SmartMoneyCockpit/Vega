@@ -1,0 +1,51 @@
+name: File Scheduler (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      enabled:
+        type: string
+        required: false
+        default: 'true'
+      timezone:
+        type: string
+        required: false
+        default: 'America/Los_Angeles'
+      region:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    if: ${{ inputs.enabled == 'true' }}
+    runs-on: ubuntu-latest
+    env:
+      TZ: ${{ inputs.timezone }}
+      REGION: ${{ inputs.region }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - name: Install Python deps if present
+        run: |
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+      - name: Fill earnings CSV
+        run: |
+          python -u scripts/scheduler/fill_earnings_csv.py --region "${REGION}" --out "data/earnings/${REGION}.csv"
+      - name: Upload CSV
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.region }}-earnings-csv
+          path: data/earnings/${{ inputs.region }}.csv
+          if-no-files-found: error
+      - name: Always publish job summary
+        if: always()
+        run: |
+          echo "## File Scheduler — ${REGION}" >> $GITHUB_STEP_SUMMARY
+          echo "- Timezone: ${TZ}" >> $GITHUB_STEP_SUMMARY
+          echo "- Status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY

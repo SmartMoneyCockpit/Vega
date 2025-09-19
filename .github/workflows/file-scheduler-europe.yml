@@ -1,0 +1,13 @@
+name: File Scheduler Europe
+on:
+  workflow_dispatch: {}
+  schedule:
+    # Every weekday at 06:30 Europe/London
+    - cron: '30 6 * * 1-5'
+jobs:
+  call:
+    uses: ./.github/workflows/file-scheduler-reusable.yml
+    with:
+      enabled: 'true'
+      timezone: 'Europe/London'
+      region: 'Europe'

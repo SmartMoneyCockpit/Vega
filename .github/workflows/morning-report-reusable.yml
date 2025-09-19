@@ -1,0 +1,78 @@
+name: Morning Report (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      enabled:
+        type: string
+        required: false
+        default: 'true'
+      timezone:
+        type: string
+        required: false
+        default: 'America/Los_Angeles'
+      region:
+        type: string
+        required: true
+      upload_artifacts:
+        type: string
+        required: false
+        default: 'true'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    if: ${{ inputs.enabled == 'true' }}
+    runs-on: ubuntu-latest
+    env:
+      TZ: ${{ inputs.timezone }}
+      REGION: ${{ inputs.region }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Python deps if present
+        run: |
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f setup.py ] || [ -f pyproject.toml ]; then pip install -e .; fi
+
+      - name: Generate Morning Report
+        id: report
+        run: |
+          python -u scripts/reports/generate_morning_report.py --region "${REGION}" --tz "${TZ}" --out "artifacts/${REGION}_morning_report.md"
+
+      - name: Upload artifacts
+        if: ${{ inputs.upload_artifacts == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.region }}-morning-report
+          path: artifacts/${{ inputs.region }}_morning_report.md
+          if-no-files-found: warn
+
+      - name: Mark success
+        run: |
+          echo "✅ Morning Report for ${REGION} generated at $(date -Is)" > artifacts/${REGION}_SUCCESS.txt
+
+      - name: Always publish job summary
+        if: always()
+        run: |
+          echo "## Morning Report — ${REGION}" >> $GITHUB_STEP_SUMMARY
+          echo "- Timezone: ${TZ}" >> $GITHUB_STEP_SUMMARY
+          echo "- Status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload outcome marker
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.region }}-outcome
+          path: |
+            artifacts/${{ inputs.region }}_SUCCESS.txt
+            artifacts/${{ inputs.region }}_morning_report.md
+          if-no-files-found: warn

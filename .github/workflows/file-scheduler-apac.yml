@@ -1,0 +1,13 @@
+name: File Scheduler APAC
+on:
+  workflow_dispatch: {}
+  schedule:
+    # Every weekday at 06:30 Asia/Tokyo
+    - cron: '30 21 * * 0-4'
+jobs:
+  call:
+    uses: ./.github/workflows/file-scheduler-reusable.yml
+    with:
+      enabled: 'true'
+      timezone: 'Asia/Tokyo'
+      region: 'APAC'

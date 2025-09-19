@@ -1,0 +1,13 @@
+name: File Scheduler NA
+on:
+  workflow_dispatch: {}
+  schedule:
+    # Every weekday at 06:30 America/Los_Angeles
+    - cron: '30 13 * * 1-5'
+jobs:
+  call:
+    uses: ./.github/workflows/file-scheduler-reusable.yml
+    with:
+      enabled: 'true'
+      timezone: 'America/Los_Angeles'
+      region: 'NorthAmerica'

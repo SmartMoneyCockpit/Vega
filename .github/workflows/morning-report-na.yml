@@ -1,0 +1,14 @@
+name: Morning Report NA
+on:
+  workflow_dispatch: {}
+  schedule:
+    # Weekdays 07:45 America/Los_Angeles
+    - cron: '45 14 * * 1-5'
+jobs:
+  call:
+    uses: ./.github/workflows/morning-report-reusable.yml
+    with:
+      enabled: 'true'
+      timezone: 'America/Los_Angeles'
+      region: 'NorthAmerica'
+      upload_artifacts: 'true'

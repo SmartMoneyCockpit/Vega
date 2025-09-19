@@ -1,0 +1,14 @@
+name: Morning Report APAC
+on:
+  workflow_dispatch: {}
+  schedule:
+    # Weekdays 07:45 Asia/Tokyo
+    - cron: '45 22 * * 0-4'
+jobs:
+  call:
+    uses: ./.github/workflows/morning-report-reusable.yml
+    with:
+      enabled: 'true'
+      timezone: 'Asia/Tokyo'
+      region: 'APAC'
+      upload_artifacts: 'true'

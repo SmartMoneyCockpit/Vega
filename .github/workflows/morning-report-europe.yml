@@ -1,0 +1,14 @@
+name: Morning Report Europe
+on:
+  workflow_dispatch: {}
+  schedule:
+    # Weekdays 07:45 Europe/London
+    - cron: '45 7 * * 1-5'
+jobs:
+  call:
+    uses: ./.github/workflows/morning-report-reusable.yml
+    with:
+      enabled: 'true'
+      timezone: 'Europe/London'
+      region: 'Europe'
+      upload_artifacts: 'true'
