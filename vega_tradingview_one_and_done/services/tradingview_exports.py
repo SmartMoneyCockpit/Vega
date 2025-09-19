@@ -4,11 +4,33 @@ from typing import Iterable, Dict, Optional, List
 
 TV_BASE = "https://www.tradingview.com/chart/"
 
+# Common exchange codes for TradingView
+EXCHANGE_ALIASES = {
+    # US
+    "NYSE": "NYSE", "NASD": "NASDAQ", "NASDAQ": "NASDAQ",
+    # Canada
+    "TSX": "TSX", "TSE": "TSX", "TSXV": "TSXV", "VENTURE": "TSXV",
+    # Mexico
+    "BMV": "BMV",
+    # Japan
+    "TSE": "TSE", "TOKYO": "TSE",
+    # Germany
+    "XETR": "XETR", "FWB": "XETR",
+    # UK
+    "LSE": "LSE",
+}
+
+def normalize_exchange(exchange: str | None) -> str | None:
+    if not exchange:
+        return None
+    return EXCHANGE_ALIASES.get(exchange.strip().upper(), exchange.strip().upper())
+
 def tv_symbol(symbol: str, exchange: Optional[str] = None) -> str:
-    """Return TradingView symbol format EXCHANGE:SYMBOL when exchange is provided."""
+    """Return TradingView symbol format EXCHANGE:SYMBOL when exchange is provided (normalized)."""
     symbol = symbol.strip().upper()
-    if exchange:
-        return f"{exchange.strip().upper()}:{symbol}"
+    nex = normalize_exchange(exchange)
+    if nex:
+        return f"{nex}:{symbol}"
     return symbol
 
 def tv_deeplink(symbol: str, exchange: Optional[str] = None, interval: str = "D") -> str:

@@ -10,7 +10,10 @@ st.caption("IBKR → Vega (compute) → TradingView (display)")
 
 seed_session_picks()  # seeds demo picks if empty
 
-region = st.segmented_control("Region", ["NA","EU","APAC"], default="NA")
+try:
+    region = st.segmented_control("Region", ["NA","EU","APAC"], default="NA")
+except Exception:
+    region = st.radio("Region", ["NA","EU","APAC"], index=0)
 interval = st.selectbox("Default interval", ["15","60","240","D","W"], index=3)
 
 picks = st.session_state.get(f"{region}_picks", [])  # list[dict]
@@ -44,12 +47,31 @@ with col3:
         with open(path, "rb") as f:
             st.download_button("Download links", f, file_name=path.split("/")[-1], mime="text/csv", use_container_width=True)
 
+
 st.markdown("### Quick Launch Links")
-for p in picks[:50]:  # avoid overly long lists
-    url = tv_deeplink(p.get("symbol"), p.get("exchange"), interval)
+open_links = [tv_deeplink(p.get("symbol"), p.get("exchange"), interval) for p in picks]
+for p, url in zip(picks[:50], open_links[:50]):
     st.markdown(f"- **{p.get('symbol')}** → [Open in TradingView]({url}) — {p.get('side','')} @ {p.get('entry','')} | SL {p.get('stop','')} | T1 {p.get('target1','')} ")
 
-with st.expander("Inline TradingView Preview (optional)", expanded=False):
-    default_symbol = symbols[0] if symbols else "NASDAQ:AMZN"
-    s = st.text_input("Symbol (EXCHANGE:SYMBOL or SYMBOL)", default_symbol)
-    tv_embed(s, interval=interval)
+# 'Open All' using a small HTML/JS button. Browsers may block popups; user can allow once.
+from streamlit.components.v1 import html as _html
+if open_links:
+    _html("""
+    <button id='openall' style='padding:8px 12px;border-radius:8px;border:1px solid #ddd;cursor:pointer;'>Open All in TradingView</button>
+    <script>
+    const links = %s;
+    document.getElementById('openall').onclick = () => {
+        let i = 0;
+        const step = () => {
+            if (i >= links.length) return;
+            window.open(links[i], '_blank');
+            i += 1;
+            setTimeout(step, 350); // stagger to reduce popup blocking
+        };
+        step();
+    };
+    </script>
+    """ % (open_links), height=0)
+
+
+tv_embed(s, interval=interval)
