@@ -1,0 +1,33 @@
+name: Global Summary
+
+on:
+  workflow_dispatch:
+
+jobs:
+  summary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Build global summary
+        run: |
+          mkdir -p output/global
+          ts=$(date -u +'%Y-%m-%d_%H-%M-%S')
+          summary=output/global/summary_${ts}.md
+          echo "# Global Report Summary" > $summary
+          echo "**Generated:** $(date -u)" >> $summary
+          echo "" >> $summary
+          for region in na apac europe; do
+            echo "## Region: $region" >> $summary
+            find artifacts -type f -iname "*$region*" -exec echo "- {}" \; >> $summary || true
+            echo "" >> $summary
+          done
+          echo "Wrote $summary"
+      - name: Upload summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: global-summary
+          path: output/global/**
