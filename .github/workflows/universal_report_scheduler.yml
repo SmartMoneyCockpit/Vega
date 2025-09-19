@@ -1,1 +1,227 @@
-# Full NA workflow (with force_run + zipping)
+name: Universal Report Scheduler
+
+on:
+  workflow_dispatch:
+    inputs:
+      force_run:
+        description: 'Bypass time gate and run immediately'
+        required: false
+        default: 'false'
+  push:
+    branches: [ main ]
+    paths:
+      - 'scripts/**'
+      - '.github/workflows/universal_report_scheduler.yml'
+      - '.github/actions/precheck/**'
+  schedule:
+    - cron: '15 14 * * 1-5'   # 07:15 PT during DST
+    - cron: '30 15 * * 1-5'   # 08:30 PT during Standard Time
+
+permissions:
+  contents: read
+
+concurrency:
+  group: universal-report-scheduler
+  cancel-in-progress: true
+
+jobs:
+  precheck:
+    runs-on: ubuntu-latest
+    outputs:
+      ok: ${{ steps.p.outputs.ok }}
+      window_ok: ${{ steps.timegate.outputs.window_ok }}
+      run_morning_report: ${{ steps.tog.outputs.run_morning_report }}
+      run_color_guard: ${{ steps.tog.outputs.run_color_guard }}
+      run_econ_calendar: ${{ steps.tog.outputs.run_econ_calendar }}
+      run_uptime_ping: ${{ steps.tog.outputs.run_uptime_ping }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: p
+        uses: ./.github/actions/precheck
+        with:
+          vega_actions_enabled: ${{ vars.VEGA_ACTIONS_ENABLED }}
+
+      - id: timegate
+        shell: bash
+        env:
+          TZ: America/Los_Angeles
+          EVENT_NAME: ${{ github.event_name }}
+          FORCE: ${{ github.event.inputs.force_run }}
+        run: |
+          # Force run overrides everything
+          if [ "$FORCE" = "true" ]; then
+            echo "window_ok=true" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Time gate::Force run enabled, bypassing."
+            exit 0
+          fi
+          # Manual or push runs bypass gate
+          if [ "${EVENT_NAME}" = "workflow_dispatch" ] || [ "${EVENT_NAME}" = "push" ]; then
+            echo "window_ok=true" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Time gate::Bypassed for ${EVENT_NAME}."
+            exit 0
+          fi
+          # Scheduled runs must match 07:30 or 08:30 PT
+          now="$(date +'%H:%M')"
+          if [ "$now" = "07:30" ] || [ "$now" = "08:30" ]; then
+            echo "window_ok=true" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Time gate::Proceeding at $now"
+          else
+            echo "window_ok=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Time gate::Local time $now not in [07:30, 08:30]; skipping."
+          fi
+
+      - id: tog
+        run: |
+          echo "run_morning_report=true" >> "$GITHUB_OUTPUT"
+          echo "run_color_guard=true" >> "$GITHUB_OUTPUT"
+          echo "run_econ_calendar=true" >> "$GITHUB_OUTPUT"
+          echo "run_uptime_ping=true" >> "$GITHUB_OUTPUT"
+
+  morning_report:
+    needs: precheck
+    if: ${{ needs.precheck.outputs.ok == 'true' && needs.precheck.outputs.window_ok == 'true' && needs.precheck.outputs.run_morning_report == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - name: Build NA Morning Report
+        run: python scripts/morning_report_na.py --tz America/Los_Angeles --out output/morning_report.md
+      - name: Upload Morning Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: morning-report-na
+          path: output/morning_report.md
+          retention-days: 14
+          compression-level: 6
+
+  color_guard:
+    needs: precheck
+    if: ${{ needs.precheck.outputs.ok == 'true' && needs.precheck.outputs.window_ok == 'true' && needs.precheck.outputs.run_color_guard == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run Color Guard
+        run: python scripts/color_guard.py
+      - name: Upload Color Guard
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: color-guard
+          path: output/color_guard/**
+          retention-days: 14
+          compression-level: 6
+
+  econ_calendar:
+    needs: precheck
+    if: ${{ needs.precheck.outputs.ok == 'true' && needs.precheck.outputs.window_ok == 'true' && needs.precheck.outputs.run_econ_calendar == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run Econ Calendar
+        run: python scripts/econ_calendar.py
+      - name: Upload Econ Calendar
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: econ-calendar
+          path: output/econ_calendar/**
+          retention-days: 14
+          compression-level: 6
+
+  uptime_ping:
+    needs: precheck
+    if: ${{ needs.precheck.outputs.ok == 'true' && needs.precheck.outputs.window_ok == 'true' && needs.precheck.outputs.run_uptime_ping == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run Uptime Ping
+        run: python scripts/uptime_ping.py
+      - name: Upload Uptime Ping
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: uptime-ping
+          path: output/uptime_ping/**
+          retention-days: 14
+          compression-level: 6
+
+  package_na:
+    needs: [morning_report, color_guard, econ_calendar, uptime_ping]
+    if: ${{ always() && needs.precheck.result == 'success' && needs.morning_report.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all NA artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Create region zip
+        run: |
+          cd artifacts
+          zip -r na_report.zip .
+          mv na_report.zip ../na_report.zip
+      - name: Upload NA region zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: na_report
+          path: na_report.zip
+          retention-days: 14
+
+  notify_on_success:
+    needs: [package_na]
+    if: ${{ success() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send success email (SendGrid)
+        env:
+          SG_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          FROM:  ${{ vars.SENDGRID_FROM }}
+          TO:    ${{ vars.SENDGRID_TO }}
+          RUNURL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "${SG_KEY:-}" ]; then
+            echo "No SENDGRID_API_KEY secret; skipping success email."
+            exit 0
+          fi
+          body=$(jq -n --arg s "✅ NA Report Scheduler succeeded" \
+                       --arg c "Artifacts available: na_report.zip (plus raw artifacts). Run: $RUNURL" \
+                 '{personalizations:[{to:[{email:env.TO}]}],from:{email:env.FROM},subject:$s,content:[{type:"text/plain",value:$c}]}')
+          curl -sS -X POST https://api.sendgrid.com/v3/mail/send \
+            -H "Authorization: Bearer $SG_KEY" -H "Content-Type: application/json" \
+            -d "$body"
+
+  notify_on_fail:
+    needs: [precheck, morning_report, color_guard, econ_calendar, uptime_ping]
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send failure email (SendGrid)
+        env:
+          SG_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          FROM:  ${{ vars.SENDGRID_FROM }}
+          TO:    ${{ vars.SENDGRID_TO }}
+          RUNURL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "${SG_KEY:-}" ]; then
+            echo "No SENDGRID_API_KEY secret; skipping failure email."
+            exit 0
+          fi
+          body=$(jq -n --arg s "❌ NA Report Scheduler failed" \
+                       --arg c "See run: $RUNURL" \
+                 '{personalizations:[{to:[{email:env.TO}]}],from:{email:env.FROM},subject:$s,content:[{type:"text/plain",value:$c}]}')
+          curl -sS -X POST https://api.sendgrid.com/v3/mail/send \
+            -H "Authorization: Bearer $SG_KEY" -H "Content-Type: application/json" \
+            -d "$body"
