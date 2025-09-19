@@ -257,70 +257,87 @@ jobs:
           path: reports-all-regions.zip
           retention-days: 14
 
-  email_bundle:
-    needs: aggregate
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download combined bundle
-        uses: actions/download-artifact@v4
-        with:
-          name: reports-all-regions
-          path: dl
+email_bundle:
+  needs: aggregate
+  runs-on: ubuntu-latest
+  steps:
+    - name: Download combined bundle
+      uses: actions/download-artifact@v4
+      with:
+        name: reports-all-regions
+        path: dl
 
-      - name: Email bundle via SendGrid
-        env:
-          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
-          FROM_EMAIL:       ${{ vars.SENDGRID_FROM }}
-          TO_EMAIL:         ${{ vars.SENDGRID_TO }}
-          SUBJECT_INPUT:    ${{ inputs.email_subject }}
-          DEFAULT_SUBJECT:  ${{ env.DEFAULT_EMAIL_SUBJECT }}
-          BODY_DEFAULT:     ${{ env.DEFAULT_EMAIL_BODY }}
-        shell: bash
-        run: |
-          if [[ -z "${SENDGRID_API_KEY:-}" || -z "${FROM_EMAIL:-}" || -z "${TO_EMAIL:-}" ]]; then
-            echo "SendGrid not configured; skipping email."; exit 0; fi
-          FILE="dl/reports-all-regions.zip"
-          if [[ ! -s "$FILE" ]]; then echo "No bundle found; skipping email."; exit 0; fi
-          B64="$(base64 -w 0 "$FILE")"
-          SUBJECT="${SUBJECT_INPUT:-$DEFAULT_SUBJECT}"
+    - name: Email bundle via SendGrid
+      env:
+        SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+        FROM_EMAIL:       ${{ vars.SENDGRID_FROM }}
+        TO_EMAIL:         ${{ vars.SENDGRID_TO }}
+        SUBJECT_INPUT:    ${{ inputs.email_subject }}
+        DEFAULT_SUBJECT:  ${{ env.DEFAULT_EMAIL_SUBJECT }}
+        BODY_DEFAULT:     ${{ env.DEFAULT_EMAIL_BODY }}
+      shell: bash
+      run: |
+        # Guard rails
+        if [[ -z "${SENDGRID_API_KEY:-}" || -z "${FROM_EMAIL:-}" || -z "${TO_EMAIL:-}" ]]; then
+          echo "SendGrid not configured; skipping email."; exit 0; fi
 
-          # Build JSON safely (avoids YAML inline-object syntax issues)
-          payload=$(jq -n \
-            --arg from     "$FROM_EMAIL" \
-            --arg to       "$TO_EMAIL" \
-            --arg subject  "$SUBJECT" \
-            --arg content  "$BODY_DEFAULT" \
-            --arg b64      "$B64" \
-            '{
-              personalizations: [{ to: [{ email: $to }] }],
-              from: { email: $from },
-              subject: $subject,
-              content: [{ type: "text/plain", value: $content }],
-              attachments: [{ content: $b64, type: "application/zip", filename: "reports-all-regions.zip" }]
-            }')
+        FILE="dl/reports-all-regions.zip"
+        if [[ ! -s "$FILE" ]]; then echo "No bundle found; skipping email."; exit 0; fi
 
-          curl -sS -X POST https://api.sendgrid.com/v3/mail/send \
-            -H "Authorization: Bearer ${SENDGRID_API_KEY}" \
-            -H "Content-Type: application/json" \
-            -d "$payload"
+        SUBJECT="${SUBJECT_INPUT:-$DEFAULT_SUBJECT}"
 
-  monthly_release:
-    needs: aggregate
-    runs-on: ubuntu-latest
-    steps:
-      - name: Decide whether to create release
-        id: gate
-        shell: bash
-        run: |
-          FORCE="${{ github.event.inputs.force_monthly_release || 'false' }}"
-          DOM="$(date -u +%d)"
-          if [[ "$FORCE" == "true" ]]; then
-            echo "run_release=true" >> "$GITHUB_OUTPUT"
-          elif [[ "${GITHUB_EVENT_NAME}" == "schedule" && "$DOM" == "01" ]]; then
-            echo "run_release=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "run_release=false" >> "$GITHUB_OUTPUT"
-          fi
+        # Encode ZIP → file (avoid huge argv)
+        base64 -w 0 "$FILE" > b64.txt
+
+        # Body → file (avoid quoting issues)
+        printf '%s' "$BODY_DEFAULT" > body.txt
+
+        # Build JSON using file-backed args (no argv blow-up)
+        jq -n \
+          --arg from    "$FROM_EMAIL" \
+          --arg to      "$TO_EMAIL" \
+          --arg subject "$SUBJECT" \
+          --rawfile content body.txt \
+          --rawfile b64 b64.txt \
+          '{
+            personalizations: [{ to: [{ email: $to }] }],
+            from: { email: $from },
+            subject: $subject,
+            content: [{ type: "text/plain", value: $content }],
+            attachments: [{ content: $b64, type: "application/zip", filename: "reports-all-regions.zip" }]
+          }' > payload.json
+
+        # Send
+        curl -sS -X POST https://api.sendgrid.com/v3/mail/send \
+          -H "Authorization: Bearer ${SENDGRID_API_KEY}" \
+          -H "Content-Type: application/json" \
+          --data-binary @payload.json
+
+monthly_release:
+  needs: aggregate
+  runs-on: ubuntu-latest
+  steps:
+    - name: Decide whether to create release
+      id: gate
+      shell: bash
+      run: |
+        FORCE="${{ github.event.inputs.force_monthly_release || 'false' }}"
+        DOM="$(date -u +%d)"
+        if [[ "$FORCE" == "true" ]]; then
+          echo "run_release=true" >> "$GITHUB_OUTPUT"
+        elif [[ "${GITHUB_EVENT_NAME}" == "schedule" && "$DOM" == "01" ]]; then
+          echo "run_release=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "run_release=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Download combined bundle
+      if: steps.gate.outputs.run_release == 'true'
+      uses: actions/download-artifact@v4
+      with:
+        name: reports-all-regions
+        path: dl
+
 
       - name: Download combined bundle
         if: steps.gate.outputs.run_release == 'true'
