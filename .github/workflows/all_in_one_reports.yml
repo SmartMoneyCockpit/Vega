@@ -1,13 +1,20 @@
-name: All-in-One Reports & Cleanup
+name: All-in-One Reports, Email, Monthly Release & Cleanup
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      force_monthly_release:
+        description: 'Force-create a Monthly Release on this run (even if not 1st of month)'
+        required: false
+        default: 'false'
   # Weekday auto-run near ~07:55 AM PT
   schedule:
     - cron: '55 14 * * 1-5'
     - cron: '55 15 * * 1-5'
     # Saturday cleanup ~09:00 AM PT (16:00 UTC)
     - cron: '0 16 * * 6'
+    # 1st of each month ~09:00 AM PT (16:00 UTC) to drive Monthly Releases
+    - cron: '0 16 1 * *'
 
 permissions:
   contents: read
@@ -26,7 +33,7 @@ jobs:
         include:
           - { region: 'NA',   region_lc: 'na',     timezone: 'America/Los_Angeles' }
           - { region: 'EU',   region_lc: 'europe', timezone: 'Europe/London' }
-          - { region: 'APAC', region_lc: 'apac',   timezone: 'America/Los_Angeles' } # APAC session keyed off PT
+          - { region: 'APAC', region_lc: 'apac',   timezone: 'America/Los_Angeles' } # APAC keyed off PT
     env:
       REGION: ${{ matrix.region }}
       REGION_LC: ${{ matrix.region_lc }}
@@ -279,6 +286,71 @@ jobs:
             -H "Authorization: Bearer ${SG_KEY}" \
             -H "Content-Type: application/json" \
             -d "$payload"
+
+  # --- Monthly Release (attaches combined + per-region zips). Runs on 1st-of-month schedule, or when manually forced. ---
+  monthly_release:
+    needs: aggregate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # needed to create a release
+    steps:
+      - name: Decide whether to create release
+        id: gate
+        shell: bash
+        run: |
+          FORCE="${{ github.event.inputs.force_monthly_release || 'false' }}"
+          DOW="$(date -u +%u)"         # Mon=1..Sun=7 (info only)
+          DOM="$(date -u +%d)"         # Day of month
+          EVN="${GITHUB_EVENT_NAME}"
+          if [[ "$FORCE" == "true" ]]; then
+            echo "run_release=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ "$EVN" == "schedule" && "$DOM" == "01" ]]; then
+            echo "run_release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run_release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download combined bundle
+        if: steps.gate.outputs.run_release == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: reports-all-regions
+          path: dl
+
+      - name: Download per-region zips
+        if: steps.gate.outputs.run_release == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: report-*
+          path: dl
+          merge-multiple: true
+
+      - name: Compute release meta
+        if: steps.gate.outputs.run_release == 'true'
+        id: meta
+        shell: bash
+        run: |
+          YMD="$(date -u +%Y-%m-%d)"
+          YM="$(date -u +%Y-%m)"
+          echo "ymd=$YMD" >> "$GITHUB_OUTPUT"
+          echo "ym=$YM" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release (monthly)
+        if: steps.gate.outputs.run_release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: monthly-${{ steps.meta.outputs.ym }}
+          name: "Monthly Reports — ${{ steps.meta.outputs.ym }}"
+          body: |
+            Automated monthly export for ${{ steps.meta.outputs.ymd }}.
+            Includes: reports-all-regions.zip and per-region bundles (if present).
+          draft: false
+          prerelease: false
+          files: |
+            dl/reports-all-regions.zip
+            dl/report_*.zip
 
   # --- Weekly cleanup (only runs on Saturday schedule) ---
   cleanup:
