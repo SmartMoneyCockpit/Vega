@@ -1,13 +1,24 @@
 name: File Scheduler NA
+
 on:
-  workflow_dispatch: {}
-  schedule:
-    # Every weekday at 06:30 America/Los_Angeles
-    - cron: '30 13 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      force_run:
+        description: 'Bypass time gate'
+        required: false
+        default: 'true'
+        type: string
+
+permissions:
+  contents: read
+
 jobs:
   call:
-    uses: ./.github/workflows/file-scheduler-reusable.yml
+    uses: ./.github/workflows/universal_report_scheduler.yml
+    secrets: inherit
     with:
-      enabled: 'true'
+      region: 'NA'
       timezone: 'America/Los_Angeles'
-      region: 'NorthAmerica'
+      enabled: 'true'
+      force_run: ${{ inputs.force_run }}
+      upload_artifacts: 'true'
