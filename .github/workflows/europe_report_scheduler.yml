@@ -1,9 +1,10 @@
-name: Morning Report NA
+name: Morning Report Europe
 
 on:
   schedule:
-    # 07:45 AM PT daily (14:45 UTC standard; adjust if you want)
-    - cron: '45 14 * * 1-5'
+    # 07:45 AM London time ≈ 07:45 UTC in winter, 06:45 UTC in summer.
+    # Using 06:45 UTC strikes a good balance during DST months.
+    - cron: '45 6 * * 1-5'
   workflow_dispatch:
     inputs:
       enabled:
@@ -24,14 +25,14 @@ on:
       timezone:
         description: 'IANA TZ for job'
         required: false
-        default: 'America/Los_Angeles'
+        default: 'Europe/London'
         type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: vega-na
+  group: vega-eu
   cancel-in-progress: false
 
 jobs:
@@ -40,8 +41,8 @@ jobs:
     uses: ./.github/workflows/universal_report_scheduler.yml
     secrets: inherit
     with:
-      region: 'NA'
+      region: 'EU'
       enabled: ${{ inputs.enabled || 'true' }}
       force_run: ${{ inputs.force_run || 'false' }}
       upload_artifacts: ${{ inputs.upload_artifacts || 'true' }}
-      timezone: ${{ inputs.timezone || 'America/Los_Angeles' }}
+      timezone: ${{ inputs.timezone || 'Europe/London' }}
