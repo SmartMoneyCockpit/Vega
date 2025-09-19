@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-import datetime, os
-
-def main():
-    now = datetime.datetime.utcnow().strftime("%Y-%m-%d_%H-%M-%S")
-    os.makedirs("output/na/color_guard", exist_ok=True)
-    out_file = f"output/na/color_guard/color_guard_{now}.txt"
-    with open(out_file, "w") as f:
-        f.write("color_guard na stub run at " + now + "\n")
-    print(f"Wrote {out_file}")
-
-if __name__ == "__main__":
-    main()
+import json, pathlib, datetime as dt
+out = pathlib.Path("alerts")/ "color_guard_na.json"
+out.parent.mkdir(parents=True, exist_ok=True)
+payload = {
+  "region": "NA",
+  "status": "ok",
+  "generated_at_utc": dt.datetime.utcnow().isoformat(timespec="seconds")+"Z",
+  "note": "Placeholder Color Guard (NA)"
+}
+out.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+print(f"[color_guard_na] wrote {out}")

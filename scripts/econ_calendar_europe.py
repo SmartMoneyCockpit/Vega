@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-import datetime, os
-
-def main():
-    now = datetime.datetime.utcnow().strftime("%Y-%m-%d_%H-%M-%S")
-    os.makedirs("output/europe/econ_calendar", exist_ok=True)
-    out_file = f"output/europe/econ_calendar/econ_calendar_{now}.txt"
-    with open(out_file, "w") as f:
-        f.write("econ_calendar europe stub run at " + now + "\n")
-    print(f"Wrote {out_file}")
-
-if __name__ == "__main__":
-    main()
+import csv, pathlib, datetime as dt, os
+tz = os.environ.get("TZ","Europe/London")
+out = pathlib.Path("assets")/ "econ_calendar_europe.csv"
+out.parent.mkdir(parents=True, exist_ok=True)
+today = dt.date.today().isoformat()
+rows = [
+  ["date","time_tz","region","event","impact"],
+  [today,"08:00",tz,"Placeholder: PMI/CPI/IFO","–"],
+]
+with open(out, "w", newline="", encoding="utf-8") as f:
+  csv.writer(f).writerows(rows)
+print(f"[econ_calendar_europe] wrote {out}")
