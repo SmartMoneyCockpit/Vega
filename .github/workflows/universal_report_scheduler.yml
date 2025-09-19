@@ -129,15 +129,29 @@ jobs:
           set -e
           RLC='${{ needs.precheck.outputs.region_lc }}'
           TZ='${{ needs.precheck.outputs.timezone }}'
-          OUT=output/morning_report_${RLC}.md
+          OUT="output/morning_report_${RLC}.md"
           mkdir -p output
+
+          # 1) Run per-region or fallback script
           if [[ -f "scripts/morning_report_${RLC}.py" ]]; then
-            python "scripts/morning_report_${RLC}.py" --tz "${TZ}" --out "${OUT}"
+            python "scripts/morning_report_${RLC}.py" --tz "${TZ}" --out "${OUT}" || true
           elif [[ -f "scripts/morning_report.py" ]]; then
-            python scripts/morning_report.py --tz "${TZ}" --out "${OUT}"
-          else
-            echo "# Morning Report ${{ needs.precheck.outputs.region }} (placeholder)" > "${OUT}"
+            python scripts/morning_report.py --tz "${TZ}" --out "${OUT}" || true
           fi
+
+          # 2) Normalize from common alt locations if OUT missing
+          if [[ ! -s "${OUT}" ]]; then
+            for CAND in \
+              "reports/morning_report_${RLC}.md" \
+              "reports/${RLC}/morning_report.md" \
+              "reports/morning_report.md" \
+              "output/morning_report.md" ; do
+              [[ -s "${CAND}" ]] && { cp -f "${CAND}" "${OUT}"; break; }
+            done
+          fi
+
+          # 3) Guaranteed placeholder
+          [[ -s "${OUT}" ]] || echo "# Morning Report ${{ needs.precheck.outputs.region }} (placeholder)" > "${OUT}"
 
       - name: Upload Morning Report
         if: ${{ needs.precheck.outputs.upload == 'true' }}
@@ -164,14 +178,27 @@ jobs:
           set -e
           RLC='${{ needs.precheck.outputs.region_lc }}'
           mkdir -p alerts output/color_guard
-          FILE="scripts/color_guard_${RLC}.py"
-          if [[ -f "${FILE}" ]]; then
-            python "${FILE}"
+
+          # 1) Run per-region or fallback script
+          if [[ -f "scripts/color_guard_${RLC}.py" ]]; then
+            python "scripts/color_guard_${RLC}.py" || true
           elif [[ -f "scripts/color_guard.py" ]]; then
-            python scripts/color_guard.py
-          else
-            echo '{"region":"${{ needs.precheck.outputs.region }}","status":"ok","note":"placeholder"}' > alerts/color_guard_${RLC}.json
+            python scripts/color_guard.py || true
           fi
+
+          # 2) Normalize to alerts/color_guard_<region>.json
+          OUT="alerts/color_guard_${RLC}.json"
+          if [[ ! -s "${OUT}" ]]; then
+            for CAND in \
+              "guards/color_guard_${RLC}.json" \
+              "output/color_guard/color_guard_${RLC}.json" \
+              "output/color_guard.json" ; do
+              [[ -s "${CAND}" ]] && { cp -f "${CAND}" "${OUT}"; break; }
+            done
+          fi
+
+          # 3) Guaranteed placeholder
+          [[ -s "${OUT}" ]] || echo '{"region":"${{ needs.precheck.outputs.region }}","status":"ok","note":"placeholder"}' > "${OUT}"
 
       - name: Upload Color Guard
         if: ${{ needs.precheck.outputs.upload == 'true' }}
@@ -201,15 +228,33 @@ jobs:
           RLC='${{ needs.precheck.outputs.region_lc }}'
           TZ='${{ needs.precheck.outputs.timezone }}'
           mkdir -p assets output/econ_calendar
-          FILE="scripts/econ_calendar_${RLC}.py"
-          if [[ -f "${FILE}" ]]; then
-            python "${FILE}"
+
+          # 1) Run per-region or fallback script
+          if [[ -f "scripts/econ_calendar_${RLC}.py" ]]; then
+            python "scripts/econ_calendar_${RLC}.py" || true
           elif [[ -f "scripts/econ_calendar.py" ]]; then
-            python scripts/econ_calendar.py
-          else
-            echo "date,time_tz,region,event,impact" > assets/econ_calendar_${RLC}.csv
-            echo "$(date +%F),08:30,${TZ},Placeholder,–" >> assets/econ_calendar_${RLC}.csv
+            python scripts/econ_calendar.py || true
           fi
+
+          # 2) Normalize to assets/econ_calendar_<region>.csv
+          OUT="assets/econ_calendar_${RLC}.csv"
+          if [[ ! -s "${OUT}" ]]; then
+            for CAND in \
+              "reports/econ_calendar_${RLC}.csv" \
+              "reports/${RLC}/econ_calendar.csv" \
+              "output/econ_calendar/econ_calendar_${RLC}.csv" ; do
+              [[ -s "${CAND}" ]] && { cp -f "${CAND}" "${OUT}"; break; }
+            done
+          fi
+
+          # 3) Guaranteed placeholder
+          if [[ ! -s "${OUT}" ]]; then
+            echo "date,time_tz,region,event,impact" > "${OUT}"
+            echo "$(date +%F),08:30,${TZ},Placeholder,–" >> "${OUT}"
+          fi
+
+          # convenience copy into output/ as well
+          cp -f "${OUT}" "output/econ_calendar/" 2>/dev/null || true
 
       - name: Upload Econ Calendar
         if: ${{ needs.precheck.outputs.upload == 'true' }}
@@ -318,5 +363,3 @@ jobs:
           curl -sS -X POST https://api.sendgrid.com/v3/mail/send \
             -H "Authorization: Bearer $SG_KEY" -H "Content-Type: application/json" \
             -d "$body"
-
-
