@@ -14,14 +14,12 @@ def find_csv():
     for pattern in SEARCH_GLOBS:
         for path in glob.glob(pattern, recursive=True):
             try:
-                # quick sanity (avoid directories etc.)
                 if not os.path.isfile(path):
                     continue
                 df = pd.read_csv(path)
                 if not df.empty and len(df.columns) > 0:
                     return df, path
             except Exception as e:
-                # print to stderr but keep searching
                 print(f"WARN: failed to read {path}: {e}", file=sys.stderr)
     return pd.DataFrame(), None
 
@@ -46,7 +44,6 @@ def main():
         print(f"::error::Screener CSV missing all of expected columns: {REQUIRED_ANY}. Columns present: {list(df.columns)}")
         sys.exit(3)
 
-    # Coerce the common columns to strings to prevent .strip errors at runtime
     for col in REQUIRED_ANY:
         if col in df.columns:
             df[col] = df[col].apply(coerce_str)
@@ -54,7 +51,6 @@ def main():
     os.makedirs("out", exist_ok=True)
     out_path = "out/screener_clean.csv"
     df.to_csv(out_path, index=False, encoding="utf-8")
-    # GitHub summary style output
     print(f"Screener CSV validated and cleaned. Source: {path}. Rows: {len(df)}. Saved: {out_path}")
     return 0
 
