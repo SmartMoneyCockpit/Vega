@@ -3,23 +3,6 @@
     "symbol": "NASDAQ:QQQ",
     "interval": "D",
     "theme": "dark",
-    "height": 900,
-    "studies": [
-      "MAExp@tv-basicstudies",
-      "MAExp@tv-basicstudies",
-      "MAExp@tv-basicstudies",
-      "MAExp@tv-basicstudies",
-      "RSI@tv-basicstudies",
-      "MACD@tv-basicstudies",
-      "ATR@tv-basicstudies",
-      "OBV@tv-basicstudies",
-      "Volume@tv-basicstudies"
-    ],
-    "studies_overrides": {
-      "MAExp@tv-basicstudies.0.length": 9,
-      "MAExp@tv-basicstudies.1.length": 21,
-      "MAExp@tv-basicstudies.2.length": 50,
-      "MAExp@tv-basicstudies.3.length": 200"
-    }
+    "height": 900
   }
 }
