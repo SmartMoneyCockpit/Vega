@@ -4,7 +4,7 @@ import os, json, streamlit as st
 st.set_page_config(page_title="Home — Vega Cockpit", layout="wide")
 st.title("Home — Vega Cockpit")
 
-# Last pipeline run (written by the workflow to reports/run_meta.json)
+# --- Last pipeline run banner -------------------------------------------------
 meta_path = "reports/run_meta.json"
 if os.path.isfile(meta_path):
     try:
@@ -17,15 +17,23 @@ if os.path.isfile(meta_path):
     except Exception:
         st.info("Run metadata not available yet.")
 else:
-    st.info("Run metadata will appear here after the next All-in-One run.")
+    st.info("Run metadata will appear here after your next All-in-One run.")
 
 st.subheader("Dashboards")
 
-# IMPORTANT: page paths are relative to the app root (src) and must live in the pages/ folder.
-st.page_link("pages/01_NA_Text_Dashboard.py",  label="• North America — Text Dashboard")
-st.page_link("pages/02_Europe_Text_Dashboard.py", label="• Europe — Text Dashboard")
-st.page_link("pages/03_APAC_Text_Dashboard.py",  label="• APAC — Text Dashboard")
-st.page_link("pages/04_Screener_Text.py",        label="• Screener — Text")
+# --- Safe link helper: try page_link first; if it fails, fall back to URL ----
+def safe_page_link(relpath: str, label: str, url_fallback: str):
+    try:
+        # Works when the app's main script dir matches where 'pages/' lives
+        st.page_link(relpath, label=label)
+    except Exception:
+        # Fallback to the known route slug (Streamlit builds these from filenames)
+        st.markdown(f"[{label}]({url_fallback})")
 
-# Add more links if needed, always as pages/<file>.py
-# st.page_link("pages/08_IBKR_Scanner.py", label="• IBKR Scanner")
+# IMPORTANT: keep slugs in sync with your page filenames (Streamlit strips the numeric prefix)
+safe_page_link("pages/01_NA_Text_Dashboard.py",  "• North America — Text Dashboard", "/North_America_Text_Dashboard")
+safe_page_link("pages/02_Europe_Text_Dashboard.py", "• Europe — Text Dashboard",     "/Europe_Text_Dashboard")
+safe_page_link("pages/03_APAC_Text_Dashboard.py",  "• APAC — Text Dashboard",       "/APAC_Text_Dashboard")
+safe_page_link("pages/04_Screener_Text.py",        "• Screener — Text",             "/Screener_Text")
+
+st.caption("If a link doesn’t open, use the sidebar on the left — same pages.")
