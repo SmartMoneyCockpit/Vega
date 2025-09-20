@@ -1,10 +1,11 @@
 
 import os, sys, json, streamlit as st
 
-# Ensure project root is on sys.path so 'components' is importable on Render
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
+# Ensure /opt/render/project/src (this file's parent) is importable as top-level
+THIS_DIR = os.path.dirname(__file__)
+SRC_ROOT = os.path.abspath(os.path.join(THIS_DIR, ".."))
+if SRC_ROOT not in sys.path:
+    sys.path.insert(0, SRC_ROOT)
 
 from components.az_vv import render_vv_block
 
