@@ -1,9 +1,10 @@
 import os, json, pandas as pd, datetime as dt
 import streamlit as st
 from streamlit.components.v1 import html
+from urllib.parse import quote
 
-st.set_page_config(page_title="Europe — Text Dashboard v1.2", layout="wide")
-st.title("Europe — Text Dashboard v1.2")
+st.set_page_config(page_title="Europe — Text Dashboard v1.4", layout="wide")
+st.title("Europe — Text Dashboard v1.4")
 
 MD_PATH = "reports/eu/morning_report.md"
 CAL_CSV = "assets/econ_calendar_europe.csv"
@@ -22,19 +23,68 @@ def _load_meta():
     except Exception:
         return {}
 
-def tv_chart_html(symbol: str, interval: str="D", theme: str="light", height: int=460) -> str:
+def _load_presets(section: str, fallback: dict) -> dict:
+    try:
+        cfg = json.load(open("config/tv_presets.json", "r", encoding="utf-8"))
+        base = dict(fallback)
+        base.update(cfg.get(section, {}))
+        return base
+    except Exception:
+        return dict(fallback)
+
+def tv_chart_html(symbol: str, interval: str, theme: str, height: int,
+                  studies: list, studies_overrides: dict | None) -> str:
     cfg = {
-        "symbol": symbol, "interval": interval, "timezone": "Etc/UTC", "theme": theme,
-        "style": "1", "locale":"en",
-        "studies": ["RSI@tv-basicstudies","MASimple@tv-basicstudies","MAExp@tv-basicstudies"],
+        "symbol": symbol, "interval": interval, "timezone": "Etc/UTC",
+        "theme": theme, "style": "1", "locale":"en",
+        "studies": studies,
         "allow_symbol_change": True, "withdateranges": True, "details": True, "calendar": True,
-        "autosize": True, "container_id": "tv_eu_chart"
+        "autosize": True, "container_id": "tv_quick_eu"
     }
+    if studies_overrides:
+        cfg["studies_overrides"] = studies_overrides
     return f"""
-<div id="tv_eu_chart" style="height:{height}px;"></div>
+<div id="tv_quick_eu" style="height:{height}px;"></div>
 <script src="https://s3.tradingview.com/tv.js"></script>
 <script> new TradingView.widget({json.dumps(cfg)}); </script>
 """
+
+# Quick Chart (TOP, CENTERED)
+st.subheader("Quick Chart")
+
+CHART_PRE = _load_presets("charts", {
+    "studies": [
+        "RSI@tv-basicstudies","MACD@tv-basicstudies","ATR@tv-basicstudies",
+        "OBV@tv-basicstudies","BollingerBands@tv-basicstudies","IchimokuCloud@tv-basicstudies",
+        "MASimple@tv-basicstudies","MAExp@tv-basicstudies","Volume@tv-basicstudies"
+    ],
+    "studies_overrides": {}
+})
+studies = CHART_PRE.get("studies", [])
+studies_overrides = CHART_PRE.get("studies_overrides", {})
+
+PRE = _load_presets("eu", {"symbol":"NYSEARCA:VGK","interval":"D","theme":"dark","height":720})
+EU_LIST = ["NYSEARCA:VGK","NYSEARCA:EZU","NYSEARCA:FEZ","TVC:FTSE"]
+
+cc1, cc2, cc3, cc4 = st.columns([2,1,1,1])
+symbol  = cc1.selectbox("Symbol", EU_LIST, index=EU_LIST.index(PRE["symbol"]) if PRE["symbol"] in EU_LIST else 0)
+interval = cc2.selectbox("Interval", ["1","5","15","60","240","D","W","M"],
+                         index=["1","5","15","60","240","D","W","M"].index(PRE["interval"]) if PRE["interval"] in ["1","5","15","60","240","D","W","M"] else 5)
+theme    = cc3.selectbox("Theme", ["light","dark"], index=(0 if PRE["theme"]=="light" else 1))
+height   = cc4.slider("Height", 480, 1200, int(PRE["height"]), step=20)
+
+manual = st.text_input("Or type a TV symbol (e.g., NYSEARCA:VGK)", "").strip()
+if manual:
+    symbol = manual
+
+l, m, r = st.columns([1,8,1])
+with m:
+    html(tv_chart_html(symbol, interval, theme, height, studies, studies_overrides),
+         height=height+20, scrolling=False)
+with m:
+    params = f"?symbol={quote(symbol)}&interval={interval}&theme={theme}&height={height}"
+    st.link_button("Open full-page chart (in-app)", f"/TradingView_Charts{params}")
+    st.markdown(f"[Open on TradingView](https://www.tradingview.com/chart/?symbol={quote(symbol)}&interval={interval})  •  [Share this preset]({params})")
 
 # Morning Report
 st.subheader("Morning Report")
@@ -43,18 +93,6 @@ if os.path.isfile(MD_PATH):
     st.caption(f"Last updated: { _mtime(MD_PATH) }")
 else:
     st.info("Morning report not found yet. It will appear after the next CI run commits it.")
-
-# TradingView Quick Chart
-st.subheader("Quick Chart")
-EU_LIST = ["NYSEARCA:VGK","NYSEARCA:EZU","NYSEARCA:FEZ","TVC:FTSE"]
-c1, c2, c3 = st.columns([2,1,1])
-symbol = c1.selectbox("Symbol", EU_LIST, index=0)
-interval = c2.selectbox("Interval", ["1","5","15","60","240","D","W","M"], index=5)
-theme = c3.selectbox("Theme", ["light","dark"], index=0)
-manual = st.text_input("Or type a TV symbol (e.g., NYSEARCA:VGK)", "").strip()
-if manual:
-    symbol = manual
-html(tv_chart_html(symbol, interval, theme), height=480, scrolling=False)
 
 # Economic Calendar
 st.subheader("Economic Calendar")
@@ -105,7 +143,7 @@ if os.path.isfile(CAL_CSV):
     st.download_button("Download filtered .ics", to_ics(dfv),
         file_name="econ_calendar_eu_filtered.ics", mime="text/calendar")
 else:
-    st.info("Calendar CSV not found yet. It will appear after the next CI run.")
+    st.info("Calendar CSV not found yet. It will appear after the next CI run commits it.")
 
 meta = _load_meta()
 if meta:
