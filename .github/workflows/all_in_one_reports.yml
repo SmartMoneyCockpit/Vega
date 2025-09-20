@@ -39,9 +39,11 @@ concurrency:
 env:
   DEFAULT_EMAIL_SUBJECT: "Reports - All Regions (Run #${{ github.run_number }})"
   DEFAULT_EMAIL_BODY: |
-    Your combined bundle is attached (or linked if too large).
+    Your combined bundle is ready. (Large attachments are not sent via email.)
     Repo: ${{ github.repository }}
     Run:  ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+  # Defaults for sender/recipient. You can override in repo Variables.
+  EMAIL_FROM_DEFAULT: blainedares@gmail.com
 
 jobs:
   regions:
@@ -110,7 +112,11 @@ jobs:
             python scripts/morning_report.py --tz "${TZ}" --out "${OUT}" || true
           fi
           if [[ ! -s "${OUT}" ]]; then
-            for CAND in               "reports/morning_report_${REGION_LC}.md"               "reports/${REGION_LC}/morning_report.md"               "reports/morning_report.md"               "output/morning_report.md" ; do
+            for CAND in \
+              "reports/morning_report_${REGION_LC}.md" \
+              "reports/${REGION_LC}/morning_report.md" \
+              "reports/morning_report.md" \
+              "output/morning_report.md" ; do
               [[ -s "${CAND}" ]] && { cp -f "${CAND}" "${OUT}"; break; }
             done
           fi
@@ -139,7 +145,10 @@ jobs:
           fi
           OUT="alerts/color_guard_${REGION_LC}.json"
           if [[ ! -s "${OUT}" ]]; then
-            for CAND in               "guards/color_guard_${REGION_LC}.json"               "output/color_guard/color_guard_${REGION_LC}.json"               "output/color_guard.json" ; do
+            for CAND in \
+              "guards/color_guard_${REGION_LC}.json" \
+              "output/color_guard/color_guard_${REGION_LC}.json" \
+              "output/color_guard.json" ; do
               [[ -s "${CAND}" ]] && { cp -f "${CAND}" "${OUT}"; break; }
             done
           fi
@@ -170,7 +179,10 @@ jobs:
           fi
           OUT="assets/econ_calendar_${REGION_LC}.csv"
           if [[ ! -s "${OUT}" ]]; then
-            for CAND in               "reports/econ_calendar_${REGION_LC}.csv"               "reports/${REGION_LC}/econ_calendar.csv"               "output/econ_calendar/econ_calendar_${REGION_LC}.csv" ; do
+            for CAND in \
+              "reports/econ_calendar_${REGION_LC}.csv" \
+              "reports/${REGION_LC}/econ_calendar.csv" \
+              "output/econ_calendar/econ_calendar_${REGION_LC}.csv" ; do
               [[ -s "${CAND}" ]] && { cp -f "${CAND}" "${OUT}"; break; }
             done
           fi
@@ -282,22 +294,25 @@ jobs:
           set -e
           mkdir -p data/snapshots/na data/snapshots/eu data/snapshots/apac
 
-          # Preferred direct names (adjust if your scripts use different names)
           cp -f out/na_index_snapshot.csv   data/snapshots/na/index_snapshot.csv   2>/dev/null || true
           cp -f out/eu_index_snapshot.csv   data/snapshots/eu/index_snapshot.csv   2>/dev/null || true
           cp -f out/apac_index_snapshot.csv data/snapshots/apac/index_snapshot.csv 2>/dev/null || true
 
-          # QUICK FIX (ALIAS): map econ-calendar artifacts (with or without extension) into index_snapshot.csv
           cp -f out/econ-calendar-NA*    data/snapshots/na/index_snapshot.csv   2>/dev/null || true
           cp -f out/econ-calendar-EU*    data/snapshots/eu/index_snapshot.csv   2>/dev/null || true
           cp -f out/econ-calendar-APAC*  data/snapshots/apac/index_snapshot.csv 2>/dev/null || true
 
-          # Fallback: discover by pattern if still missing
-          [[ -s data/snapshots/na/index_snapshot.csv ]] ||             (f="$(find out -maxdepth 2 -type f -iname '*na*index*snapshot*.csv' -o -iname 'index_snapshot_na.csv' -o -iname '*econ*na*' -print -quit)";              [[ -n "$f" ]] && cp -f "$f" data/snapshots/na/index_snapshot.csv || true)
+          [[ -s data/snapshots/na/index_snapshot.csv ]] || \
+            (f="$(find out -maxdepth 2 -type f -iname '*na*index*snapshot*.csv' -o -iname 'index_snapshot_na.csv' -o -iname '*econ*na*' -print -quit)"; \
+             [[ -n "$f" ]] && cp -f "$f" data/snapshots/na/index_snapshot.csv || true)
 
-          [[ -s data/snapshots/eu/index_snapshot.csv ]] ||             (f="$(find out -maxdepth 2 -type f -iname '*eu*index*snapshot*.csv' -o -iname '*europe*index*snapshot*.csv' -o -iname 'index_snapshot_eu.csv' -o -iname '*econ*eu*' -print -quit)";              [[ -n "$f" ]] && cp -f "$f" data/snapshots/eu/index_snapshot.csv || true)
+          [[ -s data/snapshots/eu/index_snapshot.csv ]] || \
+            (f="$(find out -maxdepth 2 -type f -iname '*eu*index*snapshot*.csv' -o -iname '*europe*index*snapshot*.csv' -o -iname 'index_snapshot_eu.csv' -o -iname '*econ*eu*' -print -quit)"; \
+             [[ -n "$f" ]] && cp -f "$f" data/snapshots/eu/index_snapshot.csv || true)
 
-          [[ -s data/snapshots/apac/index_snapshot.csv ]] ||             (f="$(find out -maxdepth 2 -type f -iname '*apac*index*snapshot*.csv' -o -iname 'index_snapshot_apac.csv' -o -iname '*econ*apac*' -print -quit)";              [[ -n "$f" ]] && cp -f "$f" data/snapshots/apac/index_snapshot.csv || true)
+          [[ -s data/snapshots/apac/index_snapshot.csv ]] || \
+            (f="$(find out -maxdepth 2 -type f -iname '*apac*index*snapshot*.csv' -o -iname 'index_snapshot_apac.csv' -o -iname '*econ*apac*' -print -quit)"; \
+             [[ -n "$f" ]] && cp -f "$f" data/snapshots/apac/index_snapshot.csv || true)
 
       - name: Commit & push if there are changes
         shell: bash
@@ -318,97 +333,56 @@ jobs:
     runs-on: ubuntu-latest
     environment: Vega
     steps:
-      - name: Download combined bundle
-        uses: actions/download-artifact@v4
-        with:
-          name: reports-all-regions
-          path: dl
-
-      - name: Normalize and show FROM/TO
-        id: norm
+      - name: Compute run URL and subject
+        id: meta
         shell: bash
         env:
-          FROM_VAR: ${{ vars.SENDGRID_FROM || vars.ALERTS_FROM }}
-          TO_VAR:   ${{ vars.SENDGRID_TO   || vars.ALERTS_TO   }}
-        run: |
-          set -e
-          FROM=$(printf '%s' "$FROM_VAR" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
-          TO=$(printf '%s' "$TO_VAR" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
-          echo "from=$FROM" >> "$GITHUB_OUTPUT"
-          echo "to=$TO" >> "$GITHUB_OUTPUT"
-          echo "Using FROM=$FROM TO=$TO"
-
-      - name: Check attachment size
-        id: size
-        shell: bash
-        run: |
-          set -e
-          FILE="dl/reports-all-regions.zip"
-          if [[ ! -s "$FILE" ]]; then
-            echo "::warning::No combined bundle found; nothing to email."
-            echo "oversize=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          BYTES=$(stat -c%s "$FILE" 2>/dev/null || stat -f%z "$FILE")
-          echo "bytes=$BYTES" >> "$GITHUB_OUTPUT"
-          if [ "$BYTES" > 25000000 ]; then
-            echo "::warning::Attachment exceeds 25MB; sending without attachment."
-            echo "oversize=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "oversize=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Email via SendGrid (primary)
-        id: sg
-        env:
-          SG_KEY: ${{ secrets.SENDGRID_API_KEY }}
-          FROM:   ${{ steps.norm.outputs.from }}
-          TO:     ${{ steps.norm.outputs.to }}
-          SUBJECT_INPUT: ${{ github.event.inputs.email_subject }}
           DEFAULT_SUBJECT: ${{ env.DEFAULT_EMAIL_SUBJECT }}
-          BODY_DEFAULT: ${{ env.DEFAULT_EMAIL_BODY }}
+          SUBJECT_INPUT: ${{ github.event.inputs.email_subject }}
+        run: |
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          echo "run_url=$RUN_URL" >> "$GITHUB_OUTPUT"
+          if [[ -n "$SUBJECT_INPUT" ]]; then
+            echo "subject=$SUBJECT_INPUT" >> "$GITHUB_OUTPUT"
+          else
+            echo "subject=$DEFAULT_SUBJECT" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Send All-in-One email (links only via SendGrid)
+        env:
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          EMAIL_FROM: ${{ vars.EMAIL_FROM || env.EMAIL_FROM_DEFAULT }}
+          EMAIL_TO: ${{ vars.EMAIL_TO }}
+          RUN_URL: ${{ steps.meta.outputs.run_url }}
+          SUBJECT: ${{ steps.meta.outputs.subject }}
+          BODY: ${{ env.DEFAULT_EMAIL_BODY }}
         shell: bash
         run: |
           set -e
-          if [[ -z "${SG_KEY:-}" || -z "${FROM:-}" || -z "${TO:-}" ]]; then
-            echo "no_sg=true" >> "$GITHUB_OUTPUT"
-            echo "::warning::SendGrid not configured; skipping primary."
-            exit 0
-          fi
-          FILE="dl/reports-all-regions.zip"
-          SUBJECT="${SUBJECT_INPUT:-$DEFAULT_SUBJECT}"
-          printf '%s' "$BODY_DEFAULT" > body.txt
-
-          if [[ "${{ steps.size.outputs.oversize }}" == "true" || ! -s "$FILE" ]]; then
-            jq -n --arg from "$FROM" --arg to "$TO" --arg subject "$SUBJECT" --rawfile content body.txt               '{personalizations:[{to:[{email:$to}]}],from:{email:$from},subject:$subject,content:[{type:"text/plain",value:$content}]}' > payload.json
-          else
-            base64 -w 0 "$FILE" > b64.txt
-            jq -n --arg from "$FROM" --arg to "$TO" --arg subject "$SUBJECT" --rawfile content body.txt --rawfile b64 b64.txt               '{personalizations:[{to:[{email:$to}]}],from:{email:$from},subject:$subject,content:[{type:"text/plain",value:$content}],attachments:[{content:$b64,type:"application/zip",filename:"reports-all-regions.zip"}]}' > payload.json
-          fi
-
-          CODE=$(curl -sS -o response.json -w "%{http_code}" -X POST https://api.sendgrid.com/v3/mail/send -H "Authorization: Bearer ${SG_KEY}" -H "Content-Type: application/json" --data @payload.json)
-          echo "http_code=$CODE" >> "$GITHUB_OUTPUT"
-          echo "=== SendGrid response (HTTP $CODE) ==="
-          cat response.json || true
-          if [ "$CODE" != "202" ]; then
-            echo "::error::SendGrid returned HTTP $CODE"
+          if [[ -z "${SENDGRID_API_KEY:-}" ]]; then
+            echo "::error::SENDGRID_API_KEY secret is missing."
             exit 1
           fi
+          if [[ -z "${EMAIL_TO:-}" ]]; then
+            echo "::error::EMAIL_TO repo Variable is missing. Set it in Settings → Variables."
+            exit 1
+          fi
+          html="<p>Your All-in-One run finished.</p>
+          <p>Artifacts and logs: <a href='${RUN_URL}'>${RUN_URL}</a></p>"
+          jq -n \
+            --arg from "$EMAIL_FROM" \
+            --arg to "$EMAIL_TO" \
+            --arg subject "$SUBJECT" \
+            --arg html "$html" \
+            '{personalizations:[{to:[{email:$to}]}],
+              from:{email:$from},
+              subject:$subject,
+              content:[{type:"text/html", value:$html}]}' > payload.json
 
-      - name: Fallback via Gmail SMTP (runs if SG skipped/failed)
-        if: failure() || steps.sg.outputs.no_sg == 'true'
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: smtp.gmail.com
-          server_port: 465
-          secure: true
-          username: ${{ secrets.MAIL_USER }}
-          password: ${{ secrets.MAIL_APP_PASSWORD }}
-          subject: ${{ github.event.inputs.email_subject || env.DEFAULT_EMAIL_SUBJECT }}
-          to: ${{ secrets.MAIL_TO }}
-          from: ${{ secrets.MAIL_USER }}
-          body: ${{ env.DEFAULT_EMAIL_BODY }}
-          attachments: dl/reports-all-regions.zip
+          curl -sS -X POST https://api.sendgrid.com/v3/mail/send \
+            -H "Authorization: Bearer $SENDGRID_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d @payload.json
 
   monthly_release:
     needs: aggregate
