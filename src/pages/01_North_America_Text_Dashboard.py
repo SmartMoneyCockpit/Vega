@@ -3,8 +3,8 @@ import streamlit as st
 from streamlit.components.v1 import html
 from urllib.parse import quote
 
-st.set_page_config(page_title="North America — Text Dashboard v1.3", layout="wide")
-st.title("North America — Text Dashboard v1.3")
+st.set_page_config(page_title="North America — Text Dashboard v1.4", layout="wide")
+st.title("North America — Text Dashboard v1.4")
 
 MD_PATH = "reports/na/morning_report.md"
 CAL_CSV = "assets/econ_calendar_na.csv"
@@ -24,56 +24,74 @@ def _load_meta():
     except Exception:
         return {}
 
-def tv_chart_html(symbol: str, interval: str="D", theme: str="light", height: int=640) -> str:
+def _load_presets(section: str, fallback: dict) -> dict:
+    try:
+        cfg = json.load(open("config/tv_presets.json", "r", encoding="utf-8"))
+        base = dict(fallback)
+        base.update(cfg.get(section, {}))
+        return base
+    except Exception:
+        return dict(fallback)
+
+def tv_chart_html(symbol: str, interval: str, theme: str, height: int,
+                  studies: list, studies_overrides: dict | None) -> str:
     cfg = {
-        "symbol": symbol,
-        "interval": interval,
-        "timezone": "Etc/UTC",
-        "theme": theme,
-        "style": "1",
-        "locale": "en",
-        "studies": ["RSI@tv-basicstudies", "MASimple@tv-basicstudies", "MAExp@tv-basicstudies"],
-        "allow_symbol_change": True,
-        "withdateranges": True,
-        "details": True,
-        "calendar": True,
-        "autosize": True,
-        "container_id": "tv_na_chart"
+        "symbol": symbol, "interval": interval, "timezone": "Etc/UTC",
+        "theme": theme, "style": "1", "locale": "en",
+        "studies": studies,
+        "allow_symbol_change": True, "withdateranges": True,
+        "details": True, "calendar": True, "autosize": True,
+        "container_id": "tv_quick_na"
     }
+    if studies_overrides:
+        cfg["studies_overrides"] = studies_overrides
     return f"""
-<div id="tv_na_chart" style="height:{height}px;"></div>
+<div id="tv_quick_na" style="height:{height}px;"></div>
 <script src="https://s3.tradingview.com/tv.js"></script>
 <script> new TradingView.widget({json.dumps(cfg)}); </script>
 """
 
 # ---------------- Quick Chart (TOP, CENTERED) ----------------
 st.subheader("Quick Chart")
-NA_LIST = ["NYSEARCA:SPY","NASDAQ:QQQ","NYSEARCA:DIA","NYSEARCA:IWM","CBOE:VIX"]
+
+# indicator presets (same as full-page TV)
+CHART_PRE = _load_presets("charts", {
+    "studies": [
+        "RSI@tv-basicstudies","MACD@tv-basicstudies","ATR@tv-basicstudies",
+        "OBV@tv-basicstudies","BollingerBands@tv-basicstudies","IchimokuCloud@tv-basicstudies",
+        "MASimple@tv-basicstudies","MAExp@tv-basicstudies","Volume@tv-basicstudies"
+    ],
+    "studies_overrides": {}
+})
+studies = CHART_PRE.get("studies", [])
+studies_overrides = CHART_PRE.get("studies_overrides", {})
+
+# region defaults
+PRE = _load_presets("na", {"symbol":"NYSEARCA:SPY","interval":"D","theme":"dark","height":720})
+NA_LIST = ["NYSEARCA:SPY","NASDAQ:QQQ","NYSEARCA:DIA","NYSEARCA:IWM","CBOE:VIX","NYSEARCA:XLK","NYSEARCA:XLE"]
 
 cc1, cc2, cc3, cc4 = st.columns([2,1,1,1])
-symbol  = cc1.selectbox("Symbol", NA_LIST, index=0)
-interval = cc2.selectbox("Interval", ["1","5","15","60","240","D","W","M"], index=5)
-theme    = cc3.selectbox("Theme", ["light","dark"], index=1)
-height   = cc4.slider("Height", 480, 1200, 720, step=20)
+symbol  = cc1.selectbox("Symbol", NA_LIST, index=NA_LIST.index(PRE["symbol"]) if PRE["symbol"] in NA_LIST else 0)
+interval = cc2.selectbox("Interval", ["1","5","15","60","240","D","W","M"],
+                         index=["1","5","15","60","240","D","W","M"].index(PRE["interval"]) if PRE["interval"] in ["1","5","15","60","240","D","W","M"] else 5)
+theme    = cc3.selectbox("Theme", ["light","dark"], index=(0 if PRE["theme"]=="light" else 1))
+height   = cc4.slider("Height", 480, 1200, int(PRE["height"]), step=20)
 
 manual = st.text_input("Or type a TV symbol (e.g., NYSEARCA:SPY)", "").strip()
 if manual:
     symbol = manual
 
-# Center the chart (narrow side columns, wide center column)
+# center the chart
 left, mid, right = st.columns([1, 8, 1])
 with mid:
-    html(tv_chart_html(symbol, interval, theme, height=height), height=height+20, scrolling=False)
+    html(tv_chart_html(symbol, interval, theme, height, studies, studies_overrides),
+         height=height+20, scrolling=False)
 
-# Pop-out actions
-pop_left, pop_mid, pop_right = st.columns([1,8,1])
-with pop_mid:
-    st.link_button("Open full-page chart (in-app)", "/TradingView_Charts")
-    st.markdown(
-        f"[Open on TradingView]("
-        f"https://www.tradingview.com/chart/?symbol={quote(symbol)}&interval={interval}"
-        f")"
-    )
+# pop-out links
+with mid:
+    params = f"?symbol={quote(symbol)}&interval={interval}&theme={theme}&height={height}"
+    st.link_button("Open full-page chart (in-app)", f"/TradingView_Charts{params}")
+    st.markdown(f"[Open on TradingView](https://www.tradingview.com/chart/?symbol={quote(symbol)}&interval={interval})  •  [Share this preset]({params})")
 
 # ---------------- Morning Report ----------------
 st.subheader("Morning Report")
