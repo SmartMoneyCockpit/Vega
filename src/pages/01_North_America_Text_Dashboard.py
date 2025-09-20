@@ -1,9 +1,10 @@
 import os, json, pandas as pd, datetime as dt
 import streamlit as st
 from streamlit.components.v1 import html
+from urllib.parse import quote
 
-st.set_page_config(page_title="North America — Text Dashboard v1.2", layout="wide")
-st.title("North America — Text Dashboard v1.2")
+st.set_page_config(page_title="North America — Text Dashboard v1.3", layout="wide")
+st.title("North America — Text Dashboard v1.3")
 
 MD_PATH = "reports/na/morning_report.md"
 CAL_CSV = "assets/econ_calendar_na.csv"
@@ -23,7 +24,7 @@ def _load_meta():
     except Exception:
         return {}
 
-def tv_chart_html(symbol: str, interval: str="D", theme: str="light", height: int=460) -> str:
+def tv_chart_html(symbol: str, interval: str="D", theme: str="light", height: int=640) -> str:
     cfg = {
         "symbol": symbol,
         "interval": interval,
@@ -45,6 +46,35 @@ def tv_chart_html(symbol: str, interval: str="D", theme: str="light", height: in
 <script> new TradingView.widget({json.dumps(cfg)}); </script>
 """
 
+# ---------------- Quick Chart (TOP, CENTERED) ----------------
+st.subheader("Quick Chart")
+NA_LIST = ["NYSEARCA:SPY","NASDAQ:QQQ","NYSEARCA:DIA","NYSEARCA:IWM","CBOE:VIX"]
+
+cc1, cc2, cc3, cc4 = st.columns([2,1,1,1])
+symbol  = cc1.selectbox("Symbol", NA_LIST, index=0)
+interval = cc2.selectbox("Interval", ["1","5","15","60","240","D","W","M"], index=5)
+theme    = cc3.selectbox("Theme", ["light","dark"], index=1)
+height   = cc4.slider("Height", 480, 1200, 720, step=20)
+
+manual = st.text_input("Or type a TV symbol (e.g., NYSEARCA:SPY)", "").strip()
+if manual:
+    symbol = manual
+
+# Center the chart (narrow side columns, wide center column)
+left, mid, right = st.columns([1, 8, 1])
+with mid:
+    html(tv_chart_html(symbol, interval, theme, height=height), height=height+20, scrolling=False)
+
+# Pop-out actions
+pop_left, pop_mid, pop_right = st.columns([1,8,1])
+with pop_mid:
+    st.link_button("Open full-page chart (in-app)", "/TradingView_Charts")
+    st.markdown(
+        f"[Open on TradingView]("
+        f"https://www.tradingview.com/chart/?symbol={quote(symbol)}&interval={interval}"
+        f")"
+    )
+
 # ---------------- Morning Report ----------------
 st.subheader("Morning Report")
 if os.path.isfile(MD_PATH):
@@ -52,18 +82,6 @@ if os.path.isfile(MD_PATH):
     st.caption(f"Last updated: { _mtime(MD_PATH) }")
 else:
     st.info("Morning report not found yet. It will appear after the next CI run commits it.")
-
-# ---------------- TradingView Quick Chart ----------------
-st.subheader("Quick Chart")
-NA_LIST = ["NYSEARCA:SPY", "NASDAQ:QQQ", "NYSEARCA:DIA", "NYSEARCA:IWM", "CBOE:VIX"]
-c1, c2, c3 = st.columns([2,1,1])
-symbol = c1.selectbox("Symbol", NA_LIST, index=0)
-interval = c2.selectbox("Interval", ["1","5","15","60","240","D","W","M"], index=5)
-theme = c3.selectbox("Theme", ["light","dark"], index=0)
-manual = st.text_input("Or type a TV symbol (e.g., NYSEARCA:SPY)", "").strip()
-if manual:
-    symbol = manual
-html(tv_chart_html(symbol, interval, theme), height=480, scrolling=False)
 
 # ---------------- Economic Calendar ----------------
 st.subheader("Economic Calendar")
