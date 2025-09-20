@@ -1,8 +1,8 @@
-# pages/04_Screener_Text.py
+# SCREENER_FIX v1.3 (root/pages/04_Screener_Text.py)
 import os, glob, pandas as pd, streamlit as st
 
-st.set_page_config(page_title="Screener — Text", layout="wide")
-st.title("Screener — Text")
+st.set_page_config(page_title="Screener — Text v1.3", layout="wide")
+st.title("Screener — Text v1.3")
 
 def _safe_str(x) -> str:
     if x is None:
@@ -66,11 +66,6 @@ else:
     if mask_blank.any():
         df.loc[mask_blank, "ticker"] = df[mask_blank].apply(resolve_ticker, axis=1)
 
-left, right = st.columns([0.7, 0.3])
-with left:
-    st.caption(f"Source: {source_path or 'unknown'} — Rows: {len(df):,}")
-with right:
-    st.download_button("Download CSV", df.to_csv(index=False).encode("utf-8"),
-                       file_name="screener_clean.csv", mime="text/csv")
+st.caption(f"SCREENER_FIX is LIVE • Source: {source_path or 'unknown'} • Rows: {len(df):,}")
 
 st.dataframe(df, use_container_width=True, hide_index=True)
