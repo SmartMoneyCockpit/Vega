@@ -291,40 +291,62 @@ jobs:
         shell: bash
         run: |
           set -e
+          # Folders the app reads from
           mkdir -p data/snapshots/na data/snapshots/eu data/snapshots/apac
+          mkdir -p reports/na reports/eu reports/apac
+          mkdir -p assets
 
+          # --- Index snapshots (existing behavior) ------------------------------
           cp -f out/na_index_snapshot.csv   data/snapshots/na/index_snapshot.csv   2>/dev/null || true
           cp -f out/eu_index_snapshot.csv   data/snapshots/eu/index_snapshot.csv   2>/dev/null || true
           cp -f out/apac_index_snapshot.csv data/snapshots/apac/index_snapshot.csv 2>/dev/null || true
 
+          # Quick alias: econ-calendar artifacts can stand in for snapshots
           cp -f out/econ-calendar-NA*    data/snapshots/na/index_snapshot.csv   2>/dev/null || true
           cp -f out/econ-calendar-EU*    data/snapshots/eu/index_snapshot.csv   2>/dev/null || true
           cp -f out/econ-calendar-APAC*  data/snapshots/apac/index_snapshot.csv 2>/dev/null || true
 
+          # Fallback discovery by pattern for snapshot CSVs
           [[ -s data/snapshots/na/index_snapshot.csv ]] || \
-            (f="$(find out -maxdepth 2 -type f -iname '*na*index*snapshot*.csv' -o -iname 'index_snapshot_na.csv' -o -iname '*econ*na*' -print -quit)"; \
+            (f="$(find out -maxdepth 3 -type f -iname '*na*index*snapshot*.csv' -o -iname 'index_snapshot_na.csv' -o -iname '*econ*na*' -print -quit)"; \
              [[ -n "$f" ]] && cp -f "$f" data/snapshots/na/index_snapshot.csv || true)
 
           [[ -s data/snapshots/eu/index_snapshot.csv ]] || \
-            (f="$(find out -maxdepth 2 -type f -iname '*eu*index*snapshot*.csv' -o -iname '*europe*index*snapshot*.csv' -o -iname 'index_snapshot_eu.csv' -o -iname '*econ*eu*' -print -quit)"; \
+            (f="$(find out -maxdepth 3 -type f -iname '*eu*index*snapshot*.csv' -o -iname '*europe*index*snapshot*.csv' -o -iname 'index_snapshot_eu.csv' -o -iname '*econ*eu*' -print -quit)"; \
              [[ -n "$f" ]] && cp -f "$f" data/snapshots/eu/index_snapshot.csv || true)
 
           [[ -s data/snapshots/apac/index_snapshot.csv ]] || \
-            (f="$(find out -maxdepth 2 -type f -iname '*apac*index*snapshot*.csv' -o -iname 'index_snapshot_apac.csv' -o -iname '*econ*apac*' -print -quit)"; \
+            (f="$(find out -maxdepth 3 -type f -iname '*apac*index*snapshot*.csv' -o -iname 'index_snapshot_apac.csv' -o -iname '*econ*apac*' -print -quit)"; \
              [[ -n "$f" ]] && cp -f "$f" data/snapshots/apac/index_snapshot.csv || true)
+
+          # --- Morning Reports (NEW): commit markdown the app will render -------
+          MR_NA="$(find out -maxdepth 5 -type f -iname 'morning_report_na.md' -print -quit || true)"
+          MR_EU="$(find out -maxdepth 5 -type f -iname 'morning_report_europe.md' -print -quit || true)"
+          MR_AP="$(find out -maxdepth 5 -type f -iname 'morning_report_apac.md' -print -quit || true)"
+          [[ -n "$MR_NA" ]] && cp -f "$MR_NA" reports/na/morning_report.md
+          [[ -n "$MR_EU" ]] && cp -f "$MR_EU" reports/eu/morning_report.md
+          [[ -n "$MR_AP" ]] && cp -f "$MR_AP" reports/apac/morning_report.md
+
+          # --- Econ Calendars (NEW): copy CSVs the pages will read --------------
+          EC_NA="$(find out -maxdepth 5 -type f -iname 'econ_calendar_na.csv' -print -quit || true)"
+          EC_EU="$(find out -maxdepth 5 -type f -iname 'econ_calendar_europe.csv' -print -quit || true)"
+          EC_AP="$(find out -maxdepth 5 -type f -iname 'econ_calendar_apac.csv' -print -quit || true)"
+          [[ -n "$EC_NA" ]] && cp -f "$EC_NA" assets/econ_calendar_na.csv
+          [[ -n "$EC_EU" ]] && cp -f "$EC_EU" assets/econ_calendar_europe.csv
+          [[ -n "$EC_AP" ]] && cp -f "$EC_AP" assets/econ_calendar_apac.csv
 
       - name: Commit & push if there are changes
         shell: bash
         run: |
           set -e
-          if [ -n "$(git status --porcelain data/snapshots)" ]; then
+          if [ -n "$(git status --porcelain -- data/snapshots reports assets)" ]; then
             git config user.name  "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add data/snapshots
-            git commit -m "chore(snapshot): update NA/EU/APAC CSVs [skip ci]"
+            git add data/snapshots reports assets
+            git commit -m "chore(snapshot): update NA/EU/APAC snapshots & reports [skip ci]"
             git push
           else
-            echo "No snapshot changes to commit."
+            echo "No snapshot/report changes to commit."
           fi
 
   email_bundle:
