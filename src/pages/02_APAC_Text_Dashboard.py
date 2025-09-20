@@ -10,6 +10,11 @@ MD_PATH = "reports/apac/morning_report.md"
 CAL_CSV = "assets/econ_calendar_apac.csv"
 META    = "reports/run_meta.json"
 
+# --- Cached CSV loader ---
+@st.cache_data(show_spinner=False)
+def _read_csv(path: str) -> pd.DataFrame:
+    return pd.read_csv(path)
+
 def _mtime(path: str) -> str:
     try:
         ts = os.path.getmtime(path)
@@ -66,9 +71,19 @@ interval = cc2.selectbox("Interval", ["1","5","15","60","240","D","W","M"], inde
 theme    = cc3.selectbox("Theme", ["light","dark"], index=1)
 height   = cc4.slider("Height", 480, 1200, 800, step=20)
 
-sel_overlays = st.multiselect("Overlays", list(OVERLAY_CHOICES.keys()), default=overlay_default)
-ordered = [k for k in ema_order if k in sel_overlays] + [k for k in sel_overlays if k not in ema_order]
+# overlays picker with Reset
+if "apac_overlays" not in st.session_state:
+    st.session_state["apac_overlays"] = overlay_default
+sel_overlays = st.multiselect("Overlays", list(OVERLAY_CHOICES.keys()),
+                              default=st.session_state["apac_overlays"],
+                              key="apac_overlays")
+col_reset, _ = st.columns([1,5])
+with col_reset:
+    if st.button("Reset EMAs", key="apac_reset"):
+        st.session_state["apac_overlays"] = overlay_default
+        st.rerun()
 
+ordered = [k for k in ema_order if k in sel_overlays] + [k for k in sel_overlays if k not in ema_order]
 overlay_studies, ema_lengths = [], []
 for name in ordered:
     study, length = OVERLAY_CHOICES[name]
@@ -102,9 +117,10 @@ else:
 # Economic Calendar
 st.subheader("Economic Calendar")
 if os.path.isfile(CAL_CSV):
-    df = pd.read_csv(CAL_CSV)
+    df = _read_csv(CAL_CSV)
     for col in ("date","time_tz","region","event","impact"):
         if col not in df.columns: df[col] = ""
+
     c1, c2 = st.columns([2,1])
     q = c1.text_input("Filter (keyword/date/time/impact)").strip()
     impacts = sorted([x for x in df["impact"].dropna().unique().tolist() if str(x).strip() != ""])
@@ -131,18 +147,29 @@ if os.path.isfile(CAL_CSV):
         lines = ["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//Vega//Calendar//EN"]
         now = dt.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
         for _, r in df_.iterrows():
-            date = pd.to_datetime(str(r.get("date","")), errors="coerce")
-            if pd.isna(date): continue
-            ymd = date.strftime("%Y%m%d")
+            date_str = str(r.get("date","")).strip()
+            time_str = str(r.get("time_tz","")).strip()
             summary = f"{r.get('event','')}".replace("\n"," ")
             impact  = str(r.get("impact","")).strip()
-            desc = f"Region: {r.get('region','')}; Time: {r.get('time_tz','')}; Impact: {impact}"
-            uid = f"{ymd}-{abs(hash(summary))}@vega"
-            lines += ["BEGIN:VEVENT", f"UID:{uid}", f"DTSTAMP:{now}",
-                      f"DTSTART;VALUE=DATE:{ymd}",
-                      f"SUMMARY:{summary}" + (f" ({impact})" if impact else ""),
-                      f"DESCRIPTION:{desc}", "END:VEVENT"]
-        lines += ["END:VCALENDAR"]
+            desc = f"Region: {r.get('region','')}; Time: {time_str}; Impact: {impact}"
+
+            dt_val = pd.to_datetime(f"{date_str} {time_str}", errors="coerce")
+            lines.append("BEGIN:VEVENT")
+            lines.append(f"UID:{date_str}-{abs(hash(summary))}@vega")
+            lines.append(f"DTSTAMP:{now}")
+            if pd.isna(dt_val):
+                ymd = pd.to_datetime(date_str, errors="coerce")
+                if pd.isna(ymd):
+                    lines.append(f"SUMMARY:{summary}")
+                else:
+                    lines.append(f"DTSTART;VALUE=DATE:{ymd.strftime('%Y%m%d')}")
+                    lines.append(f"SUMMARY:{summary}")
+            else:
+                lines.append(f"DTSTART:{dt_val.strftime('%Y%m%dT%H%M%S')}")
+                lines.append(f"SUMMARY:{summary}")
+            lines.append(f"DESCRIPTION:{desc}")
+            lines.append("END:VEVENT")
+        lines.append("END:VCALENDAR")
         return "\r\n".join(lines).encode("utf-8")
 
     st.download_button("Download filtered .ics", to_ics(dfv),
