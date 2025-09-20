@@ -3,14 +3,14 @@ import os, glob, math
 import pandas as pd
 import streamlit as st
 
-# Optional: If your project has these helpers, we’ll try them.
+# Optional helper (safe to ignore if module doesn't exist)
 try:
     from modules.data.remote import load_csv_auto  # optional
 except Exception:
     load_csv_auto = None
 
-st.set_page_config(page_title="Screener — Text v1.6", layout="wide")
-st.title("Screener — Text v1.6")
+st.set_page_config(page_title="Screener — Text v1.7", layout="wide")
+st.title("Screener — Text v1.7")
 
 # -----------------------------
 # Safe string helper
@@ -100,7 +100,7 @@ if df is None or df.empty:
     st.info("No screener CSV found yet. Once the workflow drops a screener CSV, this page will render it.")
     st.stop()
 
-# normalize potential columns we’ll read
+# Normalize potential columns we’ll read
 for col in ("name", "symbol", "ticker", "Ticker", "Symbol", "tv", "tradingview"):
     if col in df.columns:
         df[col] = df[col].apply(_safe_str)
@@ -115,25 +115,55 @@ else:
 
 df["ticker"] = df["ticker"].apply(_safe_str).str.upper()
 
-# Non-fatal diagnostics
+# Non-fatal diagnostics for unresolved rows
 missing = df["ticker"].eq("")
 if missing.any():
     st.warning(f"{missing.sum()} rows have no ticker after cleanup. Showing a sample below.")
     st.dataframe(df[missing].head(10), use_container_width=True, hide_index=True)
 
-st.caption(f"SCREENER_FIX v1.6 • Source: {source_path or 'unknown'} • Rows: {len(df):,}")
-st.dataframe(df, use_container_width=True, hide_index=True)
+# ---- Clean + quick tools -----------------------------------------------------
+# keep only rows with a ticker, de-dupe by ticker
+df_clean = df[df["ticker"] != ""].drop_duplicates(subset=["ticker"]).reset_index(drop=True)
 
+# search box (matches ticker OR name)
+q = st.text_input("Filter (ticker or name)").strip()
+if q:
+    df_view = df_clean[
+        df_clean["ticker"].str.contains(q, case=False, na=False)
+        | df_clean.get("name", pd.Series("", index=df_clean.index)).str.contains(q, case=False, na=False)
+    ]
+else:
+    df_view = df_clean
 
+# small stats
+c1, c2 = st.columns(2)
+c1.metric("Rows (raw)", len(df))
+c2.metric("Rows (clean)", len(df_view))
+
+# download cleaned CSV
+st.download_button(
+    "Download cleaned CSV",
+    data=df_view.to_csv(index=False).encode("utf-8"),
+    file_name="screener_clean.csv",
+    mime="text/csv",
+)
+
+# show cleaned/filtered table
+st.dataframe(df_view, use_container_width=True, hide_index=True)
+
+# Footer caption
+st.caption(f"SCREENER_FIX v1.7 • Source: {source_path or 'unknown'} • Rows(raw): {len(df):,} • Rows(clean): {len(df_view):,}")
+
+# Optional: diagnostics of discovered files
 with st.expander("Diagnostics"):
-    import glob, os
     cands = []
-    for p in ["data/snapshots/**/*screener*.csv",
-              "data/**/*screener*.csv",
-              "reports/**/*screener*.csv",
-              "output/**/*screener*.csv",
-              "**/*screener*.csv"]:
+    for p in [
+        "data/snapshots/**/*screener*.csv",
+        "data/**/*screener*.csv",
+        "reports/**/*screener*.csv",
+        "output/**/*screener*.csv",
+        "**/*screener*.csv",
+    ]:
         cands += glob.glob(p, recursive=True)
     st.write("Candidates found:", len(cands))
     st.write(sorted([c for c in cands if os.path.isfile(c)])[:50])
-
