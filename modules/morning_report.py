@@ -131,6 +131,9 @@ class MorningReport:
     # ---------- Section: VectorVest Metrics Snapshot ----------
     def render_vectorvest_metrics(self):
         st.markdown("## 📊 VectorVest Metrics (Watchlist Snapshot)")
+        from components.ui_overrides import apply_vv_table_overrides
+        apply_vv_table_overrides()
+        st.divider()
         # Base watchlist (if available)
         base = None
         base_path = os.path.join("data","screener.csv")
@@ -181,16 +184,26 @@ class MorningReport:
         disp_cols = core_cols + [c for c in ['vst_spark','eps_spark','growth_spark','sales_growth_spark'] if c in df.columns]
         try:
             from streamlit import column_config
-            st.dataframe(
-                df[disp_cols],
-                use_container_width=True,
-                column_config={
-                    'vst_spark': column_config.ImageColumn('VST'),
-                    'eps_spark': column_config.ImageColumn('EPS'),
-                    'growth_spark': column_config.ImageColumn('Growth'),
-                    'sales_growth_spark': column_config.ImageColumn('Sales Growth'),
-                }
-            )
+            
+        # VV_UI_FIX: force table visibility
+        st.markdown("## 📊 VectorVest Metrics Snapshot (Forced Visible)")
+        st.markdown(
+            "<style>.stDataFrame {background-color: #111 !important;}</style>",
+            unsafe_allow_html=True
+        )
+        try:
+            st.dataframe(df[disp_cols], use_container_width=True,
+                height=600, height=600,
+                         column_config={
+                             'vst_spark': column_config.ImageColumn('VST'),
+                             'eps_spark': column_config.ImageColumn('EPS'),
+                             'growth_spark': column_config.ImageColumn('Growth'),
+                             'sales_growth_spark': column_config.ImageColumn('Sales Growth'),
+                         })
+        except Exception:
+            st.dataframe(df[core_cols], use_container_width=True,
+                height=600, height=600)
+    
         # DOWNLOAD: VV table CSV
         try:
             import io
@@ -202,7 +215,7 @@ class MorningReport:
         if 'vst' in df.columns:
             df['vst_badge'] = df['vst'].map(lambda x: f"{x:.2f}" if pd.notnull(x) else '')
         except Exception:
-            st.dataframe(df[core_cols], use_container_width=True)
+            st.dataframe(df[core_cols], use_container_width=True, height=600)
         # DOWNLOAD: VV table CSV
         try:
             import io
