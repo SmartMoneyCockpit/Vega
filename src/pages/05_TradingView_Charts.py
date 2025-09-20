@@ -114,3 +114,7 @@ if show_heatmap:
     html(tv_heatmap_html(data_source=data_source, theme=theme, height=600), height=620, scrolling=False)
 
 st.caption("Tip: Edit the watchlists at the top of this file to match your symbols. Exchange prefixes improve resolution.")
+
+NYSEARCA:SPY, NASDAQ:QQQ, NYSEARCA:DIA, NYSEARCA:IWM
+
+CBOE:VIX, NYSEARCA:VGK, NYSEARCA:EZU, NYSEARCA:EWJ, TVC:HSI
