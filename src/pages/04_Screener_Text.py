@@ -1,11 +1,10 @@
-# src/pages/04_Screener_Text.py
-import os, glob, math, json
+import os, glob, math
 from urllib.parse import quote
 import pandas as pd
 import streamlit as st
 
-st.set_page_config(page_title="Screener — Text v2.0", layout="wide")
-st.title("Screener — Text v2.0")
+st.set_page_config(page_title="Screener — Text v2.1", layout="wide")
+st.title("Screener — Text v2.1")
 
 def _safe_str(x) -> str:
     if isinstance(x, str):
@@ -98,12 +97,12 @@ if q:
 else:
     df_view = df_clean
 
-# Links
+# Links (default overlays e9,e21,e50,e200 for deep link)
 def _tv_url(sym: str) -> str:
     return f"https://www.tradingview.com/chart/?symbol={quote(sym)}"
 
 def _chart_url(sym: str) -> str:
-    return f"/TradingView_Charts?symbol={quote(sym)}&interval=D&theme=dark&height=900"
+    return f"/TradingView_Charts?symbol={quote(sym)}&interval=D&theme=dark&height=900&ov=e9,e21,e50,e200"
 
 df_view = df_view.copy()
 df_view["TradingView"] = df_view["ticker"].apply(_tv_url)
@@ -122,12 +121,10 @@ st.download_button(
     mime="text/csv",
 )
 
-# Optional quick tickers export
 tickers_str = " ".join(df_view["ticker"].tolist())
 st.text_area("Tickers (space-separated)", tickers_str, height=70)
 st.download_button("Download tickers.txt", tickers_str, file_name="tickers.txt", mime="text/plain")
 
-# Show table
 st.dataframe(
     df_view,
     use_container_width=True,
@@ -138,7 +135,7 @@ st.dataframe(
     },
 )
 
-st.caption(f"SCREENER_FIX v2.0 • Source: {latest} • Rows(raw): {len(df):,} • Rows(clean): {len(df_view):,}")
+st.caption(f"SCREENER_FIX v2.1 • Source: {latest} • Rows(raw): {len(df):,} • Rows(clean): {len(df_view):,}")
 
 with st.expander("Diagnostics"):
     cands = []
