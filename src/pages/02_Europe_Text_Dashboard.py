@@ -3,8 +3,8 @@ import streamlit as st
 from streamlit.components.v1 import html
 from urllib.parse import quote
 
-st.set_page_config(page_title="Europe — Text Dashboard v1.4", layout="wide")
-st.title("Europe — Text Dashboard v1.4")
+st.set_page_config(page_title="Europe — Text Dashboard v1.5", layout="wide")
+st.title("Europe — Text Dashboard v1.5")
 
 MD_PATH = "reports/eu/morning_report.md"
 CAL_CSV = "assets/econ_calendar_europe.csv"
@@ -22,15 +22,6 @@ def _load_meta():
         return json.load(open(META, "r", encoding="utf-8"))
     except Exception:
         return {}
-
-def _load_presets(section: str, fallback: dict) -> dict:
-    try:
-        cfg = json.load(open("config/tv_presets.json", "r", encoding="utf-8"))
-        base = dict(fallback)
-        base.update(cfg.get(section, {}))
-        return base
-    except Exception:
-        return dict(fallback)
 
 def tv_chart_html(symbol: str, interval: str, theme: str, height: int,
                   studies: list, studies_overrides: dict | None) -> str:
@@ -52,26 +43,40 @@ def tv_chart_html(symbol: str, interval: str, theme: str, height: int,
 # Quick Chart (TOP, CENTERED)
 st.subheader("Quick Chart")
 
-CHART_PRE = _load_presets("charts", {
-    "studies": [
-        "RSI@tv-basicstudies","MACD@tv-basicstudies","ATR@tv-basicstudies",
-        "OBV@tv-basicstudies","BollingerBands@tv-basicstudies","IchimokuCloud@tv-basicstudies",
-        "MASimple@tv-basicstudies","MAExp@tv-basicstudies","Volume@tv-basicstudies"
-    ],
-    "studies_overrides": {}
-})
-studies = CHART_PRE.get("studies", [])
-studies_overrides = CHART_PRE.get("studies_overrides", {})
+PANE_STUDIES = [
+    "RSI@tv-basicstudies","MACD@tv-basicstudies",
+    "ATR@tv-basicstudies","OBV@tv-basicstudies","Volume@tv-basicstudies"
+]
+OVERLAY_CHOICES = {
+    "EMA 9":   ("MAExp@tv-basicstudies", 9),
+    "EMA 21":  ("MAExp@tv-basicstudies", 21),
+    "EMA 50":  ("MAExp@tv-basicstudies", 50),
+    "EMA 200": ("MAExp@tv-basicstudies", 200),
+    "Bollinger (20,2)": ("BollingerBands@tv-basicstudies", None),
+    "Ichimoku (9/26/52)": ("IchimokuCloud@tv-basicstudies", None),
+}
+overlay_default = ["EMA 9", "EMA 21", "EMA 50", "EMA 200"]
+ema_order = ["EMA 9","EMA 21","EMA 50","EMA 200"]
 
-PRE = _load_presets("eu", {"symbol":"NYSEARCA:VGK","interval":"D","theme":"dark","height":720})
 EU_LIST = ["NYSEARCA:VGK","NYSEARCA:EZU","NYSEARCA:FEZ","TVC:FTSE"]
 
 cc1, cc2, cc3, cc4 = st.columns([2,1,1,1])
-symbol  = cc1.selectbox("Symbol", EU_LIST, index=EU_LIST.index(PRE["symbol"]) if PRE["symbol"] in EU_LIST else 0)
-interval = cc2.selectbox("Interval", ["1","5","15","60","240","D","W","M"],
-                         index=["1","5","15","60","240","D","W","M"].index(PRE["interval"]) if PRE["interval"] in ["1","5","15","60","240","D","W","M"] else 5)
-theme    = cc3.selectbox("Theme", ["light","dark"], index=(0 if PRE["theme"]=="light" else 1))
-height   = cc4.slider("Height", 480, 1200, int(PRE["height"]), step=20)
+symbol  = cc1.selectbox("Symbol", EU_LIST, index=0)
+interval = cc2.selectbox("Interval", ["1","5","15","60","240","D","W","M"], index=5)
+theme    = cc3.selectbox("Theme", ["light","dark"], index=1)
+height   = cc4.slider("Height", 480, 1200, 800, step=20)
+
+sel_overlays = st.multiselect("Overlays", list(OVERLAY_CHOICES.keys()), default=overlay_default)
+ordered = [k for k in ema_order if k in sel_overlays] + [k for k in sel_overlays if k not in ema_order]
+
+overlay_studies, ema_lengths = [], []
+for name in ordered:
+    study, length = OVERLAY_CHOICES[name]
+    overlay_studies.append(study)
+    if study == "MAExp@tv-basicstudies" and isinstance(length, int):
+        ema_lengths.append(length)
+studies = overlay_studies + PANE_STUDIES
+studies_overrides = {f"MAExp@tv-basicstudies.{i}.length": ln for i, ln in enumerate(ema_lengths)}
 
 manual = st.text_input("Or type a TV symbol (e.g., NYSEARCA:VGK)", "").strip()
 if manual:
