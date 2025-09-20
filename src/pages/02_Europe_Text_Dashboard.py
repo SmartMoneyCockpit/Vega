@@ -3,14 +3,13 @@ import streamlit as st
 from streamlit.components.v1 import html
 from urllib.parse import quote
 
-st.set_page_config(page_title="Europe — Text Dashboard v1.5", layout="wide")
-st.title("Europe — Text Dashboard v1.5")
+st.set_page_config(page_title="Europe — Text Dashboard v1.6", layout="wide")
+st.title("Europe — Text Dashboard v1.6")
 
 MD_PATH = "reports/eu/morning_report.md"
 CAL_CSV = "assets/econ_calendar_europe.csv"
 META    = "reports/run_meta.json"
 
-# --- Cached CSV loader ---
 @st.cache_data(show_spinner=False)
 def _read_csv(path: str) -> pd.DataFrame:
     return pd.read_csv(path)
@@ -27,6 +26,42 @@ def _load_meta():
         return json.load(open(META, "r", encoding="utf-8"))
     except Exception:
         return {}
+
+def _get_qp() -> dict:
+    try:
+        qp = st.query_params
+        out = {}
+        for k, v in qp.items():
+            if isinstance(v, list): out[k] = v[0] if v else ""
+            else: out[k] = v
+        return out
+    except Exception:
+        qp = st.experimental_get_query_params()
+        return {k: (v[0] if isinstance(v, list) and v else "") for k, v in qp.items()}
+
+def _qp_get(name: str, default: str) -> str:
+    v = _get_qp().get(name, default)
+    if name == "height":
+        try: return str(int(v))
+        except: return str(default)
+    return v or default
+
+OVERLAY_CODES = {
+    "EMA 9":"e9", "EMA 21":"e21", "EMA 50":"e50", "EMA 200":"e200",
+    "Bollinger (20,2)":"bb", "Ichimoku (9/26/52)":"ichi",
+}
+CODE_TO_OVERLAY = {v:k for k,v in OVERLAY_CODES.items()}
+EMA_ORDER = ["EMA 9","EMA 21","EMA 50","EMA 200"]
+
+def _decode_overlays(code_csv: str, default: list[str]) -> list[str]:
+    if not code_csv: return default
+    parts = [p.strip() for p in code_csv.split(",") if p.strip()]
+    names = [CODE_TO_OVERLAY.get(p) for p in parts if CODE_TO_OVERLAY.get(p)]
+    return names or default
+
+def _encode_overlays(names: list[str]) -> str:
+    ordered = [n for n in EMA_ORDER if n in names] + [n for n in names if n not in EMA_ORDER]
+    return ",".join(OVERLAY_CODES[n] for n in ordered if n in OVERLAY_CODES)
 
 def tv_chart_html(symbol: str, interval: str, theme: str, height: int,
                   studies: list, studies_overrides: dict | None) -> str:
@@ -60,30 +95,34 @@ OVERLAY_CHOICES = {
     "Bollinger (20,2)": ("BollingerBands@tv-basicstudies", None),
     "Ichimoku (9/26/52)": ("IchimokuCloud@tv-basicstudies", None),
 }
-overlay_default = ["EMA 9", "EMA 21", "EMA 50", "EMA 200"]
-ema_order = ["EMA 9","EMA 21","EMA 50","EMA 200"]
+OVERLAY_DEFAULT = ["EMA 9","EMA 21","EMA 50","EMA 200"]
 
 EU_LIST = ["NYSEARCA:VGK","NYSEARCA:EZU","NYSEARCA:FEZ","TVC:FTSE"]
 
-cc1, cc2, cc3, cc4 = st.columns([2,1,1,1])
-symbol  = cc1.selectbox("Symbol", EU_LIST, index=0)
-interval = cc2.selectbox("Interval", ["1","5","15","60","240","D","W","M"], index=5)
-theme    = cc3.selectbox("Theme", ["light","dark"], index=1)
-height   = cc4.slider("Height", 480, 1200, 800, step=20)
+qp = _get_qp()
+symbol_qp   = qp.get("symbol", EU_LIST[0])
+interval_qp = qp.get("interval", "D")
+theme_qp    = qp.get("theme", "dark")
+height_qp   = int(_qp_get("height", "800"))
+ov_qp       = _decode_overlays(qp.get("ov",""), OVERLAY_DEFAULT)
 
-# overlays picker with Reset
+cc1, cc2, cc3, cc4 = st.columns([2,1,1,1])
+symbol  = cc1.selectbox("Symbol", EU_LIST, index=(EU_LIST.index(symbol_qp) if symbol_qp in EU_LIST else 0))
+interval = cc2.selectbox("Interval", ["1","5","15","60","240","D","W","M"],
+                         index=["1","5","15","60","240","D","W","M"].index(interval_qp) if interval_qp in ["1","5","15","60","240","D","W","M"] else 5)
+theme    = cc3.selectbox("Theme", ["light","dark"], index=(0 if theme_qp=="light" else 1))
+height   = cc4.slider("Height", 480, 1200, height_qp, step=20)
+
 if "eu_overlays" not in st.session_state:
-    st.session_state["eu_overlays"] = overlay_default
+    st.session_state["eu_overlays"] = ov_qp
 sel_overlays = st.multiselect("Overlays", list(OVERLAY_CHOICES.keys()),
                               default=st.session_state["eu_overlays"],
                               key="eu_overlays")
-col_reset, _ = st.columns([1,5])
-with col_reset:
-    if st.button("Reset EMAs", key="eu_reset"):
-        st.session_state["eu_overlays"] = overlay_default
-        st.rerun()
+if st.button("Reset EMAs", key="eu_reset"):
+    st.session_state["eu_overlays"] = OVERLAY_DEFAULT
+    st.rerun()
 
-ordered = [k for k in ema_order if k in sel_overlays] + [k for k in sel_overlays if k not in ema_order]
+ordered = [n for n in EMA_ORDER if n in sel_overlays] + [n for n in sel_overlays if n not in EMA_ORDER]
 overlay_studies, ema_lengths = [], []
 for name in ordered:
     study, length = OVERLAY_CHOICES[name]
@@ -94,17 +133,18 @@ studies = overlay_studies + PANE_STUDIES
 studies_overrides = {f"MAExp@tv-basicstudies.{i}.length": ln for i, ln in enumerate(ema_lengths)}
 
 manual = st.text_input("Or type a TV symbol (e.g., NYSEARCA:VGK)", "").strip()
-if manual:
-    symbol = manual
+if manual: symbol = manual
 
 l, m, r = st.columns([1,8,1])
 with m:
     html(tv_chart_html(symbol, interval, theme, height, studies, studies_overrides),
          height=height+20, scrolling=False)
 with m:
-    params = f"?symbol={quote(symbol)}&interval={interval}&theme={theme}&height={height}"
+    ov_param = ",".join(OVERLAY_CODES[n] for n in ordered if n in OVERLAY_CODES)
+    params = f"?symbol={quote(symbol)}&interval={interval}&theme={theme}&height={height}&ov={ov_param}"
     st.link_button("Open full-page chart (in-app)", f"/TradingView_Charts{params}")
-    st.markdown(f"[Open on TradingView](https://www.tradingview.com/chart/?symbol={quote(symbol)}&interval={interval})  •  [Share this preset]({params})")
+    st.markdown(f"[Open on TradingView](https://www.tradingview.com/chart/?symbol={quote(symbol)}&interval={interval})")
+    st.text_input("Copy dashboard link", value=params, label_visibility="visible")
 
 # Morning Report
 st.subheader("Morning Report")
@@ -118,16 +158,20 @@ else:
 st.subheader("Economic Calendar")
 if os.path.isfile(CAL_CSV):
     df = _read_csv(CAL_CSV)
-    for col in ("date","time_tz","region","event","impact"):
-        if col not in df.columns: df[col] = ""
+
+    IMPACT_MAP = {"High":"🔴 High","Medium":"🟠 Medium","Med":"🟠 Medium","Low":"🟢 Low","-":"⚪ None","None":"⚪ None","":"⚪ None"}
+    if "impact" in df.columns:
+        df["impact"] = df["impact"].map(lambda x: IMPACT_MAP.get(str(x).strip(), str(x)))
+    cols = [c for c in ["date","time_tz","region","event","impact"] if c in df.columns]
+    if cols: df = df[cols + [c for c in df.columns if c not in cols]]
 
     c1, c2 = st.columns([2,1])
     q = c1.text_input("Filter (keyword/date/time/impact)").strip()
-    impacts = sorted([x for x in df["impact"].dropna().unique().tolist() if str(x).strip() != ""])
+    impacts = sorted(set(v for v in df.get("impact", pd.Series(dtype=str)).dropna().tolist() if str(v).strip()))
     sel = c2.multiselect("Impact", options=impacts, default=impacts)
 
     dfv = df.copy()
-    if sel: dfv = dfv[dfv["impact"].isin(sel)]
+    if "impact" in dfv and sel: dfv = dfv[dfv["impact"].isin(sel)]
     if q:
         ql = q.lower()
         dfv = dfv[dfv.apply(lambda r: any(ql in str(v).lower() for v in r.values), axis=1)]
@@ -154,22 +198,17 @@ if os.path.isfile(CAL_CSV):
             desc = f"Region: {r.get('region','')}; Time: {time_str}; Impact: {impact}"
 
             dt_val = pd.to_datetime(f"{date_str} {time_str}", errors="coerce")
-            lines.append("BEGIN:VEVENT")
-            lines.append(f"UID:{date_str}-{abs(hash(summary))}@vega")
-            lines.append(f"DTSTAMP:{now}")
+            lines += ["BEGIN:VEVENT", f"UID:{date_str}-{abs(hash(summary))}@vega", f"DTSTAMP:{now}"]
             if pd.isna(dt_val):
                 ymd = pd.to_datetime(date_str, errors="coerce")
                 if pd.isna(ymd):
-                    lines.append(f"SUMMARY:{summary}")
+                    lines += [f"SUMMARY:{summary}"]
                 else:
-                    lines.append(f"DTSTART;VALUE=DATE:{ymd.strftime('%Y%m%d')}")
-                    lines.append(f"SUMMARY:{summary}")
+                    lines += [f"DTSTART;VALUE=DATE:{ymd.strftime('%Y%m%d')}", f"SUMMARY:{summary}"]
             else:
-                lines.append(f"DTSTART:{dt_val.strftime('%Y%m%dT%H%M%S')}")
-                lines.append(f"SUMMARY:{summary}")
-            lines.append(f"DESCRIPTION:{desc}")
-            lines.append("END:VEVENT")
-        lines.append("END:VCALENDAR")
+                lines += [f"DTSTART:{dt_val.strftime('%Y%m%dT%H%M%S')}", f"SUMMARY:{summary}"]
+            lines += [f"DESCRIPTION:{desc}", "END:VEVENT"]
+        lines += ["END:VCALENDAR"]
         return "\r\n".join(lines).encode("utf-8")
 
     st.download_button("Download filtered .ics", to_ics(dfv),
