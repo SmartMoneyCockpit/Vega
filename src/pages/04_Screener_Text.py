@@ -123,3 +123,17 @@ if missing.any():
 
 st.caption(f"SCREENER_FIX v1.6 • Source: {source_path or 'unknown'} • Rows: {len(df):,}")
 st.dataframe(df, use_container_width=True, hide_index=True)
+
+
+with st.expander("Diagnostics"):
+    import glob, os
+    cands = []
+    for p in ["data/snapshots/**/*screener*.csv",
+              "data/**/*screener*.csv",
+              "reports/**/*screener*.csv",
+              "output/**/*screener*.csv",
+              "**/*screener*.csv"]:
+        cands += glob.glob(p, recursive=True)
+    st.write("Candidates found:", len(cands))
+    st.write(sorted([c for c in cands if os.path.isfile(c)])[:50])
+
