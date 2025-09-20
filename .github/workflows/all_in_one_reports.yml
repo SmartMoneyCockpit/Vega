@@ -131,40 +131,6 @@ jobs:
           retention-days: 14
           compression-level: 6
 
-      - name: Run Color Guard (per-region)
-        if: steps.gate.outputs.enabled == 'true'
-        shell: bash
-        run: |
-          set -e
-          mkdir -p alerts output/color_guard
-          FILE="scripts/color_guard_${REGION_LC}.py"
-          if [[ -f "${FILE}" ]]; then
-            python "${FILE}" || true
-          elif [[ -f "scripts/color_guard.py" ]]; then
-            python scripts/color_guard.py || true
-          fi
-          OUT="alerts/color_guard_${REGION_LC}.json"
-          if [[ ! -s "${OUT}" ]]; then
-            for CAND in \
-              "guards/color_guard_${REGION_LC}.json" \
-              "output/color_guard/color_guard_${REGION_LC}.json" \
-              "output/color_guard.json" ; do
-              [[ -s "${CAND}" ]] && { cp -f "${CAND}" "${OUT}"; break; }
-            done
-          fi
-          [[ -s "${OUT}" ]] || echo '{"region":"'"${REGION}"'","status":"ok","note":"placeholder"}' > "${OUT}"
-
-      - name: Upload Color Guard
-        if: steps.gate.outputs.enabled == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: color-guard-${{ env.REGION }}
-          path: |
-            output/color_guard/**
-            alerts/color_guard_${{ env.REGION_LC }}.json
-          retention-days: 14
-          compression-level: 6
-
       - name: Run Econ Calendar (per-region)
         if: steps.gate.outputs.enabled == 'true'
         shell: bash
@@ -208,11 +174,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p output/uptime_ping
-          if [[ -f scripts/uptime_ping.py ]]; then
-            python scripts/uptime_ping.py
-          else
-            echo "pong $(date -u +'%F %T')Z" > output/uptime_ping/ping.txt
-          fi
+          echo "pong $(date -u +'%F %T')Z" > output/uptime_ping/ping.txt
 
       - name: Upload Uptime Ping
         if: steps.gate.outputs.enabled == 'true'
@@ -229,7 +191,7 @@ jobs:
         run: |
           set -e
           mkdir -p pack
-          cp -rf alerts assets output pack/ 2>/dev/null || true
+          cp -rf assets output pack/ 2>/dev/null || true
           ( cd pack && zip -r ../report_${REGION}.zip . || true )
 
       - name: Upload region zip
@@ -288,55 +250,28 @@ jobs:
           path: out
           merge-multiple: true
 
-      - name: Stage CSVs to expected repo paths
+      - name: Stage files the app reads
         shell: bash
         run: |
           set -e
-          # Folders the app reads from
           mkdir -p data/snapshots/na data/snapshots/eu data/snapshots/apac
           mkdir -p reports/na reports/eu reports/apac
           mkdir -p assets reports
 
-          # --- Index snapshots (existing behavior) ------------------------------
-          cp -f out/na_index_snapshot.csv   data/snapshots/na/index_snapshot.csv   2>/dev/null || true
-          cp -f out/eu_index_snapshot.csv   data/snapshots/eu/index_snapshot.csv   2>/dev/null || true
-          cp -f out/apac_index_snapshot.csv data/snapshots/apac/index_snapshot.csv 2>/dev/null || true
+          # Econ calendars -> assets
+          cp -f out/econ-calendar-NA*    assets/econ_calendar_na.csv   2>/dev/null || true
+          cp -f out/econ-calendar-EU*    assets/econ_calendar_europe.csv   2>/dev/null || true
+          cp -f out/econ-calendar-APAC*  assets/econ_calendar_apac.csv 2>/dev/null || true
 
-          # Quick alias: econ-calendar artifacts can stand in for snapshots
-          cp -f out/econ-calendar-NA*    data/snapshots/na/index_snapshot.csv   2>/dev/null || true
-          cp -f out/econ-calendar-EU*    data/snapshots/eu/index_snapshot.csv   2>/dev/null || true
-          cp -f out/econ-calendar-APAC*  data/snapshots/apac/index_snapshot.csv  2>/dev/null || true
-
-          # Fallback discovery by pattern for snapshot CSVs
-          [[ -s data/snapshots/na/index_snapshot.csv ]] || \
-            (f="$(find out -maxdepth 3 -type f -iname '*na*index*snapshot*.csv' -o -iname 'index_snapshot_na.csv' -o -iname '*econ*na*' -print -quit)"; \
-             [[ -n "$f" ]] && cp -f "$f" data/snapshots/na/index_snapshot.csv || true)
-
-          [[ -s data/snapshots/eu/index_snapshot.csv ]] || \
-            (f="$(find out -maxdepth 3 -type f -iname '*eu*index*snapshot*.csv' -o -iname '*europe*index*snapshot*.csv' -o -iname 'index_snapshot_eu.csv' -o -iname '*econ*eu*' -print -quit)"; \
-             [[ -n "$f" ]] && cp -f "$f" data/snapshots/eu/index_snapshot.csv || true)
-
-          [[ -s data/snapshots/apac/index_snapshot.csv ]] || \
-            (f="$(find out -maxdepth 3 -type f -iname '*apac*index*snapshot*.csv' -o -iname 'index_snapshot_apac.csv' -o -iname '*econ*apac*' -print -quit)"; \
-             [[ -n "$f" ]] && cp -f "$f" data/snapshots/apac/index_snapshot.csv || true)
-
-          # --- Morning Reports: commit markdown the app will render -------------
-          MR_NA="$(find out -maxdepth 5 -type f -iname 'morning_report_na.md' -print -quit || true)"
-          MR_EU="$(find out -maxdepth 5 -type f -iname 'morning_report_europe.md' -print -quit || true)"
-          MR_AP="$(find out -maxdepth 5 -type f -iname 'morning_report_apac.md' -print -quit || true)"
+          # Morning reports -> reports/<region>
+          MR_NA="$(find out -type f -iname 'morning_report_na.md' -print -quit || true)"
+          MR_EU="$(find out -type f -iname 'morning_report_europe.md' -print -quit || true)"
+          MR_AP="$(find out -type f -iname 'morning_report_apac.md' -print -quit || true)"
           [[ -n "$MR_NA" ]] && cp -f "$MR_NA" reports/na/morning_report.md
           [[ -n "$MR_EU" ]] && cp -f "$MR_EU" reports/eu/morning_report.md
           [[ -n "$MR_AP" ]] && cp -f "$MR_AP" reports/apac/morning_report.md
 
-          # --- Econ Calendars: copy CSVs the pages will read --------------------
-          EC_NA="$(find out -maxdepth 5 -type f -iname 'econ_calendar_na.csv' -print -quit || true)"
-          EC_EU="$(find out -maxdepth 5 -type f -iname 'econ_calendar_europe.csv' -print -quit || true)"
-          EC_AP="$(find out -maxdepth 5 -type f -iname 'econ_calendar_apac.csv' -print -quit || true)"
-          [[ -n "$EC_NA" ]] && cp -f "$EC_NA" assets/econ_calendar_na.csv
-          [[ -n "$EC_EU" ]] && cp -f "$EC_EU" assets/econ_calendar_europe.csv
-          [[ -n "$EC_AP" ]] && cp -f "$EC_AP" assets/econ_calendar_apac.csv
-
-          # --- Run metadata: lets pages link back to this run -------------------
+          # Run metadata for Home banner
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           printf '{"run_id":"%s","run_url":"%s","repo":"%s","timestamp_utc":"%s"}\n' \
             "${GITHUB_RUN_ID}" "${RUN_URL}" "${GITHUB_REPOSITORY}" "$(date -u +%FT%TZ)" > reports/run_meta.json
@@ -345,14 +280,14 @@ jobs:
         shell: bash
         run: |
           set -e
-          if [ -n "$(git status --porcelain -- data/snapshots reports assets)" ]; then
+          if [ -n "$(git status --porcelain -- reports assets)" ]; then
             git config user.name  "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add data/snapshots reports assets
-            git commit -m "chore(snapshot): update NA/EU/APAC snapshots & reports + run meta [skip ci]"
+            git add reports assets
+            git commit -m "chore(snapshot): update reports & calendars + run meta [skip ci]"
             git push
           else
-            echo "No snapshot/report changes to commit."
+            echo "No report/calendar changes to commit."
           fi
 
   email_bundle:
@@ -371,38 +306,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
-          # 1) Jobs summary (handles null/denied responses)
-          jobs_json="$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" \
-                              -H "Accept: application/vnd.github+json" \
-                              "$RUN_API/jobs?per_page=100" || echo '{}')"
-
+          jobs_json="$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "$RUN_API/jobs?per_page=100" || echo '{}')"
           fails=$(jq '((.jobs // []) | map(select(.conclusion != "success" and .conclusion != null)) | length)' <<<"$jobs_json")
           if [ "${fails:-0}" -gt 0 ]; then emoji="❌"; else emoji="✅"; fi
-
           subject="${SUBJECT_INPUT:-$DEFAULT_SUBJECT}"
           echo "subject=${emoji} ${subject}" >> "$GITHUB_OUTPUT"
+          summary=$(jq -r '((.jobs // []) | map(select(.conclusion != "success" and .conclusion != null) | "\(.name) — \(.conclusion)")) | join("<br>")' <<<"$jobs_json")
 
-          summary=$(jq -r '((.jobs // []) |
-                            map(select(.conclusion != "success" and .conclusion != null)
-                                | "\(.name) — \(.conclusion)")) | join("<br>")' <<<"$jobs_json")
-
-          # 2) Artifacts list (robust to null)
-          arts_json="$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" \
-                             -H "Accept: application/vnd.github+json" \
-                             "$RUN_API/artifacts?per_page=100" || echo '{}')"
-
-          list_html=$(jq -r '((.artifacts // []) | sort_by(.name) |
-                              map("<li><a href=\"https://api.github.com/repos/'"${GITHUB_REPOSITORY}"'/actions/artifacts/\(.id)/zip\">\(.name)</a> — \(.size_in_bytes // 0) bytes</li>")
-                              ) | join("\n")' <<<"$arts_json")
+          arts_json="$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "$RUN_API/artifacts?per_page=100" || echo '{}')"
+          list_html=$(jq -r '((.artifacts // []) | sort_by(.name) | map("<li><a href=\"https://api.github.com/repos/'"${GITHUB_REPOSITORY}"'/actions/artifacts/\(.id)/zip\">\(.name)</a> — \(.size_in_bytes // 0) bytes</li>")) | join("\n")' <<<"$arts_json")
           [ -z "$list_html" ] && list_html="<li><i>No artifacts found.</i></li>"
 
-          # 3) Body
           {
             echo "<p>Run page (all artifacts & logs): <a href='$RUN_URL'>$RUN_URL</a></p>"
-            if [ -n "$summary" ]; then
-              echo "<p><b>Failures (${fails}):</b><br>${summary}</p>"
-            fi
+            if [ -n "$summary" ]; then echo "<p><b>Failures (${fails}):</b><br>${summary}</p>"; fi
             echo "<p><b>Direct artifact downloads:</b></p><ul>${list_html}</ul>"
           } > body.html
 
@@ -423,10 +340,7 @@ jobs:
             --arg to "$EMAIL_TO" \
             --arg subject "${{ steps.mail.outputs.subject }}" \
             --arg html "$html" \
-            '{personalizations:[{to:[{email:$to}]}],
-              from:{email:$from},
-              subject:$subject,
-              content:[{type:"text/html", value:$html}]}' > payload.json
+            '{personalizations:[{to:[{email:$to}]}], from:{email:$from}, subject:$subject, content:[{type:"text/html", value:$html}]}' > payload.json
 
           curl -sS -X POST https://api.sendgrid.com/v3/mail/send \
             -H "Authorization: Bearer $SENDGRID_API_KEY" \
@@ -443,9 +357,7 @@ jobs:
         run: |
           FORCE="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.force_monthly_release == 'true' }}"
           DOM="$(date -u +%d)"
-          if [[ "$FORCE" == "true" ]]; then
-            echo "run_release=true" >> "$GITHUB_OUTPUT"
-          elif [[ "${GITHUB_EVENT_NAME}" == "schedule" && "$DOM" == "01" ]]; then
+          if [[ "$FORCE" == "true" || ( "${GITHUB_EVENT_NAME}" == "schedule" && "$DOM" == "01" ) ]]; then
             echo "run_release=true" >> "$GITHUB_OUTPUT"
           else
             echo "run_release=false" >> "$GITHUB_OUTPUT"
