@@ -1,100 +1,125 @@
-import re
-import streamlit as st
+# src/pages/04_Screener_Text.py
+import os, glob, math
 import pandas as pd
-from modules.utils.data_remote import load_csv_auto
-from modules.utils.tv_links import tv_symbol_url
+import streamlit as st
 
-st.set_page_config(page_title="Screener — Text", layout="wide")
-st.title("Screener — Text")
+# Optional: If your project has these helpers, we’ll try them.
+try:
+    from modules.data.remote import load_csv_auto  # optional
+except Exception:
+    load_csv_auto = None
 
-# Name → ticker fallbacks for common cases
-NAME_TO_TICKER = {
-    "SPDR S&P 500 ETF": "SPY",
-    "Invesco QQQ Trust": "QQQ",
-    "iShares Russell 2000": "IWM",
-    "BMO Growth ETF": "ZGRO.TO",
-    "iShares S&P/TSX Canadian Dividend Aristocrats Index ETF": "CDZ.TO",
-}
+st.set_page_config(page_title="Screener — Text v1.6", layout="wide")
+st.title("Screener — Text v1.6")
 
-def clean_ticker(value: str) -> str:
-    """Very permissive cleanup: keep letters/numbers/.-:/, uppercase."""
-    if not value: return ""
-    s = re.sub(r"[^A-Za-z0-9\.\-:]", "", str(value).upper())
-    # If we accidentally got a long fund name, this will still look wrong; a fallback map fixes the common ETFs.
-    return s
+# -----------------------------
+# Safe string helper
+# -----------------------------
+def _safe_str(x) -> str:
+    if isinstance(x, str):
+        return x.strip()
+    if x is None:
+        return ""
+    try:
+        if isinstance(x, float) and math.isnan(x):
+            return ""
+        if pd.isna(x):
+            return ""
+    except Exception:
+        pass
+    return str(x).strip()
 
+# -----------------------------
+# Ticker resolver (robust)
+# -----------------------------
 def resolve_ticker(row: pd.Series) -> str:
-    """Pick the best ticker: ticker column > symbol column > fallback by name."""
-    # 1) explicit ticker column if present
-    t = row.get("ticker")
-    if isinstance(t, str) and t.strip():
-        return clean_ticker(t)
-    # 2) symbol column (expect ticker here ideally)
-    s = row.get("symbol")
-    if isinstance(s, str) and s.strip():
-        # if it looks like a long name, try fallback
-        if " " in s.strip():
-            # try name map
-            n = row.get("name", "").strip()
-            if n in NAME_TO_TICKER:
-                return NAME_TO_TICKER[n]
-        return clean_ticker(s)
-    # 3) fallback by name
-    n = row.get("name", "").strip()
-    if n in NAME_TO_TICKER:
-        return NAME_TO_TICKER[n]
-    return clean_ticker(n[:8])  # last resort (still gives something linkable)
+    # Prefer explicit columns first
+    for key in ("ticker", "symbol", "Ticker", "Symbol", "tv", "tradingview"):
+        if key in row:
+            s = _safe_str(row[key])
+            if s:
+                return s.upper()
 
-# Load screener rows (vega-data)
-df = load_csv_auto("data/screener.csv")
-if df.empty:
-    st.info("No screener data yet. Place a CSV at **vega-data/data/screener.csv**.")
-    st.caption("Columns: symbol,name,price,rs,grade,decision,macro,fundamentals,technicals,options,risk,contras,earnings,tariff,notes")
+    name = _safe_str(row.get("name", ""))  # never call .strip() on non-str
+    # NAME (TICKER)
+    if "(" in name and ")" in name:
+        inside = name.split("(")[-1].split(")")[0].strip()
+        if inside:
+            return inside.upper()
+    # TICKER - Company Name
+    if " - " in name:
+        left = name.split(" - ", 1)[0].strip()
+        if left and all(ch.isupper() or ch.isdigit() or ch == "." for ch in left):
+            return left.upper()
+    return ""
+
+# -----------------------------
+# File discovery / loading
+# -----------------------------
+def _find_latest_file():
+    patterns = [
+        "data/snapshots/**/*screener*.csv",
+        "data/**/*screener*.csv",
+        "reports/**/*screener*.csv",
+        "output/**/*screener*.csv",
+        "**/*screener*.csv",
+    ]
+    files = []
+    for p in patterns:
+        files.extend(glob.glob(p, recursive=True))
+    files = [f for f in files if os.path.isfile(f)]
+    if not files:
+        return None
+    files.sort(key=lambda f: os.path.getmtime(f), reverse=True)
+    return files[0]
+
+def _load_csv_latest() -> tuple[pd.DataFrame, str | None]:
+    # Prefer your project helper if present
+    if load_csv_auto is not None:
+        try:
+            df, path = load_csv_auto(pattern="*screener*.csv")
+            if df is not None and not df.empty:
+                return df, path
+        except Exception:
+            pass
+
+    latest = _find_latest_file()
+    if not latest:
+        return pd.DataFrame(), None
+    try:
+        df = pd.read_csv(latest, keep_default_na=False, na_filter=True, low_memory=False)
+    except Exception:
+        df = pd.read_csv(latest)
+    return df, latest
+
+# -----------------------------
+# Main
+# -----------------------------
+df, source_path = _load_csv_latest()
+if df is None or df.empty:
+    st.info("No screener CSV found yet. Once the workflow drops a screener CSV, this page will render it.")
     st.stop()
 
-# Resolve a reliable 'ticker' column for links/joins
-df = df.copy()
-df["ticker"] = df.apply(resolve_ticker, axis=1)
+# normalize potential columns we’ll read
+for col in ("name", "symbol", "ticker", "Ticker", "Symbol", "tv", "tradingview"):
+    if col in df.columns:
+        df[col] = df[col].apply(_safe_str)
 
-# Load quotes (hourly, from vega-data)
-quotes = load_csv_auto("data/screener_quotes.csv")
-if not quotes.empty:
-    # expected: ticker,last,vol,chg,chg_pct,ts
-    quotes["ticker"] = quotes["ticker"].astype(str).str.upper()
-    df = df.merge(quotes, on="ticker", how="left")
+# Create/repair ticker column
+if "ticker" not in df.columns:
+    df["ticker"] = df.apply(resolve_ticker, axis=1)
+else:
+    blank = df["ticker"].apply(_safe_str).eq("")
+    if blank.any():
+        df.loc[blank, "ticker"] = df.loc[blank].apply(resolve_ticker, axis=1)
 
-st.write("### Results")
-for _, r in df.iterrows():
-    ticker = str(r.get("ticker", "")).strip()
-    display_name = str(r.get("name") or r.get("symbol") or ticker)
+df["ticker"] = df["ticker"].apply(_safe_str).str.upper()
 
-    cols = st.columns([3, 1.2, 1.2, 1.2, 1.2, 1.4])
-    with cols[0]:
-        # Text shows the friendly name; link goes to ticker
-        st.markdown(f"[**{display_name}** ↗]({tv_symbol_url(ticker)})", unsafe_allow_html=True)
-        st.caption(ticker)
-    with cols[1]:  # Last
-        last = r.get("last", r.get("price", "—"))
-        st.write(last if last != "" else "—")
-    with cols[2]:  # Vol
-        st.write(r.get("vol", "—"))
-    with cols[3]:  # Chg
-        st.write(r.get("chg", "—"))
-    with cols[4]:  # % Chg
-        pct = r.get("chg_pct", None)
-        st.write(f"{pct:.2f}%" if isinstance(pct, (int, float)) else "—")
-    with cols[5]:
-        st.write(r.get("decision", "—"))
+# Non-fatal diagnostics
+missing = df["ticker"].eq("")
+if missing.any():
+    st.warning(f"{missing.sum()} rows have no ticker after cleanup. Showing a sample below.")
+    st.dataframe(df[missing].head(10), use_container_width=True, hide_index=True)
 
-    with st.expander(f"A-to-Z Quickview — {display_name}"):
-        st.write({
-            "Macro/Sector": r.get("macro",""),
-            "Fundamentals": r.get("fundamentals",""),
-            "MTF Technicals": r.get("technicals",""),
-            "Options (POP 60%, 21–90 DTE)": r.get("options",""),
-            "Risk/Targets": r.get("risk",""),
-            "Contras/Hedges": r.get("contras",""),
-            "Earnings Window": r.get("earnings",""),
-            "Tariff/USMCA": r.get("tariff",""),
-            "Notes": r.get("notes","")
-        })
+st.caption(f"SCREENER_FIX v1.6 • Source: {source_path or 'unknown'} • Rows: {len(df):,}")
+st.dataframe(df, use_container_width=True, hide_index=True)
