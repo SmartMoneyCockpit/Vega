@@ -5,33 +5,21 @@
     "theme": "dark",
     "height": 900,
     "studies": [
+      "MAExp@tv-basicstudies",
+      "MAExp@tv-basicstudies",
+      "MAExp@tv-basicstudies",
+      "MAExp@tv-basicstudies",
       "RSI@tv-basicstudies",
       "MACD@tv-basicstudies",
       "ATR@tv-basicstudies",
       "OBV@tv-basicstudies",
-      "BollingerBands@tv-basicstudies",
-      "IchimokuCloud@tv-basicstudies",
-      "MASimple@tv-basicstudies",
-      "MAExp@tv-basicstudies",
       "Volume@tv-basicstudies"
     ],
     "studies_overrides": {
-      "BollingerBands@tv-basicstudies.length": 20,
-      "BollingerBands@tv-basicstudies.stdDev": 2,
-      "IchimokuCloud@tv-basicstudies.conversionLinePeriod": 9,
-      "IchimokuCloud@tv-basicstudies.baseLinePeriod": 26,
-      "IchimokuCloud@tv-basicstudies.laggingSpan2Period": 52,
-      "RSI@tv-basicstudies.length": 14,
-      "ATR@tv-basicstudies.length": 14,
-      "MACD@tv-basicstudies.fastLength": 12,
-      "MACD@tv-basicstudies.slowLength": 26,
-      "MACD@tv-basicstudies.signalLength": 9,
-      "MASimple@tv-basicstudies.length": 50,
-      "MAExp@tv-basicstudies.length": 21
+      "MAExp@tv-basicstudies.0.length": 9,
+      "MAExp@tv-basicstudies.1.length": 21,
+      "MAExp@tv-basicstudies.2.length": 50,
+      "MAExp@tv-basicstudies.3.length": 200
     }
-  },
-
-  "na":   { "symbol": "NYSEARCA:SPY", "interval": "D", "theme": "dark", "height": 800 },
-  "eu":   { "symbol": "NYSEARCA:VGK", "interval": "D", "theme": "dark", "height": 800 },
-  "apac": { "symbol": "NYSEARCA:EWJ", "interval": "D", "theme": "dark", "height": 800 }
+  }
 }
