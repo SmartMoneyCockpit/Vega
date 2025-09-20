@@ -58,14 +58,21 @@ def tv_heatmap_html(data_source: str, theme: str, height: int=600) -> str:
 </script>
 """
 
-# -------- presets + query overrides
+# Presets (defaults: QQQ, D, dark, 900px; studies include EMA9/21/50/200)
 PRE = _load_presets("charts", {
-    "symbol":"NYSEARCA:SPY","interval":"D","theme":"dark","height":900,
-    "studies":["RSI@tv-basicstudies","MACD@tv-basicstudies","ATR@tv-basicstudies",
-               "OBV@tv-basicstudies","BollingerBands@tv-basicstudies","IchimokuCloud@tv-basicstudies",
-               "MASimple@tv-basicstudies","MAExp@tv-basicstudies","Volume@tv-basicstudies"],
-    "studies_overrides": {}
+    "symbol": "NASDAQ:QQQ", "interval": "D", "theme": "dark", "height": 900,
+    "studies": [
+        "MAExp@tv-basicstudies","MAExp@tv-basicstudies","MAExp@tv-basicstudies","MAExp@tv-basicstudies",
+        "RSI@tv-basicstudies","MACD@tv-basicstudies","ATR@tv-basicstudies","OBV@tv-basicstudies","Volume@tv-basicstudies"
+    ],
+    "studies_overrides": {
+        "MAExp@tv-basicstudies.0.length": 9,
+        "MAExp@tv-basicstudies.1.length": 21,
+        "MAExp@tv-basicstudies.2.length": 50,
+        "MAExp@tv-basicstudies.3.length": 200
+    }
 })
+
 symbol   = _qp_get("symbol",   PRE["symbol"])
 interval = _qp_get("interval", PRE["interval"])
 theme    = _qp_get("theme",    PRE["theme"])
@@ -73,7 +80,6 @@ height   = _qp_get("height",   PRE["height"])
 studies  = PRE.get("studies", [])
 studies_overrides = PRE.get("studies_overrides", {})
 
-# -------- controls
 c1, c2, c3, c4 = st.columns([2,2,1,1])
 region = c1.selectbox("Region", ["North America","Europe","APAC"], index=0)
 interval = c2.selectbox("Interval", ["1","5","15","60","240","D","W","M"],
@@ -81,15 +87,14 @@ interval = c2.selectbox("Interval", ["1","5","15","60","240","D","W","M"],
 theme = c3.selectbox("Theme", ["light","dark"], index=(0 if theme=="light" else 1))
 height = c4.slider("Height", 480, 1400, int(height), step=20)
 
-NA = ["NYSEARCA:SPY","NASDAQ:QQQ","NYSEARCA:DIA","NYSEARCA:IWM","CBOE:VIX","NYSEARCA:XLK","NYSEARCA:XLE"]
-EU = ["NYSEARCA:VGK","NYSEARCA:EZU","NYSEARCA:FEZ","TVC:FTSE"]
-AP = ["NYSEARCA:EWJ","NYSEARCA:EWA","NYSEARCA:EWH","NYSEARCA:EWY","TVC:HSI"]
+NA  = ["NYSEARCA:SPY","NASDAQ:QQQ","NYSEARCA:DIA","NYSEARCA:IWM","CBOE:VIX","NYSEARCA:XLK","NYSEARCA:XLE"]
+EU  = ["NYSEARCA:VGK","NYSEARCA:EZU","NYSEARCA:FEZ","TVC:FTSE"]
+AP  = ["NYSEARCA:EWJ","NYSEARCA:EWA","NYSEARCA:EWH","NYSEARCA:EWY","TVC:HSI"]
 choices = NA if region=="North America" else (EU if region=="Europe" else AP)
 symbol = st.selectbox("Symbol", choices, index=0 if symbol not in choices else choices.index(symbol))
 manual = st.text_input("Or type a TV symbol (e.g., NYSEARCA:SPY)", "").strip()
 if manual: symbol = manual
 
-# -------- chart + heatmap
 st.subheader("Advanced Chart")
 html(tv_advanced_chart_html(symbol, interval=interval, theme=theme,
                             studies=studies, studies_overrides=studies_overrides,
@@ -100,9 +105,8 @@ st.subheader("Stock Heatmap")
 heat_univ = st.selectbox("Heatmap universe", ["SPX500","NASDAQ100","DJI"], index=0)
 html(tv_heatmap_html(heat_univ, theme, 600), height=620, scrolling=False)
 
-# -------- shareable preset link
 rel = f"?symbol={quote(symbol)}&interval={interval}&theme={theme}&height={height}"
 st.text_input("Preset link (copy & bookmark)", value=rel)
 st.markdown(f"[Open with these settings]({rel})  •  "
             f"[Open on TradingView](https://www.tradingview.com/chart/?symbol={quote(symbol)}&interval={interval})")
-st.caption("Defaults come from config/tv_presets.json. Query params override them.")
+st.caption("Defaults come from config/tv_presets.json; query parameters override them.")
