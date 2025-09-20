@@ -1,0 +1,20 @@
+# Create a dummy vectorvest_signals.json with sample data for immediate cockpit testing
+import os, json
+
+vault_dir = "/mnt/data/vault/cache"
+os.makedirs(vault_dir, exist_ok=True)
+
+dummy_data = {
+    "signals": [
+        {"symbol": "SPY", "price": 663.7, "rt": 1.12, "rv": 0.95, "rs": 1.23, "ci": 1.05, "eps": 12.4, "growth": 8.3, "sales_growth": 6.7},
+        {"symbol": "QQQ", "price": 599.35, "rt": 1.05, "rv": 1.02, "rs": 1.19, "ci": 1.02, "eps": 9.2, "growth": 10.1, "sales_growth": 7.5},
+        {"symbol": "AAPL", "price": 189.5, "rt": 1.18, "rv": 0.97, "rs": 1.25, "ci": 1.08, "eps": 6.4, "growth": 12.3, "sales_growth": 8.7},
+        {"symbol": "MSFT", "price": 342.1, "rt": 1.09, "rv": 1.05, "rs": 1.21, "ci": 1.07, "eps": 8.9, "growth": 11.2, "sales_growth": 9.1}
+    ]
+}
+
+dummy_path = os.path.join(vault_dir, "vectorvest_signals.json")
+with open(dummy_path, "w", encoding="utf-8") as f:
+    json.dump(dummy_data, f, indent=2)
+
+dummy_path
