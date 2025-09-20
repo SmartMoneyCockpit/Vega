@@ -37,3 +37,4 @@ safe_page_link("pages/03_APAC_Text_Dashboard.py",  "• APAC — Text Dashboard"
 safe_page_link("pages/04_Screener_Text.py",        "• Screener — Text",             "/Screener_Text")
 
 st.caption("If a link doesn’t open, use the sidebar on the left — same pages.")
+st.page_link("pages/05_TradingView_Charts.py", label="• TradingView — Charts & Heatmap")
