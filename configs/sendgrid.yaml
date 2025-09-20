@@ -1,0 +1,5 @@
+
+enabled: true
+daily_digest_time: "12:45"   # local time
+trial_reminder_days_before_end: 7
+email_channel: "SendGrid"    # or "Slack" / "SES"

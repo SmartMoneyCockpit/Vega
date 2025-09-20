@@ -127,7 +127,95 @@ class MorningReport:
                 unsafe_allow_html=True
             )
 
-    # ---------- Section 7: Final Risk Overlay ----------
+    
+    # ---------- Section: VectorVest Metrics Snapshot ----------
+    def render_vectorvest_metrics(self):
+        st.markdown("## 📊 VectorVest Metrics (Watchlist Snapshot)")
+        # Base watchlist (if available)
+        base = None
+        base_path = os.path.join("data","screener.csv")
+        if os.path.exists(base_path):
+            try:
+                base = pd.read_csv(base_path)
+            except Exception:
+                base = None
+
+        # Load server cache of VV signals, or fallback to empty
+        vv_json = os.path.join("vault","cache","vectorvest_signals.json")
+        metrics = pd.DataFrame()
+        if os.path.exists(vv_json):
+            try:
+                data = json.load(open(vv_json, "r", encoding="utf-8"))
+                metrics = pd.DataFrame(data.get("signals", []))
+            except Exception:
+                pass
+
+        try:
+            from .vectorvest_utils import compute_vv_columns, merge_metrics
+        except Exception:
+            compute_vv_columns = lambda d, *_: d
+            def merge_metrics(a,b): return a
+
+        # Normalize & compute vst
+        metrics = compute_vv_columns(metrics, os.path.join("modules","rules","_vega_scores.yaml"))
+
+        if base is not None:
+            # Show only tickers on our screener list, merged with metrics
+            df = merge_metrics(base, metrics)
+        else:
+            df = metrics
+
+        if df is None or df.empty:
+            st.info("No VectorVest metrics available yet. They will appear once the server cache populates or screener.csv contains RT/RS/RV/CI/EPS/Growth/Sales Growth columns.")
+            return
+
+        # Select core columns if present
+        core_cols = [c for c in ["symbol","name","price","rt","rv","rs","vst","ci","eps","growth","sales_growth","grade","decision"] if c in df.columns]
+                # Optional sparklines
+        try:
+            spark = self.build_vv_sparklines(df)
+            if spark is not None and not spark.empty:
+                df = df.merge(spark, on='symbol', how='left')
+        except Exception:
+            pass
+        disp_cols = core_cols + [c for c in ['vst_spark','eps_spark','growth_spark','sales_growth_spark'] if c in df.columns]
+        try:
+            from streamlit import column_config
+            st.dataframe(
+                df[disp_cols],
+                use_container_width=True,
+                column_config={
+                    'vst_spark': column_config.ImageColumn('VST'),
+                    'eps_spark': column_config.ImageColumn('EPS'),
+                    'growth_spark': column_config.ImageColumn('Growth'),
+                    'sales_growth_spark': column_config.ImageColumn('Sales Growth'),
+                }
+            )
+        # DOWNLOAD: VV table CSV
+        try:
+            import io
+            csv = df[core_cols].to_csv(index=False).encode('utf-8')
+            st.download_button('⬇️ Download VV Table (CSV)', data=csv, file_name='vectorvest_metrics.csv', mime='text/csv')
+        except Exception:
+            pass
+        # VST badge column (formatted)
+        if 'vst' in df.columns:
+            df['vst_badge'] = df['vst'].map(lambda x: f"{x:.2f}" if pd.notnull(x) else '')
+        except Exception:
+            st.dataframe(df[core_cols], use_container_width=True)
+        # DOWNLOAD: VV table CSV
+        try:
+            import io
+            csv = df[core_cols].to_csv(index=False).encode('utf-8')
+            st.download_button('⬇️ Download VV Table (CSV)', data=csv, file_name='vectorvest_metrics.csv', mime='text/csv')
+        except Exception:
+            pass
+        # VST badge column (formatted)
+        if 'vst' in df.columns:
+            df['vst_badge'] = df['vst'].map(lambda x: f"{x:.2f}" if pd.notnull(x) else '')
+        self.render_vst_preview()
+    
+# ---------- Section 7: Final Risk Overlay ----------
     def render_final_risk_overlay(self):
         fr = self.provider.get_final_risk_overlay()
         st.markdown("## 🛡️ Final Risk Overlay & Action Plan")
@@ -135,3 +223,87 @@ class MorningReport:
         st.markdown("### FX Guardrails"); st.markdown(f"- {fr['fx']}")
         st.markdown("### Tactical Implications"); [st.markdown(f"- {t}") for t in fr['tactical']]
         st.markdown("### Trade Now vs Wait"); st.dataframe(pd.DataFrame(fr['trade_board']), use_container_width=True)
+        self.render_snapshot_button()
+
+
+    def render_vst_preview(self):
+        st.markdown("### VST Trend Preview")
+        try:
+            from components.vst_trend import render_vst_trend
+        except Exception:
+            st.caption("VST trend component unavailable.")
+            return
+        # Populate select from merged metrics if available
+        options = []
+        vv_json = os.path.join("vault","cache","vectorvest_signals.json")
+        if os.path.exists(vv_json):
+            try:
+                data = json.load(open(vv_json, "r", encoding="utf-8"))
+                options = [i.get("symbol","") for i in data.get("signals", []) if i.get("symbol")]
+            except Exception:
+                pass
+        if not options and os.path.exists(os.path.join("data","screener.csv")):
+            import pandas as pd
+            try:
+                df = pd.read_csv(os.path.join("data","screener.csv"))
+                if "symbol" in df.columns:
+                    options = list(df["symbol"].dropna().unique())
+            except Exception:
+                pass
+        if not options:
+            st.caption("Add symbols to `vault/cache/vectorvest_signals.json` or `data/screener.csv` to preview VST trends.")
+            return
+        sym = st.selectbox("Select symbol", sorted(set(options)))
+        if sym:
+            render_vst_trend(sym)
+    
+
+    def build_vv_sparklines(self, df, metrics=("vst","eps","growth","sales_growth")):
+        import pandas as pd, os
+        from components.sparklines import save_sparkline
+        # attempt to load per-symbol timeseries CSVs and render PNGs
+        rows = []
+        for _, row in (df if isinstance(df, pd.DataFrame) else pd.DataFrame(df)).iterrows():
+            sym = row.get("symbol")
+            if not sym: 
+                continue
+            record = {"symbol": sym}
+            for m in metrics:
+                # load series
+                base = os.path.join("vault","timeseries","vv")
+                fn = {"vst": f"{sym}_spark.csv", "eps": f"{sym}_eps_spark.csv", "growth": f"{sym}_growth_spark.csv", "sales_growth": f"{sym}_sales_growth_spark.csv"}
+                # Backward-compat: also accept main CSV names (we will just rename value column)
+                fallback = {
+                    "vst": f"{sym}.csv",
+                    "eps": f"{sym}_eps.csv",
+                    "growth": f"{sym}_growth.csv",
+                    "sales_growth": f"{sym}_sales_growth.csv"
+                }
+                import pandas as pd
+                path = os.path.join(base, fn[m])
+                if not os.path.exists(path):
+                    path = os.path.join(base, fallback[m])
+                if not os.path.exists(path):
+                    continue
+                try:
+                    tdf = pd.read_csv(path)
+                    tdf.columns = [c.lower() for c in tdf.columns]
+                    val_col = m if m in tdf.columns else ("vst" if "vst" in tdf.columns else "value")
+                    if "date" not in tdf.columns or val_col not in tdf.columns:
+                        continue
+                    tdf = tdf.tail(26)  # 26w preview
+                    tdf = tdf.rename(columns={val_col:"value"})
+                    p = save_sparkline(sym, m, tdf[["date","value"]])
+                    if p:
+                        record[f"{m}_spark"] = p
+                except Exception:
+                    pass
+            rows.append(record)
+        return pd.DataFrame(rows) if rows else None
+    
+
+
+    # ---------- Utility: One-Click Snapshot ----------
+    def render_snapshot_button(self):
+        from components.snapshot_export import snapshot_button
+        snapshot_button("morning_report")

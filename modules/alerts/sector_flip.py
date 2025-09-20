@@ -1,17 +1,31 @@
-from datetime import datetime
-def check_flips(df, threshold=0.006):
-    flips = []
-    for _, row in df.iterrows():
-        chg = row.get("Change%", 0)/100 if abs(row.get("Change%",0))>1 else row.get("Change%",0)
-        if chg >= threshold: flips.append((row["Sector"], "🟢 Buy Today"))
-        elif chg <= -threshold: flips.append((row["Sector"], "🔴 Avoid"))
-    return flips
 
-def render(st, sector_df, settings):
-    st.subheader("Sector Flip Alerts (UI)")
-    flips = check_flips(sector_df, threshold=settings.get("alerts",{}).get("sector_flip",{}).get("rel_change_threshold",0.006))
-    if flips:
-        for s, status in flips:
-            st.success(f"{datetime.now().strftime('%H:%M')} — {s}: {status}")
-    else:
-        st.info("No sector flips at the moment.")
+from __future__ import annotations
+import os, json, datetime as dt
+import pandas as pd
+
+DEFAULT_RULES = {
+  "rel_move_thresh": 0.006,   # 0.6%
+  "momentum_cross": True,
+  "min_vol_mult": 1.2,
+  "hold_minutes": 15
+}
+
+def evaluate_flips(df_sector: pd.DataFrame, df_index: pd.DataFrame) -> list[dict]:
+    """Return list of flip events.
+    Expect columns: time, ret, vol for both sector and index (intraday 5-15m bars).
+    """
+    out = []
+    if df_sector.empty or df_index.empty:
+        return out
+    merged = pd.merge_asof(df_sector.sort_values("time"), df_index.sort_values("time"), on="time", suffixes=("_sec","_idx"))
+    rel = merged["ret_sec"] - merged["ret_idx"]
+    # Sign change + magnitude threshold
+    sign = (rel > 0).astype(int) - (rel < 0).astype(int)
+    flip = (sign != sign.shift(1)) & (rel.abs() >= DEFAULT_RULES["rel_move_thresh"])
+    for i, row in merged[flip].iterrows():
+        out.append({
+            "time": row["time"].isoformat() if hasattr(row["time"], "isoformat") else str(row["time"]),
+            "rel_move": float(rel.iloc[i]),
+            "note": "Sector flip relative to index"
+        })
+    return out

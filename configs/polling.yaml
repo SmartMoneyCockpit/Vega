@@ -1,0 +1,5 @@
+
+active_region_only: true
+default_interval_minutes: 60
+boost_mode_interval_minutes: 5
+boost_mode_duration_minutes: 60
