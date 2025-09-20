@@ -1,16 +1,16 @@
 # src/pages/04_Screener_Text.py
-import os, glob, math
+import os, glob, math, json, urllib.parse
 import pandas as pd
 import streamlit as st
 
-# Optional helper (safe to ignore if module doesn't exist)
+# Optional helper (safe if missing)
 try:
     from modules.data.remote import load_csv_auto  # optional
 except Exception:
     load_csv_auto = None
 
-st.set_page_config(page_title="Screener — Text v1.7", layout="wide")
-st.title("Screener — Text v1.7")
+st.set_page_config(page_title="Screener — Text v1.9", layout="wide")
+st.title("Screener — Text v1.9")
 
 # -----------------------------
 # Safe string helper
@@ -33,20 +33,16 @@ def _safe_str(x) -> str:
 # Ticker resolver (robust)
 # -----------------------------
 def resolve_ticker(row: pd.Series) -> str:
-    # Prefer explicit columns first
     for key in ("ticker", "symbol", "Ticker", "Symbol", "tv", "tradingview"):
         if key in row:
             s = _safe_str(row[key])
             if s:
                 return s.upper()
-
-    name = _safe_str(row.get("name", ""))  # never call .strip() on non-str
-    # NAME (TICKER)
+    name = _safe_str(row.get("name", ""))
     if "(" in name and ")" in name:
         inside = name.split("(")[-1].split(")")[0].strip()
         if inside:
             return inside.upper()
-    # TICKER - Company Name
     if " - " in name:
         left = name.split(" - ", 1)[0].strip()
         if left and all(ch.isupper() or ch.isdigit() or ch == "." for ch in left):
@@ -74,7 +70,6 @@ def _find_latest_file():
     return files[0]
 
 def _load_csv_latest() -> tuple[pd.DataFrame, str | None]:
-    # Prefer your project helper if present
     if load_csv_auto is not None:
         try:
             df, path = load_csv_auto(pattern="*screener*.csv")
@@ -82,7 +77,6 @@ def _load_csv_latest() -> tuple[pd.DataFrame, str | None]:
                 return df, path
         except Exception:
             pass
-
     latest = _find_latest_file()
     if not latest:
         return pd.DataFrame(), None
@@ -100,12 +94,10 @@ if df is None or df.empty:
     st.info("No screener CSV found yet. Once the workflow drops a screener CSV, this page will render it.")
     st.stop()
 
-# Normalize potential columns we’ll read
 for col in ("name", "symbol", "ticker", "Ticker", "Symbol", "tv", "tradingview"):
     if col in df.columns:
         df[col] = df[col].apply(_safe_str)
 
-# Create/repair ticker column
 if "ticker" not in df.columns:
     df["ticker"] = df.apply(resolve_ticker, axis=1)
 else:
@@ -115,17 +107,14 @@ else:
 
 df["ticker"] = df["ticker"].apply(_safe_str).str.upper()
 
-# Non-fatal diagnostics for unresolved rows
 missing = df["ticker"].eq("")
 if missing.any():
     st.warning(f"{missing.sum()} rows have no ticker after cleanup. Showing a sample below.")
     st.dataframe(df[missing].head(10), use_container_width=True, hide_index=True)
 
 # ---- Clean + quick tools -----------------------------------------------------
-# keep only rows with a ticker, de-dupe by ticker
 df_clean = df[df["ticker"] != ""].drop_duplicates(subset=["ticker"]).reset_index(drop=True)
 
-# search box (matches ticker OR name)
 q = st.text_input("Filter (ticker or name)").strip()
 if q:
     df_view = df_clean[
@@ -135,12 +124,17 @@ if q:
 else:
     df_view = df_clean
 
-# small stats
-c1, c2 = st.columns(2)
+def _tv_url(sym: str) -> str:
+    return f"https://www.tradingview.com/chart/?symbol={urllib.parse.quote(sym)}"
+
+df_view = df_view.copy()
+df_view["TradingView"] = df_view["ticker"].apply(_tv_url)
+
+c1, c2, c3 = st.columns(3)
 c1.metric("Rows (raw)", len(df))
 c2.metric("Rows (clean)", len(df_view))
+c3.metric("Unique tickers", df_view["ticker"].nunique())
 
-# download cleaned CSV
 st.download_button(
     "Download cleaned CSV",
     data=df_view.to_csv(index=False).encode("utf-8"),
@@ -148,13 +142,27 @@ st.download_button(
     mime="text/csv",
 )
 
-# show cleaned/filtered table
-st.dataframe(df_view, use_container_width=True, hide_index=True)
+tickers_str = " ".join(df_view["ticker"].tolist())
+st.text_area("Tickers (space-separated)", tickers_str, height=70)
+st.download_button("Download tickers.txt", tickers_str, file_name="tickers.txt", mime="text/plain")
+st.markdown(
+    f"""
+    <div style="margin: 0.4rem 0;">
+      <button onclick="navigator.clipboard.writeText({json.dumps(tickers_str)})">Copy tickers to clipboard</button>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
-# Footer caption
-st.caption(f"SCREENER_FIX v1.7 • Source: {source_path or 'unknown'} • Rows(raw): {len(df):,} • Rows(clean): {len(df_view):,}")
+st.dataframe(
+    df_view,
+    use_container_width=True,
+    hide_index=True,
+    column_config={"TradingView": st.column_config.LinkColumn("TradingView", display_text="Open")},
+)
 
-# Optional: diagnostics of discovered files
+st.caption(f"SCREENER_FIX v1.9 • Source: {source_path or 'unknown'} • Rows(raw): {len(df):,} • Rows(clean): {len(df_view):,}")
+
 with st.expander("Diagnostics"):
     cands = []
     for p in [
