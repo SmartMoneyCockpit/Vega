@@ -1,0 +1,36 @@
+
+name: Morning Snapshot (Europe)
+
+on:
+  schedule:
+    - cron: "15 6 * * *"    # ~07:45 CET/CEST (approx); adjust if needed
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install pillow
+      - name: Ensure vault/snapshots exists
+        run: mkdir -p vault/snapshots
+      - name: Create morning snapshot artifact (Europe)
+        run: python scripts/morning_snapshot.py
+      - name: Upload snapshot artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: morning_snapshot_europe
+          path: vault/snapshots/*
+          if-no-files-found: ignore
+          retention-days: 7
