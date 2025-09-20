@@ -329,60 +329,75 @@ jobs:
           fi
 
   email_bundle:
-    needs: aggregate
-    runs-on: ubuntu-latest
-    environment: Vega
-    steps:
-      - name: Compute run URL and subject
-        id: meta
-        shell: bash
-        env:
-          DEFAULT_SUBJECT: ${{ env.DEFAULT_EMAIL_SUBJECT }}
-          SUBJECT_INPUT: ${{ github.event.inputs.email_subject }}
-        run: |
-          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          echo "run_url=$RUN_URL" >> "$GITHUB_OUTPUT"
-          if [[ -n "$SUBJECT_INPUT" ]]; then
-            echo "subject=$SUBJECT_INPUT" >> "$GITHUB_OUTPUT"
-          else
-            echo "subject=$DEFAULT_SUBJECT" >> "$GITHUB_OUTPUT"
-          fi
+  needs: aggregate
+  runs-on: ubuntu-latest
+  environment: Vega
+  steps:
+    - name: Build subject/status + artifact links
+      id: mail
+      env:
+        GH_TOKEN:  ${{ github.token }}
+        RUN_API:   ${{ github.api_url }}/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        RUN_URL:   ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        SUBJECT_INPUT:  ${{ github.event.inputs.email_subject }}
+        DEFAULT_SUBJECT: ${{ env.DEFAULT_EMAIL_SUBJECT }}
+      shell: bash
+      run: |
+        set -e
+        jobs=$(curl -sS -H "Authorization: Bearer $GH_TOKEN" "$RUN_API/jobs?per_page=100")
+        fails=$(jq '[.jobs[] | select(.conclusion != "success" and .conclusion != null)] | length' <<<"$jobs")
+        if [ "$fails" -gt 0 ]; then emoji="❌"; else emoji="✅"; fi
+        subject="${SUBJECT_INPUT:-$DEFAULT_SUBJECT}"
+        echo "subject=${emoji} ${subject}" >> "$GITHUB_OUTPUT"
 
-      - name: Send All-in-One email (links only via SendGrid)
-        env:
-          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
-          EMAIL_FROM: ${{ vars.EMAIL_FROM || env.EMAIL_FROM_DEFAULT }}
-          EMAIL_TO: ${{ vars.EMAIL_TO }}
-          RUN_URL: ${{ steps.meta.outputs.run_url }}
-          SUBJECT: ${{ steps.meta.outputs.subject }}
-          BODY: ${{ env.DEFAULT_EMAIL_BODY }}
-        shell: bash
-        run: |
-          set -e
-          if [[ -z "${SENDGRID_API_KEY:-}" ]]; then
-            echo "::error::SENDGRID_API_KEY secret is missing."
-            exit 1
-          fi
-          if [[ -z "${EMAIL_TO:-}" ]]; then
-            echo "::error::EMAIL_TO repo Variable is missing. Set it in Settings → Variables."
-            exit 1
-          fi
-          html="<p>Your All-in-One run finished.</p>
-          <p>Artifacts and logs: <a href='${RUN_URL}'>${RUN_URL}</a></p>"
-          jq -n \
-            --arg from "$EMAIL_FROM" \
-            --arg to "$EMAIL_TO" \
-            --arg subject "$SUBJECT" \
-            --arg html "$html" \
-            '{personalizations:[{to:[{email:$to}]}],
-              from:{email:$from},
-              subject:$subject,
-              content:[{type:"text/html", value:$html}]}' > payload.json
+        if [ "$fails" -gt 0 ]; then
+          summary=$(jq -r '[.jobs[] | select(.conclusion != "success" and .conclusion != null)
+                           | "\(.name) — \(.conclusion)"] | join("<br>")' <<<"$jobs")
+        else
+          summary=""
+        fi
 
-          curl -sS -X POST https://api.sendgrid.com/v3/mail/send \
-            -H "Authorization: Bearer $SENDGRID_API_KEY" \
-            -H "Content-Type: application/json" \
-            -d @payload.json
+        arts=$(curl -sS -H "Authorization: Bearer $GH_TOKEN" "$RUN_API/artifacts?per_page=100")
+        list_html=$(jq -r '.artifacts
+          | sort_by(.name)
+          | map("<li><a href=\"https://api.github.com/repos/'"${GITHUB_REPOSITORY}"'/actions/artifacts/\(.id)/zip\">\(.name)</a> — \(.size_in_bytes) bytes</li>")
+          | join("\n")' <<<"$arts")
+        [ -z "$list_html" ] && list_html="<li><i>No artifacts found.</i></li>"
+
+        {
+          echo "<p>Run page (all artifacts & logs): <a href='$RUN_URL'>$RUN_URL</a></p>"
+          if [ -n "$summary" ]; then
+            echo "<p><b>Failures ($fails):</b><br>${summary}</p>"
+          fi
+          echo "<p><b>Direct artifact downloads:</b></p><ul>${list_html}</ul>"
+        } > body.html
+
+    - name: Send email via SendGrid (status + links)
+      env:
+        SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+        EMAIL_FROM: ${{ vars.EMAIL_FROM || 'blainedares@gmail.com' }}
+        EMAIL_TO:   ${{ vars.EMAIL_TO }}
+      shell: bash
+      run: |
+        set -e
+        if [[ -z "${SENDGRID_API_KEY:-}" || -z "${EMAIL_TO:-}" ]]; then
+          echo "::error::Missing SENDGRID_API_KEY or EMAIL_TO"; exit 1
+        fi
+        html=$(cat body.html)
+        jq -n \
+          --arg from "$EMAIL_FROM" \
+          --arg to "$EMAIL_TO" \
+          --arg subject "${{ steps.mail.outputs.subject }}" \
+          --arg html "$html" \
+          '{personalizations:[{to:[{email:$to}]}],
+            from:{email:$from},
+            subject:$subject,
+            content:[{type:"text/html", value:$html}]}' > payload.json
+
+        curl -sS -X POST https://api.sendgrid.com/v3/mail/send \
+          -H "Authorization: Bearer $SENDGRID_API_KEY" \
+          -H "Content-Type: application/json" \
+          -d @payload.json
 
   monthly_release:
     needs: aggregate
