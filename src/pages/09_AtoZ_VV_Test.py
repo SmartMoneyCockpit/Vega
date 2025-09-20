@@ -1,5 +1,11 @@
 
-import streamlit as st, os, json
+import os, sys, json, streamlit as st
+
+# Ensure project root is on sys.path so 'components' is importable on Render
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
 from components.az_vv import render_vv_block
 
 st.set_page_config(page_title="A-to-Z + VectorVest (Demo)", layout="wide")
