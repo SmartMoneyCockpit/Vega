@@ -2,18 +2,23 @@ import os, json, pandas as pd, datetime as dt
 import streamlit as st
 from streamlit.components.v1 import html
 from urllib.parse import quote
+import json as _json
 
-st.set_page_config(page_title="North America — Text Dashboard v1.6", layout="wide")
-st.title("North America — Text Dashboard v1.6")
+st.set_page_config(page_title="North America — Dashboard v1.7", layout="wide")
+st.title("North America — Dashboard v1.7")
 
 MD_PATH = "reports/na/morning_report.md"
 CAL_CSV = "assets/econ_calendar_na.csv"
 META    = "reports/run_meta.json"
 
-# --- Cached CSV loader (speeds up reloads) ---
+# ---------------- Cached loaders ----------------
 @st.cache_data(show_spinner=False)
 def _read_csv(path: str) -> pd.DataFrame:
     return pd.read_csv(path)
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _read_csv_url(url: str) -> pd.DataFrame:
+    return pd.read_csv(url)
 
 # ---------------- Helpers ----------------
 def _mtime(path: str) -> str:
@@ -29,14 +34,12 @@ def _load_meta():
     except Exception:
         return {}
 
-# Query param helpers
 def _get_qp() -> dict:
     try:
         qp = st.query_params
         out = {}
         for k, v in qp.items():
-            if isinstance(v, list): out[k] = v[0] if v else ""
-            else: out[k] = v
+            out[k] = v[0] if isinstance(v, list) else v
         return out
     except Exception:
         qp = st.experimental_get_query_params()
@@ -49,7 +52,46 @@ def _qp_get(name: str, default: str) -> str:
         except: return str(default)
     return v or default
 
-# Overlay encode/decode for deep links
+# ---- VectorVest integration (inline panel) ----
+VV_ENV_KEY = "VV_NA_CSV_URL"        # optional: URL to a CSV in your repo/storage
+VV_LOCAL_FALLBACK = "data/vv_na.csv" # optional: local CSV fallback
+
+VV_COLS_PREFERRED = ["Symbol","Name","Price","VST","RT","RS","RV","CI","GRT","DY","Sector"]
+
+@st.cache_data(ttl=300, show_spinner=False)
+def load_vv_df() -> pd.DataFrame:
+    url = os.getenv(VV_ENV_KEY, "").strip()
+    df = None
+    if url:
+        try:
+            df = _read_csv_url(url)
+        except Exception as e:
+            st.warning(f"VectorVest: failed to load {url} — {e}")
+    if df is None and os.path.exists(VV_LOCAL_FALLBACK):
+        try:
+            df = _read_csv(VV_LOCAL_FALLBACK)
+        except Exception as e:
+            st.warning(f"VectorVest: failed to read {VV_LOCAL_FALLBACK} — {e}")
+    if df is None:
+        df = pd.DataFrame(columns=VV_COLS_PREFERRED)
+    return df
+
+def vv_panel(default_symbol: str = "SPY", max_rows: int = 50) -> str:
+    st.subheader("VectorVest Candidates — North America")
+    df = load_vv_df()
+    if df.empty:
+        st.info("No VectorVest results yet for North America.")
+        return default_symbol
+
+    cols = [c for c in VV_COLS_PREFERRED if c in df.columns]
+    view = df[cols].head(max_rows)
+    st.dataframe(view, use_container_width=True, hide_index=True)
+
+    syms = view["Symbol"].astype(str).tolist() if "Symbol" in view.columns else []
+    pick = st.selectbox("Pick a ticker from VectorVest", [default_symbol] + syms, index=0)
+    return pick
+
+# ---- TradingView tv.js helpers ----
 OVERLAY_CODES = {
     "EMA 9":"e9", "EMA 21":"e21", "EMA 50":"e50", "EMA 200":"e200",
     "Bollinger (20,2)":"bb", "Ichimoku (9/26/52)":"ichi",
@@ -82,19 +124,16 @@ def tv_chart_html(symbol: str, interval: str, theme: str, height: int,
     return f"""
 <div id="tv_quick_na" style="height:{height}px;"></div>
 <script src="https://s3.tradingview.com/tv.js"></script>
-<script> new TradingView.widget({json.dumps(cfg)}); </script>
+<script> new TradingView.widget({_json.dumps(cfg)}); </script>
 """
 
-# ---------------- Quick Chart (TOP, CENTERED) ----------------
+# ---------------- Quick Chart + Controls ----------------
 st.subheader("Quick Chart")
 
-# Pane (lower) studies – always on
 PANE_STUDIES = [
     "RSI@tv-basicstudies","MACD@tv-basicstudies","ATR@tv-basicstudies",
     "OBV@tv-basicstudies","Volume@tv-basicstudies",
 ]
-
-# Overlays; default your 4×EMAs
 OVERLAY_CHOICES = {
     "EMA 9":   ("MAExp@tv-basicstudies", 9),
     "EMA 21":  ("MAExp@tv-basicstudies", 21),
@@ -114,23 +153,28 @@ theme_qp    = qp.get("theme", "dark")
 height_qp   = int(_qp_get("height", "800"))
 ov_qp       = _decode_overlays(qp.get("ov",""), OVERLAY_DEFAULT)
 
-cc1, cc2, cc3, cc4 = st.columns([2,1,1,1])
-symbol  = cc1.selectbox("Symbol", NA_LIST, index=(NA_LIST.index(symbol_qp) if symbol_qp in NA_LIST else 0))
-interval = cc2.selectbox("Interval", ["1","5","15","60","240","D","W","M"],
-                         index=["1","5","15","60","240","D","W","M"].index(interval_qp) if interval_qp in ["1","5","15","60","240","D","W","M"] else 5)
-theme    = cc3.selectbox("Theme", ["light","dark"], index=(0 if theme_qp=="light" else 1))
-height   = cc4.slider("Height", 480, 1200, height_qp, step=20)
+c1, c2, c3, c4 = st.columns([2,1,1,1])
+quick_choice = c1.selectbox("Quick list", NA_LIST, index=(NA_LIST.index(symbol_qp) if symbol_qp in NA_LIST else 0))
+interval = c2.selectbox("Interval", ["1","5","15","60","240","D","W","M"],
+                        index=["1","5","15","60","240","D","W","M"].index(interval_qp) if interval_qp in ["1","5","15","60","240","D","W","M"] else 5)
+theme    = c3.selectbox("Theme", ["light","dark"], index=(0 if theme_qp=="light" else 1))
+height   = c4.slider("Height", 480, 1200, height_qp, step=20)
 
+# VectorVest picks inline
+vv_pick = vv_panel(default_symbol="SPY")
+
+# Final symbol override (type anything)
+symbol = st.text_input("Symbol (override; e.g., NYSEARCA:SPY)", vv_pick or quick_choice).strip() or quick_choice
+
+# Overlays
 if "na_overlays" not in st.session_state:
     st.session_state["na_overlays"] = ov_qp
 sel_overlays = st.multiselect("Overlays", list(OVERLAY_CHOICES.keys()),
-                              default=st.session_state["na_overlays"],
-                              key="na_overlays")
+                              default=st.session_state["na_overlays"], key="na_overlays")
 if st.button("Reset EMAs"):
     st.session_state["na_overlays"] = OVERLAY_DEFAULT
     st.rerun()
 
-# Build studies (EMAs first for reliable instance overrides)
 ordered = [n for n in EMA_ORDER if n in sel_overlays] + [n for n in sel_overlays if n not in EMA_ORDER]
 overlay_studies, ema_lengths = [], []
 for name in ordered:
@@ -141,22 +185,17 @@ for name in ordered:
 studies = overlay_studies + PANE_STUDIES
 studies_overrides = {f"MAExp@tv-basicstudies.{i}.length": ln for i, ln in enumerate(ema_lengths)}
 
-manual = st.text_input("Or type a TV symbol (e.g., NYSEARCA:SPY)", "").strip()
-if manual: symbol = manual
-
 # Center the chart
 left, mid, right = st.columns([1, 8, 1])
 with mid:
     html(tv_chart_html(symbol, interval, theme, height, studies, studies_overrides),
          height=height+20, scrolling=False)
-
-# Pop-out + Share link
-with mid:
-    ov_param = _encode_overlays(sel_overlays)
-    params = f"?symbol={quote(symbol)}&interval={interval}&theme={theme}&height={height}&ov={ov_param}"
-    st.link_button("Open full-page chart (in-app)", f"/TradingView_Charts{params}")
     st.markdown(f"[Open on TradingView](https://www.tradingview.com/chart/?symbol={quote(symbol)}&interval={interval})")
-    st.text_input("Copy dashboard link", value=params, label_visibility="visible")
+
+# Screener notes (per symbol)
+st.subheader("Screener Notes")
+notes_key = f"screener_na_{symbol}"
+st.text_area("Notes (session)", value=st.session_state.get(notes_key, ""), key=notes_key, height=160)
 
 # ---------------- Morning Report ----------------
 st.subheader("Morning Report")
@@ -171,12 +210,11 @@ st.subheader("Economic Calendar")
 if os.path.isfile(CAL_CSV):
     df = _read_csv(CAL_CSV)
 
-    # Impact badges + tidy columns
     IMPACT_MAP = {"High":"🔴 High","Medium":"🟠 Medium","Med":"🟠 Medium","Low":"🟢 Low","-":"⚪ None","None":"⚪ None","":"⚪ None"}
     if "impact" in df.columns:
         df["impact"] = df["impact"].map(lambda x: IMPACT_MAP.get(str(x).strip(), str(x)))
     cols = [c for c in ["date","time_tz","region","event","impact"] if c in df.columns]
-    if cols: df = df[cols + [c for c in df.columns if c not in cols]]
+    if cols: df = df[cols] + df[[c for c in df.columns if c not in cols]]
 
     c1, c2 = st.columns([2,1])
     q = c1.text_input("Filter (keyword/date/time/impact)").strip()
@@ -196,12 +234,10 @@ if os.path.isfile(CAL_CSV):
     else:
         st.info("No rows match your filters.")
 
-    # CSV export
     st.download_button("Download filtered CSV",
         dfv.to_csv(index=False).encode("utf-8"),
         file_name="econ_calendar_na_filtered.csv", mime="text/csv")
 
-    # ICS export (keeps time if present)
     def to_ics(df_):
         lines = ["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//Vega//Calendar//EN"]
         now = dt.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
