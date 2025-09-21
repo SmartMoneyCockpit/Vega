@@ -1,31 +1,17 @@
-# Vega ↦ TradingView One-and-Done
+Vega Native Chart — Lightweight Charts
+=====================================
 
-**Flow:** IBKR → Vega (compute) → TradingView (display).
-This package gives you export buttons and deep links to TradingView.
+Files
+-----
+- src/services/datafeed.py — gets OHLCV via yfinance if available; otherwise reads CSV at data/ohlc/<SYMBOL>_<INTERVAL>.csv and computes indicators (Heikin-Ashi, EMA 9/21/50/200, Bollinger(20,2), Ichimoku(9/26/52), MACD, RSI, OBV, ATR).
+- src/components/native_chart.py — renders multi-pane Lightweight Charts via `streamlit-lightweight-charts`.
+- src/pages/06_Vega_Native_Chart.py — Streamlit page to drive the chart.
+- data/ohlc/NASDAQ_QQQ_D.csv — sample so the page renders even without internet.
+- requirements.txt — add to your project if needed.
 
-## Files
-- `services/tradingview_exports.py` — helpers to create TXT/CSV exports and deeplinks.
-- `pages/TradingView_Exports.py` — Streamlit page with buttons and links.
-- `components/tv_embed.py` — optional inline TradingView chart preview.
-- `utils/picks_bridge.py` — seeds demo picks from `templates/sample_picks.json` if none present.
-- `exports/` — output folder for generated TXT/CSV files.
-
-## Wiring to your pipeline
-Populate `st.session_state['NA_picks']`, `['EU_picks']`, `['APAC_picks']` with a list of dicts:
-```python
-picks = [{
-  "symbol": "AMZN", "exchange": "NASDAQ", "side": "BUY",
-  "entry": 181.5, "stop": 174.0, "target1": 195.0, "target2": 205.0,
-  "rr": "1:3.1", "reason_tags": "Momentum;RS>SPY", "notes": ""
-}]
-st.session_state['NA_picks'] = picks
-```
-Then open the **TradingView Export & Launch** page.
-
-## Outputs
-- `exports/tv_watchlist_<REGION>.txt` — import into TradingView as a watchlist.
-- `exports/tv_trades_<REGION>.csv` — trade cards for notes/records (with `tv_url` column).
-- `exports/tv_links_<REGION>.csv` — quick open links for charts.
-
-## Optional: Authenticated heatmaps
-No secrets required for this basic flow. Authenticated heatmaps can be added later.
+Quick Install
+-------------
+1) Copy `src/` and `data/` into your repo root (merge folders).
+2) Ensure `requirements.txt` includes the new deps (streamlit-lightweight-charts, yfinance).
+3) Commit & push — your Render deploy should pick it up.
+4) In the sidebar, open **Vega Native Chart — Lightweight Charts** and choose a symbol like `NASDAQ:QQQ`.
