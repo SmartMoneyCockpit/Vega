@@ -1,13 +1,12 @@
 
 """
-components/tv_bridge.py
-A lightweight TradingView embedding bridge so pages can import:
-    - render_chart
-    - render_heatmap
-    - render_login_helper
-This avoids missing-import crashes on Render when authenticated embeds are not ready.
+components/tv_bridge.py — public TradingView widgets
+Now supports:
+- render_chart(symbol, interval, theme, height=820, overlays=None, mode='auto')
+- render_heatmap(market, theme, height=620)
+Any extra keywords are ignored safely to stay backward compatible.
 """
-from typing import Optional
+from typing import Optional, Iterable
 import streamlit as st
 import streamlit.components.v1 as components
 
@@ -22,23 +21,37 @@ WIDGET_CONTAINER_STYLE = """
 def _theme_color(theme: str) -> str:
     return "light" if str(theme).lower().startswith("l") else "dark"
 
+def _coerce_height(h):
+    try:
+        return max(400, int(h))
+    except Exception:
+        return 820
+
 def render_login_helper(message: Optional[str] = None):
-    """Small helper panel explaining Auth vs Public mode; safe to keep even if you don't use auth."""
     with st.expander("About TradingView Embeds / Auth vs Public", expanded=False):
         st.markdown("""
-- **Public widgets** (this page) load without login and are safe for demos.
-- **Authenticated embeds** can mirror your private layouts once the auth cookies are wired.
+- **Public widgets** load without login and are safe for demos.
+- **Authenticated embeds** (coming later) mirror your private layouts.
 - If you expected your private layout and see a public widget instead, we're currently in **Public mode**.
         """.strip())
         if message:
             st.info(message)
 
-def render_chart(symbol: str = "NASDAQ:QQQ", interval: str = "D", theme: str = "dark", height: int = 560):
+def render_chart(symbol: str = "NASDAQ:QQQ",
+                 interval: str = "D",
+                 theme: str = "dark",
+                 height: int = 820,
+                 overlays: Optional[Iterable[str]] = None,
+                 mode: str = "auto",
+                 **kwargs):
     """
-    Renders a TradingView symbol chart using the lightweight public widget.
-    interval: "1" (1m), "5", "15", "60", "D", "W", "M"
+    Public TradingView symbol chart.
+    - `height` controls the iframe height.
+    - `overlays` accepted for API compatibility but not used by public widget.
+    - `mode` accepted for compatibility ("auto" / "iframe"); ignored here.
     """
     theme = _theme_color(theme)
+    height = _coerce_height(height)
     tv_interval = {"1":"1", "5":"5", "15":"15", "60":"60", "D":"D", "W":"W", "M":"M"}.get(interval, "D")
     st.markdown(WIDGET_CONTAINER_STYLE, unsafe_allow_html=True)
     html = f"""
@@ -69,10 +82,8 @@ def render_chart(symbol: str = "NASDAQ:QQQ", interval: str = "D", theme: str = "
     components.html(html, height=height, scrolling=False)
 
 def render_heatmap(market: str = "US", theme: str = "dark", height: int = 620):
-    """
-    Renders TradingView heatmap widget. market options examples: "US", "WORLD", "EU", "CN", "JP"
-    """
     theme = _theme_color(theme)
+    height = _coerce_height(height)
     st.markdown(WIDGET_CONTAINER_STYLE, unsafe_allow_html=True)
     html = f"""
     <div class="tradingview-wrap small">
