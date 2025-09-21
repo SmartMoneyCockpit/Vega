@@ -1,43 +1,60 @@
 
 """
-src/pages/10_TradingView_Bridge.py — adds height slider and uses tv_bridge APIs
+src/pages/10_TradingView_Bridge.py — Super-sized NA-style chart
 """
 import streamlit as st
+from urllib.parse import urlencode
 from components.tv_bridge import render_chart, render_heatmap, render_login_helper
 
 st.set_page_config(page_title="TradingView — Bridge", layout="wide")
+
+# --- Compact CSS to kill dead space
+st.markdown("""
+<style>
+.block-container{padding-top:.6rem;padding-bottom:.6rem}
+section.main > div {gap:.6rem}
+.stButton > button{width:100%}
+</style>
+""", unsafe_allow_html=True)
+
+# --- Fullscreen route (no sidebar chrome)
+qp = st.query_params
+if qp.get("fullscreen", ["0"])[0] == "1":
+    symbol = qp.get("symbol", ["NASDAQ:QQQ"])[0]
+    interval = qp.get("interval", ["D"])[0]
+    theme = qp.get("theme", ["dark"])[0]
+    height = int(qp.get("height", ["1200"])[0])
+    render_chart(symbol=symbol, interval=interval, theme=theme, height=height)
+    st.stop()
+
 st.title("TradingView — Bridge")
 
-with st.expander("Login Help", expanded=False):
-    st.write("This page uses public widgets for now. Authenticated embeds will be wired later.")
+with st.sidebar:
+    st.subheader("Chart controls")
+    symbol = st.text_input("Symbol", "NASDAQ:QQQ")
+    interval = st.selectbox("Interval", ["1","5","15","60","D","W","M"], index=4)
+    theme = st.radio("Theme", ["dark","light"], index=0, horizontal=True)
+    height = st.slider("Chart height", 600, 2000, 1200, 20)
+    layout = st.radio("Layout", ["Chart only", "Chart + Heatmap"], index=0)
+
+def _open_fullscreen(symbol, interval, theme, height):
+    params = {"fullscreen":"1","symbol":symbol,"interval":interval,"theme":theme,"height":height}
+    st.link_button("Open full-page chart (in-app)", f"?{urlencode(params)}", use_container_width=True)
+
+# Top actions
+_open_fullscreen(symbol, interval, theme, height)
+
+# Chart section
+st.subheader("Chart", anchor="chart")
+if layout == "Chart only":
+    render_chart(symbol=symbol, interval=interval, theme=theme, height=height)
+else:
+    col1, col2 = st.columns([3,1])
+    with col1:
+        render_chart(symbol=symbol, interval=interval, theme=theme, height=height)
+    with col2:
+        hm_height = max(420, height-60)
+        render_heatmap(market="US", theme=theme, height=hm_height)
 
 with st.expander("About TradingView Embeds / Auth vs Public", expanded=False):
-    st.write("Public widgets (no login) vs Authenticated (private layouts). Public mode is active.")
-
-with st.container():
-    st.subheader("Chart")
-    c1, c2, c3, c4 = st.columns([2,1,1,1])
-    with c1:
-        symbol = st.text_input("Symbol", "NASDAQ:QQQ")
-    with c2:
-        interval = st.selectbox("Interval", ["1","5","15","60","D","W","M"], index=4)
-    with c3:
-        theme = st.selectbox("Theme", ["dark","light"], index=0)
-    with c4:
-        height = st.slider("Height", 500, 1400, 860, 20)
-
-    # overlays UI kept for compatibility but not passed (public widget cannot set overlays)
-    overlays = st.multiselect("Overlays (UI only, public widget ignores)", ["e9","e21","e50","e200","bb","ich"], ["e9","e21","e50","e200"])
-
-    render_chart(symbol=symbol, interval=interval, theme=theme, height=height)
-
-st.divider()
-st.subheader("Heatmap")
-hm_col1, hm_col2 = st.columns([1,3])
-with hm_col1:
-    market = st.selectbox("Market", ["US","WORLD","EU","JP","CN"], index=0)
-with hm_col2:
-    hm_height = st.slider("Heatmap height", 400, 1200, 560, 20)
-
-render_heatmap(market=market, theme=theme, height=hm_height)
-render_login_helper("Public mode active. Height controls enabled.")
+    render_login_helper("Public widgets for now. Height slider + full-page view enabled.")
