@@ -1,4 +1,3 @@
-
 # src/components/tv_bridge.py
 from __future__ import annotations
 import os, json, urllib.parse, time
@@ -9,16 +8,37 @@ def _cachebust_url(url: str) -> str:
     ts = int(time.time()); sep = '&' if ('?' in url) else '?'
     return f"{url}{sep}ts={ts}"
 
-def tv_embed_url(symbol: str, interval: str='D', theme: str='dark') -> str:
+# --- PUBLIC widget URL (2-indicator limit) -------------------------------
+def tv_public_embed_url(symbol: str, interval: str='D', theme: str='dark') -> str:
+    # Optional override template for the PUBLIC widget
     tmpl = os.getenv('TV_EMBED_TEMPLATE', '')
     symbol_q = urllib.parse.quote(symbol, safe=':/')
     if tmpl:
         return (tmpl.replace('{SYMBOL}', symbol_q)
                     .replace('{INTERVAL}', interval)
                     .replace('{THEME}', theme))
-    params = dict(symbol=symbol_q, interval=interval, theme=theme,
-                  hide_top_toolbar='0', hide_legend='0')
+    params = dict(
+        symbol=symbol_q, interval=interval, theme=theme,
+        hide_top_toolbar='0', hide_legend='0',
+        timezone="Etc/UTC", locale="en", withdateranges="1",
+        allow_symbol_change="1", save_image="0", style="1",
+    )
     return 'https://s.tradingview.com/widgetembed/?' + urllib.parse.urlencode(params)
+
+# --- AUTHENTICATED account URL (mirrors your logged-in TV account) -------
+def tv_authenticated_url(symbol: str) -> str:
+    """
+    Loads TradingView's full chart page. The browser will send your
+    tradingview.com cookies, so you get your paid plan features (more indicators,
+    saved layouts, etc.). If third-party cookies are blocked, it behaves like logged out.
+    """
+    # Optional override lets you hard-pin a specific layout/chart URL from TV
+    tmpl = os.getenv('TV_IFRAME_URL_TEMPLATE', '')
+    symbol_q = urllib.parse.quote(symbol, safe=':/')
+    if tmpl:
+        return tmpl.replace('{SYMBOL}', symbol_q)
+    # Default: plain chart URL with the symbol
+    return f"https://www.tradingview.com/chart/?symbol={symbol_q}&utm_source=vega&feature=embed"
 
 def tv_heatmap_url(region: str='USA', prefer_auth: bool=True) -> str | None:
     key = region.upper().replace(' ','_')
@@ -34,12 +54,21 @@ def render_refresh_bar(label='Refresh after TradingView sign-in'):
 def render_chart(symbol: str, interval: str='D', theme: str='dark', height: int=600, overlays=None, mode: str='auto'):
     if not symbol:
         st.warning("No symbol provided."); return
-    use_iframe = (str(mode).lower() == 'iframe')
-    if use_iframe:
-        url = _cachebust_url(tv_embed_url(symbol, interval=interval, theme=theme))
-        html(f'<iframe src="{url}" height="{height}" width="100%" frameborder="0" style="border:0;" scrolling="yes"></iframe>', height=height)
-        render_refresh_bar("Refresh after TradingView sign-in"); return
 
+    # --- NEW: real authenticated iframe when mode == 'iframe'
+    if str(mode).lower() == 'iframe':
+        url = _cachebust_url(tv_authenticated_url(symbol))
+        html(
+            f'<iframe src="{url}" height="{height}" width="100%" '
+            f'frameborder="0" style="border:0;" scrolling="yes" '
+            f'sandbox="allow-scripts allow-same-origin allow-popups"></iframe>',
+            height=height
+        )
+        st.caption("Tip: If you still see only 2 indicators, allow third-party cookies for tradingview.com.")
+        render_refresh_bar("Refresh after TradingView sign-in")
+        return
+
+    # --- PUBLIC 'auto' mode (unchanged): tv.js + built-ins ----------------
     studies_ids = [
         "MAExp@tv-basicstudies","MAExp@tv-basicstudies","MAExp@tv-basicstudies","MAExp@tv-basicstudies",
         "BollingerBands@tv-basicstudies","IchimokuCloud@tv-basicstudies",
