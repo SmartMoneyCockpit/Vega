@@ -1,9 +1,10 @@
 
 """
-components/tv_bridge.py — FORCE HEIGHT PATCH
-- Removes `autosize:true` and sets explicit `"height": <height>` for TradingView widget.
-- Ensures the outer iframe is also set to the same height.
-This fixes cases where the widget stayed short regardless of the Streamlit iframe height.
+components/tv_bridge.py — Forced height + login helper (compat-safe)
+- `render_chart(..., height=...)` sets an explicit widget height (no autosize)
+- `render_heatmap(..., height=...)` respects explicit height
+- `render_login_helper(msg)` restored for pages that import it
+- Accepts and ignores unknown kwargs (e.g., overlays, mode) for backward compatibility
 """
 from typing import Optional, Iterable
 import streamlit as st
@@ -15,6 +16,17 @@ CSS = """
 .tradingview-wrap iframe { width: 100%; border: 0; }
 </style>
 """
+
+def render_login_helper(message: Optional[str] = None):
+    """Small helper panel describing public vs authenticated TradingView embeds."""
+    with st.expander("About TradingView Embeds / Auth vs Public", expanded=False):
+        st.markdown("""
+- **Public widgets** load without login and are safe for demos.
+- **Authenticated embeds** mirror your private layouts once cookies are wired.
+If you expected a private layout and see a public one, you're in **Public mode**.
+        """.strip())
+        if message:
+            st.info(message)
 
 def _theme_color(theme: str) -> str:
     return "light" if str(theme).lower().startswith("l") else "dark"
@@ -29,13 +41,15 @@ def render_chart(symbol: str = "NASDAQ:QQQ",
                  interval: str = "D",
                  theme: str = "dark",
                  height: int = 980,
+                 overlays: Optional[Iterable[str]] = None,
+                 mode: str = "auto",
                  **kwargs):
     theme = _theme_color(theme)
     height = _h(height)
     tv_interval = {"1":"1", "5":"5", "15":"15", "60":"60", "D":"D", "W":"W", "M":"M"}.get(interval, "D")
     st.markdown(CSS, unsafe_allow_html=True)
     html = f"""
-    <div class="tradingview-wrap">
+    <div class="tradingview-wrap" style="height:{height}px;">
       <div class="tradingview-widget-container">
         <div id="tv_chart_container"></div>
       </div>
@@ -67,7 +81,7 @@ def render_heatmap(market: str = "US", theme: str = "dark", height: int = 620):
     height = _h(height)
     st.markdown(CSS, unsafe_allow_html=True)
     html = f"""
-    <div class="tradingview-wrap">
+    <div class="tradingview-wrap" style="height:{height}px;">
       <div class="tradingview-widget-container">
         <div class="tradingview-widget-container__widget"></div>
       </div>
