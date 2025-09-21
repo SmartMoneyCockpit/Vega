@@ -14,6 +14,7 @@ def _cachebust_url(url: str) -> str:
     return f"{url}{sep}ts={ts}"
 
 def tv_embed_url(symbol: str, interval: str='D', theme: str='dark') -> str:
+    """Iframe fallback (uses TradingView's hosted embed; fewer controls)."""
     tmpl = os.getenv('TV_EMBED_TEMPLATE', '')
     symbol_q = urllib.parse.quote(symbol, safe=':/')
     if tmpl:
@@ -32,6 +33,7 @@ def tv_embed_url(symbol: str, interval: str='D', theme: str='dark') -> str:
     return 'https://s.tradingview.com/widgetembed/?' + urllib.parse.urlencode(params)
 
 def tv_heatmap_url(region: str='USA', prefer_auth: bool=True) -> str | None:
+    """Read heatmap URLs from env; prefer authenticated if provided."""
     key = region.upper().replace(' ','_')
     auth_url = os.getenv(f'TV_HEATMAP_{key}_AUTH_URL', '')
     pub_url  = os.getenv(f'TV_HEATMAP_{key}_PUBLIC_URL', '')
@@ -44,7 +46,7 @@ def render_refresh_bar(label='Refresh after TradingView sign-in'):
         st.rerun()
 
 # -------------------------------------------------------------------
-# Chart rendering
+# Chart rendering (tv.js built-ins only)
 # -------------------------------------------------------------------
 
 def render_chart(symbol: str,
@@ -53,13 +55,12 @@ def render_chart(symbol: str,
                  height: int=600,
                  overlays=None,
                  mode: str='tvjs'):
-    """Render a TradingView chart with built-in studies only."""
-
+    """Render a TradingView chart with built-in studies only, Heikin-Ashi by default."""
     if not symbol:
         st.warning("No symbol provided.")
         return
 
-    # iframe mode just shows a saved layout (no control over studies)
+    # --- IFRAME MODE: shows saved layout; cannot inject studies programmatically
     if mode == 'iframe':
         url = _cachebust_url(tv_embed_url(symbol, interval=interval, theme=theme))
         html(
@@ -70,20 +71,18 @@ def render_chart(symbol: str,
         render_refresh_bar("Refresh after TradingView sign-in")
         return
 
-    # --- tv.js mode: full control over built-ins ---
+    # --- TV.JS MODE: full control over built-ins
+    # Fixed order matters for legend labeling & pane arrangement
     studies = [
-        # EMAs
-        {"id": "MAExp@tv-basicstudies", "inputs": {"length": 9}},
-        {"id": "MAExp@tv-basicstudies", "inputs": {"length": 21}},
-        {"id": "MAExp@tv-basicstudies", "inputs": {"length": 50}},
-        {"id": "MAExp@tv-basicstudies", "inputs": {"length": 200}},
-
-        # Overlays
+        # Overlay studies
+        {"id": "MAExp@tv-basicstudies", "inputs": {"length": 9}},    # EMA 9
+        {"id": "MAExp@tv-basicstudies", "inputs": {"length": 21}},   # EMA 21
+        {"id": "MAExp@tv-basicstudies", "inputs": {"length": 50}},   # EMA 50
+        {"id": "MAExp@tv-basicstudies", "inputs": {"length": 200}},  # EMA 200
         {"id": "BollingerBands@tv-basicstudies", "inputs": {"length": 20, "mult": 2}},
         {"id": "IchimokuCloud@tv-basicstudies",
          "inputs": {"conversion": 9, "base": 26, "span": 52, "displacement": 26}},
-
-        # Indicator panes
+        # Pane studies (top → bottom)
         {"id": "MACD@tv-basicstudies",
          "inputs": {"fastLength": 12, "slowLength": 26, "signalLength": 9}},
         {"id": "RSI@tv-basicstudies", "inputs": {"length": 14}},
@@ -91,16 +90,32 @@ def render_chart(symbol: str,
         {"id": "ATR@tv-basicstudies", "inputs": {"length": 14}},
     ]
 
-    # EMA colors per instance
+    # Per-instance overrides (colors + legend titles)
     studies_overrides = {
-        "MAExp@tv-basicstudies.0.plot_0.color": "#1e90ff",  # EMA 9 blue
+        # EMAs (four separate instances; index = order above)
+        "MAExp@tv-basicstudies.0.plot_0.color": "#1e90ff",  # Blue
         "MAExp@tv-basicstudies.0.plot_0.linewidth": 2,
-        "MAExp@tv-basicstudies.1.plot_0.color": "#001f5b",  # EMA 21 navy
+        "MAExp@tv-basicstudies.0.inputs.title": "EMA 9 (Blue)",
+
+        "MAExp@tv-basicstudies.1.plot_0.color": "#001f5b",  # Navy
         "MAExp@tv-basicstudies.1.plot_0.linewidth": 2,
-        "MAExp@tv-basicstudies.2.plot_0.color": "#ff0000",  # EMA 50 red
+        "MAExp@tv-basicstudies.1.inputs.title": "EMA 21 (Navy)",
+
+        "MAExp@tv-basicstudies.2.plot_0.color": "#ff0000",  # Red
         "MAExp@tv-basicstudies.2.plot_0.linewidth": 2,
-        "MAExp@tv-basicstudies.3.plot_0.color": "#ffffff",  # EMA 200 white
+        "MAExp@tv-basicstudies.2.inputs.title": "EMA 50 (Red)",
+
+        "MAExp@tv-basicstudies.3.plot_0.color": "#ffffff",  # White
         "MAExp@tv-basicstudies.3.plot_0.linewidth": 2,
+        "MAExp@tv-basicstudies.3.inputs.title": "EMA 200 (White)",
+
+        # Other built-ins (legend labels)
+        "BollingerBands@tv-basicstudies.0.inputs.title": "Bollinger (20,2)",
+        "IchimokuCloud@tv-basicstudies.0.inputs.title": "Ichimoku (9/26/52)",
+        "MACD@tv-basicstudies.0.inputs.title": "MACD (12/26/9)",
+        "RSI@tv-basicstudies.0.inputs.title": "RSI (14)",
+        "OBV@tv-basicstudies.0.inputs.title": "OBV",
+        "ATR@tv-basicstudies.0.inputs.title": "ATR (14)",
     }
 
     cfg = {
@@ -108,7 +123,7 @@ def render_chart(symbol: str,
         "symbol": symbol,
         "interval": interval,
         "theme": theme,
-        "style": 3,  # Heikin-Ashi candles
+        "style": 3,  # 3 = Heikin-Ashi
         "autosize": True,
         "timezone": "Etc/UTC",
         "locale": "en",
@@ -119,6 +134,7 @@ def render_chart(symbol: str,
         "studies": studies,
         "studies_overrides": studies_overrides,
         "overrides": {
+            # Make legend useful
             "paneProperties.legendProperties.showStudyTitles": True,
             "paneProperties.legendProperties.showStudyValues": True,
             "paneProperties.legendProperties.showSeriesOHLC": False,
