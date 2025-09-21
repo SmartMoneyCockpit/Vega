@@ -19,7 +19,7 @@ def render() -> None:
     st.subheader("💰 Live PnL Tracker")
     st.write("Monitor real‑time profit and loss for your open positions.")
     if st.button("Refresh Positions"):
-        st.experimental_rerun()
+        st.rerun()
     ib_instance = ibkr.connect()
     if ib_instance is None:
         st.warning("Unable to connect to IBKR.  Running in offline mode.")

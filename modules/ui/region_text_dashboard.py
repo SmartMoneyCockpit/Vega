@@ -133,7 +133,7 @@ def render_region(region: str) -> None:
             st.write(details)
             if st.button(f"Preview {sym} in Focus", key=f"focus_{region}_{sym}"):
                 st.session_state[focus_key] = sym
-                st.experimental_rerun()
+                st.rerun()
 
     # Sector movers
     st.write("### Sector Movers")

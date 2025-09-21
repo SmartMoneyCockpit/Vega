@@ -48,7 +48,7 @@ def tv_heatmap_url(region: str = 'USA', prefer_auth: bool = True) -> str | None:
 
 def render_refresh_bar(label='Refresh after TradingView sign-in'):
     if st.button(label):
-        st.experimental_rerun()
+        st.rerun()
 
 def render_chart(symbol: str, interval: str = 'D', theme: str = 'dark', height: int = 600, overlays=None, mode: str = 'auto'):
     if not symbol:
