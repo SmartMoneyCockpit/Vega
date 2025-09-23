@@ -1,9 +1,10 @@
+
 # src/ibkr_bridge.py
 import os, time
 from typing import Dict, Iterable, Optional
 from ib_insync import IB, Stock, Contract
 
-def _read_env(cfg, key, default=None):
+def _read_env(key, default=None):
     envs = {
         "host": ["IB_HOST","IBKR_HOST"],
         "port": ["IB_PORT","IBKR_PORT"],
@@ -28,16 +29,17 @@ def _read_env(cfg, key, default=None):
                 try: return int(v)
                 except Exception: continue
             return v
-    return cfg.get("ibkr", {}).get(key, default)
+    defaults = {"host":"127.0.0.1","port":4002,"client_id":7,"market_data_type":3,"connect_timeout_sec":8}
+    return defaults.get(key, default)
 
-def connect_ib(cfg) -> IB:
+def connect_ib() -> IB:
     ib = IB()
-    host = _read_env(cfg, "host", "127.0.0.1")
-    port = int(_read_env(cfg, "port", 4002))
-    client_id = int(_read_env(cfg, "client_id", 7))
-    timeout = int(_read_env(cfg, "connect_timeout_sec", 8))
+    host = _read_env("host", "127.0.0.1")
+    port = int(_read_env("port", 4002))
+    client_id = int(_read_env("client_id", 7))
+    timeout = int(_read_env("connect_timeout_sec", 8))
     ib.connect(host, port, clientId=client_id, timeout=timeout)
-    ib.reqMarketDataType(int(_read_env(cfg, "market_data_type", 3)))  # 3 = delayed
+    ib.reqMarketDataType(int(_read_env("market_data_type", 3)))
     return ib
 
 _SUFFIX_MAP = {
