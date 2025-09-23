@@ -1,0 +1,7 @@
+# CHANGES – 2025-09-23 Mega Delta
+- IBKR ib_insync pages added (Quick Test, Order Ticket)
+- app.py updated to surface new pages
+- Watchdog interval default set to **600s (10 minutes)** per your preference
+- systemd units included for autostart + watchdog
+- Cleanup scripts for duplicate pages and old HTTP bridge pages
+- SSH tunnel: **not enabled now** (we stay with direct 4002 + UFW); doc stubs can be added later if you want the tunnel
