@@ -1,0 +1,22 @@
+# render.yaml (optional helper if you run the bridge as its own service)
+services:
+  - type: web
+    name: vega-ibkr-bridge
+    env: python
+    plan: starter
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn bridge:app --host ${BRIDGE_HOST:-0.0.0.0} --port ${BRIDGE_PORT:-8088}"
+    envVars:
+      - key: IB_HOST
+        value: 127.0.0.1
+      - key: IB_PORT
+        value: 7497
+      - key: IB_CLIENT_ID
+        value: 9
+      - key: BRIDGE_HOST
+        value: 0.0.0.0
+      - key: BRIDGE_PORT
+        value: 8088
+      - key: IB_PAPER_ONLY
+        value: "true"
+      # Set BRIDGE_API_KEY in dashboard secrets
