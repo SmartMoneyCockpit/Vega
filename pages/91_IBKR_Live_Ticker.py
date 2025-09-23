@@ -1,5 +1,5 @@
 # pages/91_IBKR_Live_Ticker.py
-import os, time, requests, streamlit as st
+import os, requests, streamlit as st
 
 st.set_page_config(page_title="IBKR Live Ticker", layout="wide")
 st.title("IBKR Live Ticker")
@@ -21,23 +21,23 @@ def fetch_quote(sym: str):
 
 # --- User controls
 symbols = st.text_input("Symbols (comma separated)", "SPY,AAPL,MSFT").upper().split(",")
-refresh = st.slider("Refresh every (seconds)", 2, 30, 5)
+refresh_secs = st.slider("Refresh every (seconds)", 2, 30, 5)
 
-# --- Live loop
-placeholder = st.empty()
-while True:
-    with placeholder.container():
-        cols = st.columns(len(symbols))
-        for i, sym in enumerate(symbols):
-            sym = sym.strip()
-            if not sym:
-                continue
-            data = fetch_quote(sym)
-            if "error" in data:
-                cols[i].error(f"{sym}: {data['error']}")
-            else:
-                last = data.get("last")
-                bid  = data.get("bid")
-                ask  = data.get("ask")
-                cols[i].metric(sym, f"{last}", delta=f"Bid {bid} / Ask {ask}")
-    time.sleep(refresh)
+# --- Auto-refresh
+st_autorefresh = st.experimental_rerun if not hasattr(st, "autorefresh") else st.autorefresh
+st_autorefresh(interval=refresh_secs * 1000, key="ibkr_live_ticker")
+
+# --- Display quotes
+cols = st.columns(len(symbols))
+for i, sym in enumerate(symbols):
+    sym = sym.strip()
+    if not sym:
+        continue
+    data = fetch_quote(sym)
+    if "error" in data:
+        cols[i].error(f"{sym}: {data['error']}")
+    else:
+        last = data.get("last")
+        bid  = data.get("bid")
+        ask  = data.get("ask")
+        cols[i].metric(sym, f"{last}", delta=f"Bid {bid} / Ask {ask}")
