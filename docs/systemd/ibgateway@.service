@@ -1,0 +1,21 @@
+
+# docs/systemd/ibgateway@.service
+[Unit]
+Description=IBKR Gateway (headless) for user %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%i
+Environment=DISPLAY=:1
+Environment=HOME=/home/%i
+WorkingDirectory=/home/%i
+# Adjust path to your gateway start script or command:
+# Example if you have a wrapper: /opt/ibgateway/scripts/run.sh
+ExecStart=/opt/ibgateway/scripts/run.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,24 @@
+
+# docs/systemd/ibkr-watchdog@.service
+[Unit]
+Description=IBKR API Watchdog for user %i (auto-restart gateway on failure)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/home/%i/vega
+Environment=PYTHONUNBUFFERED=1
+# Optional overrides (uncomment & edit if desired):
+# Environment=IBKR_HOST=167.71.145.48
+# Environment=IBKR_PORT=4002
+# Environment=IBKR_CLIENT_ID=7
+# Environment=WATCHDOG_INTERVAL_SEC=60
+# Environment=WATCHDOG_FAIL_THRESHOLD=3
+ExecStart=/usr/bin/python3 scripts/watchdog_ibkr.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
