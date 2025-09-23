@@ -1,3 +1,31 @@
+
+import logging
+from logging.handlers import RotatingFileHandler
+
+handler = RotatingFileHandler('ibkr_bridge.log', maxBytes=10_000_000, backupCount=3)
+logging.basicConfig(handlers=[handler], level=logging.INFO,
+                    format='%(asctime)s %(levelname)s %(message)s')
+
+# Email alerts via SendGrid
+import os, requests
+SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
+ALERT_EMAIL = os.getenv("ALERT_EMAIL")
+def send_alert(subject, body):
+    if not SENDGRID_API_KEY or not ALERT_EMAIL: return
+    try:
+        r = requests.post("https://api.sendgrid.com/v3/mail/send",
+                          headers={"Authorization": f"Bearer {SENDGRID_API_KEY}",
+                                   "Content-Type": "application/json"},
+                          json={
+                              "personalizations":[{"to":[{"email": ALERT_EMAIL}]}],
+                              "from":{"email":"alerts@vega.cockpit"},
+                              "subject":subject,
+                              "content":[{"type":"text/plain","value":body}]
+                          })
+    except Exception as e:
+        logging.error(f"Failed to send alert: {e}")
+import logging
+logging.basicConfig(filename='ibkr_bridge.log', level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 # vega_ibkr_bridge/bridge.py
 # FastAPI bridge between Vega cockpit and IBKR Gateway using ib_insync.
 # Security: simple API key via "x-api-key" header. Keep this service private on your network.

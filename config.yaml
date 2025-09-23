@@ -38,3 +38,6 @@ rules:
   no_buys_within_earnings_days: 30
 timestamps:
   timezone: America/Los_Angeles
+
+# Safety toggle
+trading_enabled: true
