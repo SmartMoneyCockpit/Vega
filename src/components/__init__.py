@@ -1,1 +1,1 @@
-# makes 'components' a package
+# components pkg
