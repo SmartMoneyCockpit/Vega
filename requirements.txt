@@ -6,7 +6,6 @@ streamlit>=1.33
 pandas==2.2.2
 numpy==2.0.2
 PyYAML==6.0.2
-# Fix: 0.8.1 doesn't support Py3.11 — bump to a compatible release
 streamlit-lightweight-charts>=0.9.0
 
 # HTTP / async utils
@@ -29,6 +28,5 @@ polygon-api-client==1.13.6
 # IBKR Bridge (FastAPI + trading gateway)
 fastapi>=0.110,<0.112
 uvicorn[standard]>=0.27,<0.29
-# Use the canonical package name only; remove the duplicate variant
 ib-insync>=0.9.86
 pydantic>=2.7,<2.10
