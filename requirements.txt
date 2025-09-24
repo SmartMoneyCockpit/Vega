@@ -6,7 +6,7 @@ streamlit>=1.33
 pandas==2.2.2
 numpy==2.0.2
 PyYAML==6.0.2
-streamlit-lightweight-charts==0.8.1
+streamlit-lightweight-charts==0.7.20
 
 # HTTP / async utils
 requests>=2.32.0,<3
