@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+echo "[pre-commit] slug collision scan..."
+python3 - <<'PY'
+import sys
+from vega.utils.slug_guard import scan_pages_for_slug_collisions
+dups = scan_pages_for_slug_collisions("pages")
+if dups:
+    for slug, files in sorted(dups.items()):
+        print(f"  /{slug} -> {', '.join(files)}")
+    sys.exit("[pre-commit] Duplicate Streamlit page slugs found. Fix before committing.")
+print("[pre-commit] OK")
+PY
