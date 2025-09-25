@@ -2,8 +2,8 @@
 import os, streamlit as st
 from cockpit_client.ib_bridge_client import IBKRBridgeClient
 
-st.set_page_config(page_title="IBKR Bridge Test", layout="centered")
-st.title("IBKR Bridge Test")
+st.set_page_config(page_title="IBKR Bridge Test (LIVE)", layout="centered")
+st.title("IBKR Bridge Test (LIVE)")
 
 base = os.getenv("IBKR_BRIDGE_URL", "http://<DROPLET_IP>:8088")
 key  = os.getenv("BRIDGE_API_KEY", "VegaTrading2025X")
@@ -29,7 +29,7 @@ with col2:
             st.error(str(e))
 
 st.divider()
-st.subheader("Market Order (demo)")
+st.subheader("Market Order (demo) — LIVE ACCOUNT!")
 sym = st.text_input("Order Symbol", "SPY", key="o_sym")
 action = st.selectbox("Action", ["BUY", "SELL"], key="o_action")
 qty = st.number_input("Quantity", min_value=1, value=1, step=1, key="o_qty")
