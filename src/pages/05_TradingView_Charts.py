@@ -61,4 +61,5 @@ st.subheader("Sector Heatmap")
 region = st.selectbox("Region", ["USA","Canada","Mexico"],
                       index=["USA","Canada","Mexico"].index(st.session_state.get("region","USA")),
                       key="region")
-render_heatmap(region, height=520)
+height = st.slider("Heatmap height", 600, 1400, 900, 10)
+render_heatmap(region, height=height)

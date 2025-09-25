@@ -33,6 +33,23 @@ try:
 except Exception as e:
     last_err = e
 
+# Fallback: try local CSV (data/ohlc/<EXCHANGE_SYMBOL>_D.csv or SYMBOL_D.csv)
+if df.empty:
+    try:
+        import os
+        candidates = []
+        if ":" in raw:
+            candidates.append(f"data/ohlc/{raw.replace(':','_')}_D.csv")
+        candidates.append(f"data/ohlc/{ticker}_D.csv")
+        for path in candidates:
+            if os.path.exists(path):
+                _df = pd.read_csv(path)
+                if not _df.empty:
+                    df = _df
+                    break
+    except Exception as _e:
+        last_err = _e
+
 if df.empty:
     st.warning(f"No data for {ticker}")
     if last_err:

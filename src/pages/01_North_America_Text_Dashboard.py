@@ -169,8 +169,9 @@ symbol = st.text_input("Symbol (override; e.g., NYSEARCA:SPY)", vv_pick or quick
 # Overlays
 if "na_overlays" not in st.session_state:
     st.session_state["na_overlays"] = ov_qp
-sel_overlays = st.multiselect("Overlays", list(OVERLAY_CHOICES.keys()),
-                              default=st.session_state["na_overlays"], key="na_overlays")
+if "na_overlays" not in st.session_state:
+    st.session_state["na_overlays"] = OVERLAY_DEFAULT
+sel_overlays = st.multiselect("Overlays", list(OVERLAY_CHOICES.keys()), key="na_overlays")
 if st.button("Reset EMAs"):
     st.session_state["na_overlays"] = OVERLAY_DEFAULT
     st.rerun()
