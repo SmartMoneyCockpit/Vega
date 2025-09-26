@@ -1,9 +1,9 @@
-services:
+sservices:
   - type: web
     name: vega-cockpit
     env: python
     region: oregon
-    pythonVersion: 3.11.9          # <-- add this line
+    pythonVersion: 3.11.9
     buildCommand: "pip install -r requirements.txt"
     startCommand: "streamlit run app.py --server.port $PORT --server.address 0.0.0.0"
     plan: free
@@ -12,5 +12,23 @@ services:
         value: prod
       - key: ON_RENDER
         value: "1"
+      - key: IB_HOST
+        sync: false
+      - key: IB_PORT
+        sync: false
+      - key: IB_CLIENT_ID
+        sync: false
+      - key: IBKR_BRIDGE_URL
+        sync: false
     autoDeploy: true
     healthCheckPath: "/"
+
+cronJobs:
+  - name: ibkr-keepalive-hourly
+    schedule: "0 * * * *"        # every hour, minute 0
+    command: python scripts/keepalive.py
+    envVars:
+      - key: IB_HOST
+        sync: false
+      - key: IB_PORT
+        sync: false
