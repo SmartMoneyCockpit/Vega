@@ -7,6 +7,18 @@ from vega.utils.slug_guard import (
     assert_unique_page_links,
 )
 
+# --- Optional IBKR helpers (render gracefully if not present)
+try:
+    from components.ib_status import status_badge, render_ib_panel
+except Exception as _e:
+    status_badge = None
+    render_ib_panel = None
+
+try:
+    from components.env_check import render_env_check
+except Exception as _e:
+    render_env_check = None
+
 # ---- paths ----
 BASE_DIR  = os.path.dirname(__file__)
 PAGES_DIR = "pages"                       # Streamlit expects this folder next to app.py
@@ -34,6 +46,11 @@ if not st.session_state["_vega_pages_logged"]:
 
 # ---------- Streamlit UI ----------
 st.set_page_config(page_title="Vega Cockpit", layout="wide")
+
+# Top-line IB badge (only if component is available)
+if status_badge:
+    status_badge()  # small green/red badge
+
 st.title("Vega Cockpit – Home")
 
 # ----- helpers -----
@@ -88,6 +105,9 @@ if apac:
 STATUS = []
 if exists_in_pages("095_IB_Feed_Status.py"):
     STATUS.append((f"{PAGES_DIR}/095_IB_Feed_Status.py", "📡 IB Feed Status"))
+# If you created the optional logs page from the pack, auto-link it too:
+if exists_in_pages("Logs_IBKR.py"):
+    STATUS.append((f"{PAGES_DIR}/Logs_IBKR.py", "🪵 IBKR Logs"))
 
 # ----- EXTRAS (only if files exist; tolerant 404/Help) -----
 EXTRAS = []
@@ -105,6 +125,16 @@ ALL_LINKS = CORE + MARKETS + STATUS + EXTRAS
 assert_unique_page_links([p for p, _ in ALL_LINKS])
 
 # ----- render -----
+# Inline IB environment sanity (small card)
+if render_env_check:
+    with st.container():
+        render_env_check()
+
+# Inline IB connection panel (button-driven)
+if render_ib_panel:
+    with st.container():
+        render_ib_panel()
+
 st.subheader("Core")
 for path, label in CORE:
     st.page_link(path, label=label)
