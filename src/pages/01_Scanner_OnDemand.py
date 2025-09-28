@@ -33,11 +33,13 @@ api_key = get_bridge_api_key()
 headers = {"x-api-key": api_key} if api_key else {}
 
 def bridge_ok():
+    """Check if the IBKR Bridge FastAPI service is alive."""
     try:
         r = httpx.get(f"{base}/health", headers=headers, timeout=3)
         r.raise_for_status()
         return True
-    except Exception:
+    except Exception as e:
+        st.write(f"Bridge check failed: {e}")
         return False
 
 if st.button("▶️ Run Scan + Morning Report", use_container_width=True):
