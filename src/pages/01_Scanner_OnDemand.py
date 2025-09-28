@@ -1,10 +1,28 @@
 import os, sys, subprocess
 import streamlit as st
 import httpx
-from config.ib_bridge_client import get_bridge_url, get_bridge_api_key
+import pathlib
 
+# --- robust bridge config import ---
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+try:
+    from config.ib_bridge_client import get_bridge_url, get_bridge_api_key  # type: ignore
+except Exception:
+    def get_bridge_url():
+        scheme = os.getenv("BRIDGE_SCHEME", "http")
+        host   = os.getenv("IB_HOST", "127.0.0.1")
+        port   = os.getenv("BRIDGE_PORT", "8088")
+        return f"{scheme}://{host}:{port}"
+
+    def get_bridge_api_key():
+        return os.getenv("IB_BRIDGE_API_KEY", "")
+
+# --- page setup ---
 st.set_page_config(page_title="Scan / Morning Report", layout="wide")
-st.header("🔎 Scan / Morning Report — On-Demand")
+st.header("🔎 Scan / Morning Report – On-Demand")
 
 base = get_bridge_url().rstrip("/")
 api_key = get_bridge_api_key()
@@ -23,10 +41,13 @@ if st.button("▶️ Run Scan + Morning Report", use_container_width=True):
         st.warning("IBKR Bridge not reachable. Log into IBKR on the VPS, then try again.")
     else:
         with st.status("Running scanners and building the morning report…", expanded=True) as s:
-            cmd = [sys.executable, "scripts/reports/generate_morning_report.py",
-                   "--region", "North America",
-                   "--tz", "America/Los_Angeles",
-                   "--out", "reports/na/morning_report.md"]
+            cmd = [
+                sys.executable,
+                "scripts/reports/generate_morning_report.py",
+                "--region", "North America",
+                "--tz", "America/Los_Angeles",
+                "--out", "reports/na/morning_report.md",
+            ]
             try:
                 subprocess.run(cmd, check=True)
                 s.update(label="Done!", state="complete")
