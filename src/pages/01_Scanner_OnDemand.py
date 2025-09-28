@@ -1,19 +1,23 @@
-import os, sys, subprocess
+import os, sys, subprocess, pathlib
 import streamlit as st
 import httpx
-import pathlib
 
-# --- robust bridge config import ---
+# --- robust bridge config import (prefers your helper, falls back to env vars) ---
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 try:
+    # If present, use the shared helper
     from config.ib_bridge_client import get_bridge_url, get_bridge_api_key  # type: ignore
 except Exception:
+    # Fallback: build from environment variables inside Render
     def get_bridge_url():
         scheme = os.getenv("BRIDGE_SCHEME", "http")
-        host   = os.getenv("IB_HOST", "127.0.0.1")
+        host   = os.getenv("BRIDGE_HOST", "127.0.0.1")
+        # If someone set a bind-all address, use localhost for client calls
+        if host in ("0.0.0.0", "::"):
+            host = "127.0.0.1"
         port   = os.getenv("BRIDGE_PORT", "8088")
         return f"{scheme}://{host}:{port}"
 
