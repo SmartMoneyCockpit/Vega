@@ -1,15 +1,15 @@
-import os, httpx, streamlit as st
+import httpx, streamlit as st
+from components.bridge import get_bridge_base, get_bridge_headers
 
-scheme = os.getenv("BRIDGE_SCHEME", "http")
-host   = os.getenv("BRIDGE_HOST", "127.0.0.1")
-port   = os.getenv("BRIDGE_PORT", "8088")
-
-url = f"{scheme}://{host}:{port}/health"
 st.header("Bridge Health Check")
+
+base    = get_bridge_base()
+headers = get_bridge_headers()
+url     = f"{base}/health"
 st.write(f"Testing {url}")
 
 try:
-    r = httpx.get(url, timeout=5)
+    r = httpx.get(url, headers=headers, timeout=5)
     r.raise_for_status()
     st.success(f"✅ Bridge reachable: {r.text}")
 except Exception as e:
