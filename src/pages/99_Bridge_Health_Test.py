@@ -1,10 +1,10 @@
 import httpx, streamlit as st
-from components.bridge import get_bridge_base, get_bridge_headers
+from config.ib_bridge_client import get_bridge_url, get_bridge_api_key
 
 st.header("Bridge Health Check")
 
-base    = get_bridge_base()
-headers = get_bridge_headers()
+base    = get_bridge_url()
+headers = {"x-api-key": get_bridge_api_key()} if get_bridge_api_key() else {}
 url     = f"{base}/health"
 st.write(f"Testing {url}")
 
