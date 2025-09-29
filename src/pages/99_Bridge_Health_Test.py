@@ -1,28 +1,17 @@
-import httpx, streamlit as st
-import os, pathlib, sys
-try:
-    from config.ib_bridge_client import get_bridge_url, get_bridge_api_key  # type: ignore
-except Exception:
-    def get_bridge_url() -> str:
-        return (os.getenv("IBKR_BRIDGE_URL") or os.getenv("IB_BRIDGE_URL") or "").rstrip("/")
-    def get_bridge_api_key() -> str:
-        return os.getenv("IB_BRIDGE_API_KEY") or os.getenv("BRIDGE_API_KEY") or os.getenv("IBKR_BRIDGE_API_KEY") or ""
 
+import streamlit as st, httpx, json
+from config.ib_bridge_client import get_bridge_url, default_headers
 
 st.header("Bridge Health Check")
 
-base = get_bridge_url()
-key  = get_bridge_api_key()
-headers = {"x-api-key": key} if key else {}
-url = f"{base}/health" if base else ""
+base = get_bridge_url().rstrip("/")
+st.info(f"Testing: {base}/health")
 
-if not base:
-    st.error("IBKR_BRIDGE_URL is not set. Set it in Render env to your VPS bridge, e.g. http://<IP>:8888")
-else:
-    st.write(f"Testing {url}")
-    try:
-        r = httpx.get(url, headers=headers, timeout=5)
-        r.raise_for_status()
-        st.success(f"✅ Bridge reachable: {r.text}")
-    except Exception as e:
-        st.error(f"❌ Bridge not reachable: {e}")
+try:
+    r = httpx.get(f"{base}/health", headers=default_headers(), timeout=8.0)
+    r.raise_for_status()
+    st.success(f"Bridge OK ✅: {r.json()}")
+except httpx.HTTPStatusError as e:
+    st.error(f"Bridge returned {e.response.status_code}: {e.response.text[:500]}")
+except httpx.RequestError as e:
+    st.error(f"Network error: {e}")

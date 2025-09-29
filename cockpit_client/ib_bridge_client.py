@@ -1,27 +1,24 @@
 
 import os, requests
+from config.ib_bridge_client import get_bridge_url, default_headers
 
 class IBKRBridgeClient:
-    def __init__(self, base_url=None, api_key=None, timeout=10):
-        self.base = (base_url or os.getenv("IBKR_BRIDGE_URL") or "http://127.0.0.1:8088").rstrip("/")
-        self.key  = api_key or os.getenv("BRIDGE_API_KEY") or ""
+    def __init__(self, base_url: str | None = None, timeout: float = 8.0):
+        self.base = (base_url or get_bridge_url()).rstrip("/")
         self.timeout = timeout
 
-    def _h(self):
-        return {"x-api-key": self.key} if self.key else {}
-
     def health(self):
-        r = requests.get(f"{self.base}/health", timeout=5)
+        r = requests.get(f"{self.base}/health", headers=default_headers(), timeout=self.timeout)
         r.raise_for_status()
         return r.json()
 
     def price(self, symbol: str):
-        r = requests.get(f"{self.base}/price/{symbol}", headers=self._h(), timeout=self.timeout)
+        r = requests.get(f"{self.base}/price/{symbol}", headers=default_headers(), timeout=self.timeout)
         r.raise_for_status()
         return r.json()
 
     def market_order(self, symbol: str, action: str, qty: int):
         payload = {"symbol": symbol, "action": action, "quantity": int(qty)}
-        r = requests.post(f"{self.base}/order/market", json=payload, headers=self._h(), timeout=self.timeout)
+        r = requests.post(f"{self.base}/order/market", json=payload, headers=default_headers(), timeout=self.timeout)
         r.raise_for_status()
         return r.json()

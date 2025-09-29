@@ -1,32 +1,27 @@
+
 import streamlit as st, httpx
-import os
-import httpx
-def _get_base(): return (os.getenv("IBKR_BRIDGE_URL") or os.getenv("IB_BRIDGE_URL") or "").rstrip("/")
-def _get_key():  return os.getenv("IB_BRIDGE_API_KEY") or os.getenv("BRIDGE_API_KEY") or os.getenv("IBKR_BRIDGE_API_KEY") or ""
+from config.ib_bridge_client import get_bridge_url, default_headers
 
+st.header("IBKR Quick Test (Bridge)")
 
-st.set_page_config(page_title="IBKR Quick Test (Bridge)", layout="wide")
-st.title("IBKR Quick Test (Bridge)")
-
-base = _get_base()
-headers = {"x-api-key": _get_key()} if _get_key() else {}
+base = get_bridge_url().rstrip("/")
+symbol = st.text_input("Symbol", value="SPY")
 
 col1, col2 = st.columns(2)
 with col1:
     if st.button("Health"):
         try:
-            r = httpx.get(f"{base}/health", headers=headers, timeout=5.0)
+            r = httpx.get(f"{base}/health", headers=default_headers(), timeout=8.0)
             r.raise_for_status()
-            st.success(r.text)
+            st.success("OK")
+            st.json(r.json())
         except Exception as e:
-            st.error(str(e))
-
+            st.error(f"Health failed: {e}")
 with col2:
-    sym = st.text_input("Symbol", "SPY").strip().upper()
     if st.button("Price"):
         try:
-            r = httpx.get(f"{base}/price/{sym}", headers=headers, timeout=6.0)
+            r = httpx.get(f"{base}/price/{symbol}", headers=default_headers(), timeout=8.0)
             r.raise_for_status()
             st.json(r.json())
         except Exception as e:
-            st.error(str(e))
+            st.error(f"Price failed: {e}")
