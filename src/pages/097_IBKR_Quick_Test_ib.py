@@ -1,12 +1,21 @@
 
-import streamlit as st, httpx
+import os, sys, pathlib
+HERE = pathlib.Path(__file__).resolve()
+CANDIDATES = [
+    HERE.parents[2],
+    HERE.parents[1],
+    pathlib.Path("/opt/render/project/src"),
+]
+for p in CANDIDATES:
+    if str(p) not in sys.path and p.exists():
+        sys.path.insert(0, str(p))
+
 from config.ib_bridge_client import get_bridge_url, default_headers
 
+import streamlit as st, httpx
 st.header("IBKR Quick Test (Bridge)")
-
 base = get_bridge_url().rstrip("/")
 symbol = st.text_input("Symbol", value="SPY")
-
 col1, col2 = st.columns(2)
 with col1:
     if st.button("Health"):
