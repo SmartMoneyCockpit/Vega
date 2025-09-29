@@ -1,7 +1,13 @@
-import os, json, time
-import streamlit as st
-import httpx
-from config.ib_bridge_client import get_bridge_url, get_bridge_api_key
+import os, json, time, streamlit as st, httpx
+import os, pathlib, sys
+try:
+    from config.ib_bridge_client import get_bridge_url, get_bridge_api_key  # type: ignore
+except Exception:
+    def get_bridge_url() -> str:
+        return (os.getenv("IBKR_BRIDGE_URL") or os.getenv("IB_BRIDGE_URL") or "").rstrip("/")
+    def get_bridge_api_key() -> str:
+        return os.getenv("IB_BRIDGE_API_KEY") or os.getenv("BRIDGE_API_KEY") or os.getenv("IBKR_BRIDGE_API_KEY") or ""
+
 
 st.set_page_config(page_title='IBKR Scanner (Bridge)', layout='wide')
 st.title('IBKR Stock Scanner — Bridge Mode (server decides delayed/live)')
@@ -9,8 +15,7 @@ st.title('IBKR Stock Scanner — Bridge Mode (server decides delayed/live)')
 base = get_bridge_url()
 api_key = get_bridge_api_key()
 headers = {'x-api-key': api_key} if api_key else {}
-auth_label = "yes" if api_key else "no"
-st.caption(f"Bridge: {base} (auth={auth_label})")
+st.caption(f"Bridge: {base} (auth={'yes' if api_key else 'no'})")
 
 st.subheader('Single symbol snapshot')
 c1, c2 = st.columns([1,3])
@@ -42,14 +47,14 @@ limit = st.slider("Batch size", min_value=10, max_value=200, value=min(50, len(a
 if st.button("Fetch batch prices", use_container_width=True, disabled=not approved):
     rows = []
     with st.spinner("Fetching last prices..."):
-        for sym in approved[:limit]:
+        for s in approved[:limit]:
             try:
-                r = httpx.get(f"{base}/price/{sym}", headers=headers, timeout=6.0)
+                r = httpx.get(f"{base}/price/{s}", headers=headers, timeout=6.0)
                 r.raise_for_status()
                 data = r.json()
-                rows.append({"symbol": sym, **data})
+                rows.append({"symbol": s, **data})
             except Exception as e:
-                rows.append({"symbol": sym, "error": str(e)})
+                rows.append({"symbol": s, "error": str(e)})
             time.sleep(0.05)
     import pandas as pd
     st.dataframe(pd.DataFrame(rows), use_container_width=True)
