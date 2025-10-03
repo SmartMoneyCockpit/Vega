@@ -1,0 +1,16 @@
+# Vega ALL-IN-ONE DELTA
+Includes: One-and-Done core + Sector Flip Alerts + System Status page.
+- ADD: .env.example
+- ADD: README.md
+- ADD: README_ALERTS.md
+- ADD: data_bridge.py
+- ADD: db_adapter.py
+- ADD: pages/00_Admin_Data_Entry.py
+- ADD: pages/09_Owners_Daily_Digest.py
+- ADD: pages/10_Breadth_Grid.py
+- ADD: pages/11_RS_Dashboard.py
+- ADD: pages/12_Sector_Flip_Alerts.py
+- ADD: pages/13_System_Status.py
+- ADD: scripts/export_digest.py
+- ADD: scripts/rotate_snapshots.py
+- ADD: scripts/sector_flip_scan.py
