@@ -1,0 +1,48 @@
+{
+  "jobs": [
+    {
+      "name": "daily-export",
+      "type": "cron",
+      "command": "python scripts/export_digest.py",
+      "schedule_utc": "45 14 * * 1-5",
+      "env": {}
+    },
+    {
+      "name": "daily-rotation",
+      "type": "cron",
+      "command": "python scripts/rotate_snapshots.py",
+      "schedule_utc": "0 15 * * *",
+      "env": {
+        "SNAPSHOT_KEEP_DAYS": "90",
+        "SNAPSHOT_MAX_DISK_MB": "900",
+        "SNAPSHOT_DIR": "snapshots"
+      }
+    },
+    {
+      "name": "sector-flip-alerts",
+      "type": "cron",
+      "command": "python scripts/sector_flip_scan.py",
+      "schedule_utc": "0 * * * 1-5",
+      "env": {
+        "SECTOR_REL_CHANGE": "0.6",
+        "ALERTS_DIR": "alerts"
+      }
+    },
+    {
+      "name": "seed-db-once",
+      "type": "oneoff",
+      "command": "python scripts/seed_db.py",
+      "env": {}
+    },
+    {
+      "name": "verify-health-once",
+      "type": "oneoff",
+      "command": "python scripts/verify_health.py",
+      "env": {}
+    }
+  ],
+  "notes": [
+    "All schedules shown in UTC. PT≈UTC-7 in Oct (Daylight Time).",
+    "Service env must include VEGA_DB_PATH=/opt/render/project/src/data/vega.db"
+  ]
+}
