@@ -1,0 +1,6 @@
+# --- RS history append hook ---
+try:
+    import db_adapter as _db
+    _db.rs_history_append_from_current(rs)  # appends today's RS trends into rs_history
+except Exception as _e:
+    print("RS history append skipped:", _e)
