@@ -1,7 +1,9 @@
 # scripts/verify_health.py
 # Prints a quick health summary: DB path, row counts, latest snapshot files.
 
-import os, glob, pandas as pd
+import os, glob, sys, pandas as pd
+# Ensure repo root is on path so we can import db_adapter from scripts/
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 import db_adapter as db
 
 def count(df): return 0 if df is None else int(len(df))

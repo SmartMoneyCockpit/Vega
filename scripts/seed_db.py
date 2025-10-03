@@ -3,7 +3,10 @@
 # Where the DB lives:
 #   VEGA_DB_PATH (recommended on Render) or falls back to data/vega.db
 
-import os
+import os, sys
+# Ensure repo root is on path so we can import db_adapter from scripts/
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+
 import pandas as pd
 import db_adapter as db
 
