@@ -1,0 +1,9 @@
+# --- RS history numeric mapping (updated) ---
+def map_trend_to_value(trend: str) -> float:
+    t = (trend or "").strip()
+    return {
+        "🟢": 1.4, "Green": 1.4,
+        "🟠": 1.2, "Orange": 1.2,
+        "🟡": 1.0, "Yellow": 1.0,
+        "🔴": 0.8, "Red": 0.8
+    }.get(t, 1.0)  # default neutral
