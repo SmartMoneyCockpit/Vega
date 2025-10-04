@@ -1,17 +1,13 @@
-
-# Optional fixed menu for Vega. If empty, auto-discovery is used.
-# Example:
-# groups:
-#   - group: Cockpit
-#     items:
-#       - label: Home
-#         route: home
-#       - label: Dashboard
-#         route: dashboard
-#   - group: Reports
-#     items:
-#       - label: Morning Briefing
-#         route: reports/morning
-#       - label: End of Day
-#         route: reports/eod
-groups: []
+groups:
+  - group: Markets
+    items:
+      - label: North American Trading
+        route: markets/north-america
+      - label: APAC Trading
+        route: markets/apac
+      - label: Europe Trading
+        route: markets/europe
+  - group: Tools
+    items:
+      - label: Real-Time Scanner
+        route: tools/real-time-scanner

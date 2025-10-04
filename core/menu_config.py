@@ -1,8 +1,5 @@
-
 import yaml, os
-from typing import List, Dict
-
-def load_menu_config(path: str = "menu_config.yaml") -> Dict:
+def load_menu_config(path: str = "menu_config.yaml"):
     if not os.path.exists(path):
         return {"groups": []}
     try:
