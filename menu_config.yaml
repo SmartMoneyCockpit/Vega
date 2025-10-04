@@ -1,0 +1,17 @@
+
+# Optional fixed menu for Vega. If empty, auto-discovery is used.
+# Example:
+# groups:
+#   - group: Cockpit
+#     items:
+#       - label: Home
+#         route: home
+#       - label: Dashboard
+#         route: dashboard
+#   - group: Reports
+#     items:
+#       - label: Morning Briefing
+#         route: reports/morning
+#       - label: End of Day
+#         route: reports/eod
+groups: []
