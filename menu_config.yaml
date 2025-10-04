@@ -8,7 +8,6 @@ groups:
         route: markets/apac
       - label: Europe Trading
         route: markets/europe
-
   - group: Tools
     items:
       - label: TradingView Charts
@@ -21,7 +20,6 @@ groups:
         route: scanner/on-demand
       - label: IBKR Scanner (Live)
         route: scanner/ibkr-live
-
   - group: IBKR
     items:
       - label: IB Feed Status
@@ -30,19 +28,16 @@ groups:
         route: ibkr/ticker
       - label: Quick Test
         route: ibkr/quick-test
-
   - group: Admin
     items:
       - label: Home
         route: admin/home
-
   - group: Diagnostics
     items:
       - label: Diagnostics
         route: diagnostics/main
       - label: Health Bridge
         route: diagnostics/health-bridge
-
   - group: System
     items:
       - label: Not Found

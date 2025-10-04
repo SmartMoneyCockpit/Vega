@@ -1,8 +1,9 @@
 
-import streamlit as st
-st.title("Europe Trading")
-st.caption("Placeholder: DAX example view.")
-st.components.v1.html("""
+    import streamlit as st
+    def page():
+        st.title("Europe Trading")
+        st.caption("Placeholder until original is restored.")
+        st.components.v1.html("""
 <div class="tradingview-widget-container">
   <div id="tradingview_eu"></div>
   <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>

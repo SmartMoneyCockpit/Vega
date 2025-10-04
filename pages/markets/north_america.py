@@ -1,8 +1,9 @@
 
-import streamlit as st
-st.title("North American Trading")
-st.caption("Placeholder: swap in your original module when ready.")
-st.components.v1.html("""
+    import streamlit as st
+    def page():
+        st.title("North American Trading")
+        st.caption("Placeholder until original is restored.")
+        st.components.v1.html("""
 <div class="tradingview-widget-container">
   <div class="tradingview-widget-container__widget"></div>
   <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
