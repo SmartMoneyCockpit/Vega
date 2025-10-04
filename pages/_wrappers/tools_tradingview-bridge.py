@@ -2,8 +2,8 @@
 from core.registry import register
 import importlib
 
-ROUTE = "ibkr/feed-status"
-MODULE = "pages.095_IB_Feed_Status"
+ROUTE = "tools/tradingview-bridge"
+MODULE = "pages.10_TradingView_Bridge"
 
 @register(ROUTE)
 def page():

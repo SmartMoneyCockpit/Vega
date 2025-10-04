@@ -1,3 +1,4 @@
+
 groups:
   - group: Markets
     items:
@@ -7,7 +8,42 @@ groups:
         route: markets/apac
       - label: Europe Trading
         route: markets/europe
+
   - group: Tools
     items:
-      - label: Real-Time Scanner
-        route: tools/real-time-scanner
+      - label: TradingView Charts
+        route: tools/tradingview-charts
+      - label: TradingView Bridge
+        route: tools/tradingview-bridge
+      - label: Vega Native Chart
+        route: tools/vega-native-chart
+      - label: Scanner On-Demand
+        route: scanner/on-demand
+      - label: IBKR Scanner (Live)
+        route: scanner/ibkr-live
+
+  - group: IBKR
+    items:
+      - label: IB Feed Status
+        route: ibkr/feed-status
+      - label: Ticker Tool
+        route: ibkr/ticker
+      - label: Quick Test
+        route: ibkr/quick-test
+
+  - group: Admin
+    items:
+      - label: Home
+        route: admin/home
+
+  - group: Diagnostics
+    items:
+      - label: Diagnostics
+        route: diagnostics/main
+      - label: Health Bridge
+        route: diagnostics/health-bridge
+
+  - group: System
+    items:
+      - label: Not Found
+        route: system/not-found

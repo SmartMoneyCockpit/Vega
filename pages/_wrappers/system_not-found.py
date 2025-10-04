@@ -2,8 +2,8 @@
 from core.registry import register
 import importlib
 
-ROUTE = "ibkr/feed-status"
-MODULE = "pages.095_IB_Feed_Status"
+ROUTE = "system/not-found"
+MODULE = "pages.98_Not_found"
 
 @register(ROUTE)
 def page():

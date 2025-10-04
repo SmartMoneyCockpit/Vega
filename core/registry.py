@@ -1,7 +1,4 @@
-"""
-Route registry for Vega Cockpit (non-destructive).
-Use @register("route/key") on any page function to map it explicitly.
-"""
+
 from typing import Callable, Dict
 PAGE_REGISTRY: Dict[str, Callable[[], None]] = {}
 

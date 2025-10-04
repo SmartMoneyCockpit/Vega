@@ -2,8 +2,8 @@
 from core.registry import register
 import importlib
 
-ROUTE = "ibkr/feed-status"
-MODULE = "pages.095_IB_Feed_Status"
+ROUTE = "tools/vega-native-chart"
+MODULE = "pages.06_Vega_Native_Chart"
 
 @register(ROUTE)
 def page():

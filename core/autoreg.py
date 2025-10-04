@@ -22,7 +22,6 @@ def _route_from_modname(module_name: str) -> str:
     return rel.replace(".", "/")
 
 def autorun():
-    # ensure project root importable
     root = str(PROJECT_ROOT)
     if root not in sys.path:
         sys.path.insert(0, root)

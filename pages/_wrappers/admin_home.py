@@ -1,3 +1,4 @@
+
 from core.registry import register
 import importlib
 
@@ -11,4 +12,5 @@ def page():
         f = getattr(m, fn, None)
         if callable(f):
             return f()
+    # If the legacy module renders at import (top-level st.*), importing above is enough.
     return None
