@@ -1,5 +1,5 @@
 # Morning Report — Europe
-_Timezone: Europe/London • Generated: 2025-10-03 15:57 UTC_
+_Timezone: Europe/London • Generated: 2025-10-04 16:28 UTC_
 
 ## Today’s Focus
 - Replace these bullets with your real catalysts list.
@@ -7,11 +7,11 @@ _Timezone: Europe/London • Generated: 2025-10-03 15:57 UTC_
 ## Market Snapshot
 | Ticker | Last | 1D % |
 |---|---:|---:|
-| VGK | 80.91 | +0.24% |
-| EZU | 63.00 | +0.59% |
-| EWU | 42.26 | -0.56% |
-| ^STOXX50E | 5645.81 | +1.16% |
-| ^FTSE | 9427.70 | -0.20% |
+| VGK | 81.35 | +0.54% |
+| EZU | 63.11 | +0.17% |
+| EWU | 42.64 | +0.90% |
+| ^STOXX50E | 5651.71 | +0.10% |
+| ^FTSE | 9491.30 | +0.67% |
 
 ## Watchlist
 - (add tickers)
