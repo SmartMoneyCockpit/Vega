@@ -2,7 +2,7 @@
 # Python 3.10 (pinned via runtime.txt)
 
 # UI core
-streamlit>=1.33
+streamlit>=1.36
 pandas==2.2.2
 numpy==2.0.2
 PyYAML==6.0.2
