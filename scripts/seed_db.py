@@ -1,16 +1,28 @@
 # scripts/seed_db.py
-# One-shot: seeds SQLite with starter rows for positions, signals, breadth, and RS.
-# Where the DB lives:
-#   VEGA_DB_PATH (recommended on Render) or falls back to data/vega.db
+# One-shot: idempotent seeder. Force‑clears tables then inserts starter rows.
+# Uses VEGA_DB_PATH if set; defaults to data/vega.db
 
-import os, sys
-# Ensure repo root is on path so we can import db_adapter from scripts/
-sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-
+import os, sys, sqlite3, contextlib
 import pandas as pd
+
+# Ensure repo root on sys.path so db_adapter is importable from scripts/
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 import db_adapter as db
 
-# Starter rows (edit as you like)
+DB_PATH = os.getenv("VEGA_DB_PATH", "data/vega.db")
+
+def _wipe_tables():
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    with contextlib.closing(sqlite3.connect(DB_PATH)) as con:
+        cur = con.cursor()
+        cur.execute("DELETE FROM positions")
+        cur.execute("DELETE FROM signals")
+        cur.execute("DELETE FROM breadth")
+        cur.execute("DELETE FROM rs")
+        # keep rs_history intact (it's your time series)
+        con.commit()
+
+# Starter rows
 positions = pd.DataFrame([
     {"Ticker":"HPR.TO","Qty":1000,"Avg Cost":25.0,"Last":25.4},
     {"Ticker":"ZPR.TO","Qty":1000,"Avg Cost":9.50,"Last":9.55},
@@ -39,11 +51,18 @@ rs = pd.DataFrame([
 ])
 
 def main():
+    print("Seeding to:", DB_PATH)
+    _wipe_tables()
     db.upsert_positions(positions)
     db.upsert_signals(signals)
     db.upsert_breadth(breadth)
     db.upsert_rs(rs)
-    print("Seed complete. You can now open Admin / RS Dashboard immediately.")
+    print("Seed complete.")
+    # Echo counts
+    print("Counts -> positions:", len(db.load_positions()),
+          "signals:", len(db.load_signals()),
+          "breadth:", len(db.load_breadth()),
+          "rs:", len(db.load_rs()))
 
 if __name__ == "__main__":
     main()
