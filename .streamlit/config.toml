@@ -1,9 +1,3 @@
 [server]
-headless = true
-port = 8501
-
-[browser]
-gatherUsageStats = false
-
-[theme]
-base = "dark"    # <-- dark mode
+address = "0.0.0.0"
+# Port provided via --server.port $PORT in the Start Command
