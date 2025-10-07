@@ -1,5 +1,5 @@
 # Morning Report — NA
-_Timezone: America/Los_Angeles • Generated: 2025-10-06 15:58 UTC_
+_Timezone: America/Los_Angeles • Generated: 2025-10-07 15:14 UTC_
 
 ## Today’s Focus
 - Replace these bullets with your real catalysts list.
@@ -7,11 +7,11 @@ _Timezone: America/Los_Angeles • Generated: 2025-10-06 15:58 UTC_
 ## Market Snapshot
 | Ticker | Last | 1D % |
 |---|---:|---:|
-| SPY | 669.21 | -0.00% |
-| QQQ | 603.18 | -0.42% |
-| DIA | 467.51 | +0.52% |
-| IWM | 245.83 | +0.74% |
-| ^VIX | 16.65 | +0.12% |
+| SPY | 671.61 | +0.36% |
+| QQQ | 607.71 | +0.75% |
+| DIA | 466.84 | -0.14% |
+| IWM | 246.81 | +0.40% |
+| ^VIX | 16.37 | -1.68% |
 
 ## Watchlist
 - (add tickers)
