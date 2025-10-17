@@ -30,6 +30,17 @@ try:
 except Exception:
     render_env_check = None
 
+# ---- NEW: bridge (VPS) client hooks ----
+BRIDGE_URL = os.getenv("BRIDGE_URL", "").rstrip("/")
+try:
+    from bridge_client import bridge_connect, bridge_health, bridge_scan, BridgeError  # type: ignore
+except Exception:
+    # Soft fallback if helper module not present yet
+    def _missing(*args, **kwargs):
+        raise RuntimeError("bridge_client.py not found in repo. Add it to enable scanner bridge.")
+    BridgeError = RuntimeError  # type: ignore
+    bridge_connect = bridge_health = bridge_scan = _missing  # type: ignore
+
 # ---- paths / bootstrap ----
 BASE_DIR  = os.path.dirname(__file__)
 PAGES_DIR = "pages"                             # Streamlit expects this folder next to src/app.py
@@ -73,11 +84,11 @@ st.title("Vega Cockpit – Home")
 # ---- link buckets ----
 CORE = []
 for file, label in [
-    ("00_Home.py",                 "🏠 Home"),
-    ("096_IBKR_Ticker_ib.py",     "⏱️ IBKR Ticker (ib_insync)"),
-    ("097_IBKR_Quick_Test_ib.py", "🧪 IBKR Quick Test (ib_insync)"),
+    ("00_Home.py",                  "🏠 Home"),
+    ("096_IBKR_Ticker_ib.py",      "⏱️ IBKR Ticker (ib_insync)"),
+    ("097_IBKR_Quick_Test_ib.py",  "🧪 IBKR Quick Test (ib_insync)"),
     ("098_IBKR_Order_Ticket_ib.py","🧾 IBKR Order Ticket (ib_insync)"),
-    ("01_Scanner_OnDemand.py",    "🔎 Scanner OnDemand"),
+    ("01_Scanner_OnDemand.py",     "🔎 Scanner OnDemand"),
 ]:
     if exists_in_pages(file):
         CORE.append((f"{PAGES_DIR}/{file}", label))
@@ -116,6 +127,42 @@ if render_ib_panel:
     with st.container():
         render_ib_panel()
 
+# ---- NEW: Bridge (VPS) Status panel on Home ----
+with st.container():
+    st.subheader("Bridge (VPS) Status")
+    cols = st.columns([1,1,2])
+    with cols[0]:
+        if BRIDGE_URL:
+            st.success(f"URL: {BRIDGE_URL}")
+        else:
+            st.warning("BRIDGE_URL not set")
+    with cols[1]:
+        # Never show the token value; just indicate presence.
+        st.info("Token: ✅ set" if os.getenv("BRIDGE_TOKEN") else "Token: ⚠️ missing")
+    ok_health = ok_connect = False
+    try:
+        h = bridge_health()
+        ok_health = True
+        st.caption(f"Health: {h}")
+    except Exception as e:
+        st.error(f"Health check failed: {e}")
+    try:
+        c = bridge_connect()
+        ok_connect = True
+        st.caption(f"Connect: {c}")
+    except Exception as e:
+        st.error(f"Connect failed: {e}")
+
+    # Quick test scan button (safe; no secrets printed)
+    if ok_connect:
+        if st.button("Run Bridge Scan Test"):
+            try:
+                res = bridge_scan(params={"symbol": "SPY"})
+                st.success("Scan OK")
+                st.json(res)
+            except Exception as e:
+                st.error(f"Scan failed: {e}")
+
 # ---- render links (NO list comprehensions; avoid implicit writes) ----
 st.subheader("Core")
 for p, l in CORE:
@@ -132,7 +179,6 @@ for p, l in STATUS:
 with st.expander("Extras"):
     for p, l in EXTRAS:
         st.page_link(p, label=l)
-
 
 # ---- Vega grouped sidebar (auto-added) ----
 def render_grouped_nav():
@@ -158,14 +204,14 @@ def render_grouped_nav():
         with st.sidebar.expander("Ops & Health", expanded=False):
             st.page_link("pages/13_System_Status.py", label="System Status", icon="🛰️")
             st.page_link("pages/095_IB_Feed_Status.py", label="IB Feed Status", icon="🧪")
-            st.page_link("pages/096_IBKR_Ticker_ib.py", label="IBKR Ticker", icon="🏷️")
             st.page_link("pages/097_IBKR_Quick_Test_ib.py", label="IBKR Quick Test", icon="⚙️")
+            st.page_link("pages/096_IBKR_Ticker_ib.py", label="IBKR Ticker", icon="🏷️")
             st.page_link("pages/99_Bridge_Health_Test.py", label="Bridge Health Test", icon="🧰")
             st.page_link("pages/99_Diagnostics.py", label="Diagnostics", icon="🔍")
         with st.sidebar.expander("Admin", expanded=False):
             st.page_link("pages/00_Admin_Data_Entry.py", label="Admin Data Entry", icon="🧾")
             st.page_link("pages/09_Owners_Daily_Digest.py", label="Owners Daily Digest", icon="📰")
-    except Exception as e:
+    except Exception:
         st.sidebar.info("Upgrade Streamlit to use grouped navigation.")
 
 # Render grouped nav
