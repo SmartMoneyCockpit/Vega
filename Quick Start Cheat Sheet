@@ -1,0 +1,30 @@
+Quick cheatsheet (save this)
+
+Service (backend Flask)
+
+Get-Service vega-gateway
+Start-Service vega-gateway
+Restart-Service vega-gateway
+Stop-Service vega-gateway
+Get-Content C:\Vega\gateway.log -Tail 50
+
+
+Tunnel (Cloudflare)
+
+schtasks /Query /TN "vega-bridge" /V /FO LIST
+schtasks /End /TN "vega-bridge"  | Out-Null
+schtasks /Run /TN "vega-bridge"  | Out-Null
+
+
+Public health checks
+
+Invoke-WebRequest "https://bridge.cryptobitcoinprofits.com/health"
+(Invoke-WebRequest -Uri "https://bridge.cryptobitcoinprofits.com/connect" `
+  -Headers @{ Authorization = "Bearer 377c8012-5d62-4b32-9a10-973fcc581551" }).Content
+
+
+Watcher (optional enhancement applied earlier)
+
+If you updated the watcher to also start vega-gateway, you’re fully self-healing for both the tunnel and the backend.
+
+If you want, I can add a one-liner to rotate the gateway.log daily or on size, but otherwise you’re good to go.
