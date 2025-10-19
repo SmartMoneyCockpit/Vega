@@ -4,7 +4,7 @@ except Exception:
     IB = None
 
 class IBKRClient:
-    def __init__(self, host="127.0.0.1", port=7497, client_id=111):
+    def __init__(self, host="127.0.0.1", port=8080, client_id=111):
         self.host, self.port, self.client_id = host, port, client_id
         self._ib = None
 

@@ -2,7 +2,7 @@
 
 ## Set Render Secrets (Dashboard → Environment)
 - `IB_HOST=167.71.145.48`
-- `IB_PORT=4002`
+- `IB_PORT=8080`
 - `IB_CLIENT_ID=7`
 (These override `config.yaml` automatically.)
 
@@ -12,7 +12,7 @@ sudo ufw allow 4002/tcp
 # In IB Gateway → Configure → API → Settings
 #  - Enable ActiveX/Socket Clients
 #  - Read-Only API: OFF
-#  - Socket port: 8080
+#  - Socket port=8080
 #  - Allow connections from localhost only: OFF
 #  - Trusted IPs: (optional) leave empty for now; later restrict to Render egress
 ```

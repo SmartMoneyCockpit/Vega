@@ -29,7 +29,7 @@ def _read_env(key, default=None):
                 try: return int(v)
                 except Exception: continue
             return v
-    defaults = {"host":"127.0.0.1","port":8080,"client_id":7,"market_data_type":3,"connect_timeout_sec":8}
+    defaults = {"host":"127.0.0.1","port": 8080,"client_id":7,"market_data_type":3,"connect_timeout_sec":8}
     return defaults.get(key, default)
 
 def connect_ib() -> IB:

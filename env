@@ -6,7 +6,7 @@ IBKR_USERNAME=Dares81974
 IBKR_PASSWORD=mitchell17305!
 IBKR_ACCOUNT=U17353389
 IBKR_HOST=127.0.0.1
-IBKR_PORT=7496
+IBKR_PORT=8080
 IB_GATEWAY_AUTORUN=true
 
 # ─── TradingView Authentication (cookie method) ───────

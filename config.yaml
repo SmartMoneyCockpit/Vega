@@ -45,7 +45,7 @@ trading_enabled: true
 ibkr:
   enabled: true
   host: 167.71.145.48
-  port: 4002
+  port=8080
   client_id: 7
   market_data_type: 3
   connect_timeout_sec: 8

@@ -7,7 +7,7 @@ User=root
 WorkingDirectory=/root/ibkr-bridge
 Environment=PATH=/root/ibkr-bridge/.venv/bin
 Environment=IB_HOST=127.0.0.1
-Environment=IB_PORT=7496
+Environment=IB_PORT=8080
 Environment=IB_CLIENT_ID=9
 Environment=IB_PAPER_ONLY=false
 Environment=IBKR_MARKET_DATA_TYPE=1

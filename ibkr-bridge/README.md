@@ -12,7 +12,7 @@ pip install --upgrade pip && pip install -r requirements.txt
 
 # LIVE settings (you can export these in your shell or leave them in the systemd unit)
 export IB_HOST=127.0.0.1
-export IB_PORT=7496
+export IB_PORT=8080
 export IB_CLIENT_ID=9
 export IB_PAPER_ONLY=false
 export IBKR_MARKET_DATA_TYPE=1       # 1=live

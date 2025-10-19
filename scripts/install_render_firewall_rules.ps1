@@ -1,6 +1,6 @@
 
 # scripts/install_render_firewall_rules.ps1
-Param([int]$Port = 7496)
+Param([int]$Port=8080)
 $rules = @(
   @{ Name="IBKR Render 44.229.227.142"; Address="44.229.227.142" },
   @{ Name="IBKR Render 54.188.71.94" ; Address="54.188.71.94" },
