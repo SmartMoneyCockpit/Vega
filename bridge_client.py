@@ -22,7 +22,7 @@ def bridge_health(timeout=5):
 def bridge_connect(timeout=5):
     if not BRIDGE_URL:
         raise BridgeError("Missing BRIDGE_URL env var")
-    r = requests.get(f"{BRIDGE_URL}/connect", headers=_headers(), timeout=timeout)
+    r = requests.get(f"{BRIDGE_URL}/health", headers=_headers(), timeout=timeout)
     r.raise_for_status()
     return r.json()
 

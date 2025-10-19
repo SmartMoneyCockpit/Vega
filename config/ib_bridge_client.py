@@ -4,7 +4,7 @@
 Centralized helpers for reaching your IBKR Bridge (XIBC) from the Vega cockpit.
 
 Priority for the base URL:
-1) IBKR_BRIDGE_URL (full URL like "http://93.127.136.167:8888")
+1) IBKR_BRIDGE_URL (full URL like "https://bridge.cryptobitcoinprofits.com")
 2) IB_BRIDGE_URL    (legacy; full URL)
 3) Build from BRIDGE_SCHEME/BRIDGE_HOST/BRIDGE_PORT (e.g., http/93.127.136.167/8888)
 4) Final fallback: http://127.0.0.1:8080

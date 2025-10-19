@@ -19,7 +19,7 @@ schtasks /Run /TN "vega-bridge"  | Out-Null
 Public health checks
 
 Invoke-WebRequest "https://bridge.cryptobitcoinprofits.com/health"
-(Invoke-WebRequest -Uri "https://bridge.cryptobitcoinprofits.com/connect" `
+(Invoke-WebRequest -Uri "https://bridge.cryptobitcoinprofits.com/health" `
   -Headers @{ Authorization = "Bearer 377c8012-5d62-4b32-9a10-973fcc581551" }).Content
 
 

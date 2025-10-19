@@ -13,7 +13,7 @@ class IBKRBridgeClient:
         return r.json()
 
     def price(self, symbol: str):
-        r = requests.get(f"{self.base}/price/{symbol}", headers=default_headers(), timeout=self.timeout)
+        r = requests.get(f"{self.base}/quote?symbol={symbol}", headers=default_headers(), timeout=self.timeout)
         r.raise_for_status()
         return r.json()
 

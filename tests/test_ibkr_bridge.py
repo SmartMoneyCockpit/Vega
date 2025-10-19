@@ -9,7 +9,7 @@ def test_health():
     assert r.status_code==200
 
 def test_price():
-    r = requests.get(f"{BRIDGE_URL}/price/SPY", headers={"x-api-key":API_KEY})
+    r = requests.get(f"{BRIDGE_URL}/quote?symbol=SPY", headers={"x-api-key":API_KEY})
     assert r.status_code==200
 
 def test_order_reject():

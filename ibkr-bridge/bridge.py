@@ -40,7 +40,7 @@ async def health():
         "md_type": IBKR_MARKET_DATA_TYPE,
     }
 
-@app.get("/price/{symbol}")
+@app.get("/quote?symbol={symbol}")
 async def price(symbol: str, x_api_key: str = Header(default="")):
     if APP_KEY and x_api_key != APP_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")

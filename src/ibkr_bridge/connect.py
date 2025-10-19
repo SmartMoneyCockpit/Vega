@@ -1,4 +1,4 @@
-# src/ibkr_bridge/connect.py
+# src/ibkr_bridge/health.py
 from ib_insync import IB
 from ibkr_bridge.async_utils import run
 

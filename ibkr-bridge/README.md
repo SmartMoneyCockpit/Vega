@@ -45,7 +45,7 @@ BRIDGE_API_KEY=VegaTrading2025X
 
 ```bash
 curl http://<DROPLET_IP>:8088/health
-curl -H "x-api-key: VegaTrading2025X" http://<DROPLET_IP>:8088/price/SPY
+curl -H "x-api-key: VegaTrading2025X" http://<DROPLET_IP>:8088/quote?symbol=SPY
 ```
 
 ## 5) Security

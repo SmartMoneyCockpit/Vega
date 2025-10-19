@@ -29,7 +29,7 @@ with col1:
 with col2:
     if st.button("Price"):
         try:
-            r = httpx.get(f"{base}/price/{symbol}", headers=default_headers(), timeout=8.0)
+            r = httpx.get(f"{base}/quote?symbol={symbol}", headers=default_headers(), timeout=8.0)
             r.raise_for_status()
             st.json(r.json())
         except Exception as e:
