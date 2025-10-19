@@ -1,8 +1,8 @@
 # bridge_client.py
 import os, requests
 
-BRIDGE_URL = os.getenv("BRIDGE_URL", "").rstrip("/")
-BRIDGE_TOKEN = os.getenv("BRIDGE_TOKEN", "")
+BRIDGE_URL = os.getenv("VEGA_BRIDGE_URL", "").rstrip("/")
+BRIDGE_TOKEN = os.getenv("VEGA_HTTP_KEY", "")
 
 class BridgeError(Exception):
     pass
@@ -10,7 +10,7 @@ class BridgeError(Exception):
 def _headers():
     if not BRIDGE_TOKEN:
         raise BridgeError("Missing BRIDGE_TOKEN env var")
-    return {"Authorization": f"Bearer {BRIDGE_TOKEN}"}
+    return {"x-api-key": BRIDGE_TOKEN}
 
 def bridge_health(timeout=5):
     if not BRIDGE_URL:
@@ -26,11 +26,11 @@ def bridge_connect(timeout=5):
     r.raise_for_status()
     return r.json()
 
-def bridge_scan(params: dict | None = None, timeout=10):
+def bridge_quote(params: dict | None = None, timeout=10):
     """Example scan call. Change the path/body to match your bridge’s real scan endpoint."""
     if not BRIDGE_URL:
         raise BridgeError("Missing BRIDGE_URL env var")
-    r = requests.get(f"{BRIDGE_URL}/scan", headers=_headers(), params=params or {}, timeout=timeout)
+    r = requests.get(f"{BRIDGE_URL}/quote", headers=_headers(), params=params or {}, timeout=timeout)
     if r.status_code == 401:
         raise BridgeError("Unauthorized (check BRIDGE_TOKEN)")
     r.raise_for_status()

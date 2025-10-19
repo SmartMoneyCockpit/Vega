@@ -1,4 +1,5 @@
 import os, json, time, streamlit as st, httpx
+from vega.bridge_client import quote
 import os, pathlib, sys
 try:
     from config.ib_bridge_client import get_bridge_url, get_bridge_api_key  # type: ignore
@@ -25,7 +26,7 @@ with c1:
 with c2:
     if go and sym:
         try:
-            r = httpx.get(f"{base}/quote?symbol={sym}", headers=headers, timeout=6.0)
+            r = httpx.get(f"{base}/quote?symbol={sym}}", headers=headers, timeout=6.0)
             r.raise_for_status()
             st.json(r.json())
         except Exception as e:
@@ -49,9 +50,7 @@ if st.button("Fetch batch prices", use_container_width=True, disabled=not approv
     with st.spinner("Fetching last prices..."):
         for s in approved[:limit]:
             try:
-                r = httpx.get(f"{base}/quote?symbol={s}", headers=headers, timeout=6.0)
-                r.raise_for_status()
-                data = r.json()
+                data = quote(s)
                 rows.append({"symbol": s, **data})
             except Exception as e:
                 rows.append({"symbol": s, "error": str(e)})
