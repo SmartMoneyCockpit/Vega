@@ -25,7 +25,7 @@ with c1:
 with c2:
     if go and sym:
         try:
-            r = httpx.get(f"{base}/quote?symbol={sym}}", headers=headers, timeout=6.0)
+            r = httpx.get(f"{base}/quote?symbol={sym}", headers=headers, timeout=6.0)
             r.raise_for_status()
             st.json(r.json())
         except Exception as e:
@@ -49,7 +49,7 @@ if st.button("Fetch batch prices", use_container_width=True, disabled=not approv
     with st.spinner("Fetching last prices..."):
         for s in approved[:limit]:
             try:
-                r = httpx.get(f"{base}/quote?symbol={s}}", headers=headers, timeout=6.0)
+                r = httpx.get(f"{base}/quote?symbol={s}", headers=headers, timeout=6.0)
                 r.raise_for_status()
                 data = r.json()
                 rows.append({"symbol": s, **data})
