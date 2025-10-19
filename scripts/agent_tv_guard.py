@@ -26,7 +26,7 @@ from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
 # ------------ Config / ENV ------------
 
-API_BASE = os.getenv("API_BASE", "http://localhost:8000")
+API_BASE = os.getenv("API_BASE", "http://127.0.0.1:8080")
 TV_USER = os.getenv("TV_USER", "")
 TV_PWD = os.getenv("TV_PWD", "")
 TV_COOKIES_JSON_B64 = os.getenv("TV_COOKIES_JSON_B64")  # optional base64-encoded Playwright cookies JSON

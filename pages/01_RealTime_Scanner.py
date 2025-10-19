@@ -12,7 +12,7 @@ st.title("Real‑Time Scanner (VectorVest/TradingView style)")
 colA, colB = st.columns(2)
 with colA:
     st.caption("Source")
-    st.code(f"SCANNER_URL={os.environ.get('SCANNER_URL','http://127.0.0.1:8009/snapshot')}", language="shell")
+    st.code(f"SCANNER_URL={os.environ.get('SCANNER_URL','http://127.0.0.1:8080/snapshot')}", language="shell")
 with colB:
     st.caption("Fallback path")
     st.code(f"SCANNER_PATH={os.environ.get('SCANNER_PATH','outputs/snapshot.json')}", language="shell")

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 import requests
 
-DEFAULT_URL = os.environ.get("SCANNER_URL", "http://127.0.0.1:8009/snapshot")
+DEFAULT_URL = os.environ.get("SCANNER_URL", "http://127.0.0.1:8080/snapshot")
 DEFAULT_PATH = os.environ.get("SCANNER_PATH", "outputs/snapshot.json")
 
 def load_snapshot(timeout: float = 2.0) -> Optional[Dict[str, Any]]:

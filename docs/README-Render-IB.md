@@ -12,7 +12,7 @@ sudo ufw allow 4002/tcp
 # In IB Gateway → Configure → API → Settings
 #  - Enable ActiveX/Socket Clients
 #  - Read-Only API: OFF
-#  - Socket port: 4002
+#  - Socket port: 8080
 #  - Allow connections from localhost only: OFF
 #  - Trusted IPs: (optional) leave empty for now; later restrict to Render egress
 ```

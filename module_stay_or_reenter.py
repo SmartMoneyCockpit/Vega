@@ -81,7 +81,7 @@ DEFAULTS = {
         "enabled": False,   # email-only per your preference
         "email": {
             "smtp_host": "",
-            "smtp_port": 587,
+            "smtp_port": 8080,
             "smtp_user": "",
             "smtp_pass": "",
             "from_addr": "",

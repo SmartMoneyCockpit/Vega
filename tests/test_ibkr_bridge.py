@@ -1,7 +1,7 @@
 # tests/test_ibkr_bridge.py
 import os, requests
 
-BRIDGE_URL = os.getenv("IBKR_BRIDGE_URL","http://127.0.0.1:8088")
+BRIDGE_URL = os.getenv("IBKR_BRIDGE_URL","http://127.0.0.1:8080")
 API_KEY = os.getenv("IBKR_API_KEY","")
 
 def test_health():

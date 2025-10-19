@@ -18,7 +18,7 @@ export IB_PAPER_ONLY=false
 export IBKR_MARKET_DATA_TYPE=1       # 1=live
 export BRIDGE_API_KEY=VegaTrading2025X
 export BRIDGE_HOST=0.0.0.0
-export BRIDGE_PORT=8088
+export BRIDGE_PORT=8080
 
 uvicorn bridge:app --host "$BRIDGE_HOST" --port "$BRIDGE_PORT"
 ```

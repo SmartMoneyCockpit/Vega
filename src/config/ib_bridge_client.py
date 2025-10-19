@@ -17,7 +17,7 @@ def get_bridge_url() -> str:
         if not port:
             port = "8088"
         return f"{scheme}://{host}:{port}".rstrip("/")
-    return "http://127.0.0.1:8088"
+    return "http://127.0.0.1:8080"
 
 def get_bridge_api_key() -> str:
     return (
