@@ -1,0 +1,30 @@
+# Vega Cockpit Settings (Weekly Upgrade 2025-10-21)
+polling:
+  active_region_only: true
+  default_interval_seconds: 3600   # 60 min
+  boost_mode_interval_seconds: 300 # 5 min during Boost Mode
+  boost_mode_duration_minutes: 60
+
+tradingview:
+  authenticated: false        # set true when cookies configured
+  refresh_seconds: 60
+  fallback_public: true
+
+alerts:
+  consolidate_price_band_alerts: true
+  sector_flip:
+    rel_change_threshold: 0.006   # 0.6%
+    momentum_cross_ema_short: 10
+    momentum_cross_ema_long: 30
+    min_vol_multiple_20d: 1.2
+    intraday_window_minutes: 15
+
+defensive_overlays:
+  vix_threshold: 20.0
+
+sendgrid:
+  enabled: false
+  api_key_env: SENDGRID_API_KEY
+  default_send_time_pt: "12:45"
+  to_email: ""
+  from_email: ""

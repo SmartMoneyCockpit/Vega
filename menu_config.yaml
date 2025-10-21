@@ -42,3 +42,18 @@ groups:
     items:
       - label: Not Found
         route: system/not-found
+
+- path: modules/pnl_breakdown.py
+  title: 'PnL & Risk Breakdown'
+
+- path: src/pages/41_Relative_Strength_Dashboard.py
+  title: 'Relative Strength Dashboard'
+
+- path: src/pages/42_Sector_Momentum_Tiles.py
+  title: 'Sector Momentum Tiles'
+
+- path: src/pages/43_Defensive_Overlay_Status.py
+  title: 'Defensive Overlay'
+
+- path: src/pages/44_Aplus_Digest_Builder.py
+  title: 'A+ Digest Builder'
