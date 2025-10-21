@@ -9,6 +9,8 @@ PyYAML==6.0.2
 streamlit-lightweight-charts==0.7.20
 flask==3.0.3
 gunicorn==23.0.0  # For production server on Render
+uvicorn[standard]==0.30.6
+
 
 # --- HTTP / Async Utils ---
 requests>=2.32.0,<3
