@@ -189,7 +189,6 @@ def render_grouped_nav():
             st.page_link("pages/01_North_America_Text_Dashboard.py", label="North America", icon="🇺🇸")
             st.page_link("pages/02_APAC_Text_Dashboard.py", label="APAC", icon="🌏")
             st.page_link("pages/02_Europe_Text_Dashboard.py", label="Europe", icon="🇪🇺")
-            st.page_link("pages/11_RS_Dashboard.py", label="RS Dashboard", icon="📈")
             st.page_link("pages/10_Breadth_Grid.py", label="Breadth Grid", icon="🧮")
             st.page_link("pages/12_Sector_Flip_Alerts.py", label="Sector Flip Alerts", icon="⚡")
         with st.sidebar.expander("Charts", expanded=False):
@@ -199,15 +198,7 @@ def render_grouped_nav():
         with st.sidebar.expander("Scanners", expanded=False):
             st.page_link("pages/01_RealTime_Scanner.py", label="Real-Time Scanner", icon="⏱️")
             st.page_link("pages/01_Scanner_OnDemand.py", label="On-Demand Scanner", icon="🧰")
-            st.page_link("pages/10_IBKR_Scanner.py", label="IBKR Scanner", icon="🧲")
             st.page_link("pages/real_time_scanner_wrapper.py", label="RT Scanner Wrapper", icon="📦")
-        with st.sidebar.expander("Ops & Health", expanded=False):
-            st.page_link("pages/13_System_Status.py", label="System Status", icon="🛰️")
-            st.page_link("pages/095_IB_Feed_Status.py", label="IB Feed Status", icon="🧪")
-            st.page_link("pages/097_IBKR_Quick_Test_ib.py", label="IBKR Quick Test", icon="⚙️")
-            st.page_link("pages/096_IBKR_Ticker_ib.py", label="IBKR Ticker", icon="🏷️")
-            st.page_link("pages/99_Bridge_Health_Test.py", label="Bridge Health Test", icon="🧰")
-            st.page_link("pages/99_Diagnostics.py", label="Diagnostics", icon="🔍")
         with st.sidebar.expander("Admin", expanded=False):
             st.page_link("pages/00_Admin_Data_Entry.py", label="Admin Data Entry", icon="🧾")
             st.page_link("pages/09_Owners_Daily_Digest.py", label="Owners Daily Digest", icon="📰")
