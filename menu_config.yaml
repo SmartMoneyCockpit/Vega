@@ -1,41 +1,42 @@
+# --- Vega Cockpit Menu (IBKR pages removed) ---
+- path: src/pages/00_Home.py
+  title: "Home"
 
-groups:
-  - group: Markets
-    items:
-      - label: North American Trading
-        route: markets/north-america
-      - label: APAC Trading
-        route: markets/apac
-      - label: Europe Trading
-        route: markets/europe
-  - group: Tools
-    items:
-      - label: TradingView Charts
-        route: tools/tradingview-charts
-      - label: TradingView Bridge
-        route: tools/tradingview-bridge
-      - label: Vega Native Chart
-        route: tools/vega-native-chart
-      - label: Scanner On-Demand
-        route: scanner/on-demand
-        route: scanner/ibkr-live
-  - group: IBKR
-    items:
-        route: ibkr/feed-status
-      - label: Ticker Tool
-        route: ibkr/ticker
-      - label: Quick Test
-        route: ibkr/quick-test
-  - group: Admin
-    items:
-      - label: Home
-        route: admin/home
-  - group: Diagnostics
-    items:
-      - label: Diagnostics
-        route: diagnostics/main
-      - label: Health Bridge
-        route: diagnostics/health-bridge
-  - group: System
-    items:
-        route: system/not-found
+- path: src/pages/01_North_America_Text_Dashboard.py
+  title: "North America Text Dashboard"
+
+- path: src/pages/02_Europe_Text_Dashboard.py
+  title: "Europe Text Dashboard"
+
+- path: src/pages/03_APAC_Text_Dashboard.py
+  title: "APAC Text Dashboard"
+
+- path: src/pages/RealTime_Scanner.py
+  title: "Real-Time Scanner"
+
+- path: src/pages/Scanner_OnDemand.py
+  title: "Scanner OnDemand"
+
+- path: src/pages/TradingView_Charts.py
+  title: "TradingView Charts"
+
+- path: src/pages/Owners_Daily_Digest.py
+  title: "Owners Daily Digest"
+
+- path: src/pages/Breadth_Grid.py
+  title: "Breadth Grid"
+
+- path: src/pages/40_Risk_Return_Scoring.py
+  title: "Risk Return Scoring"
+
+- path: src/pages/42_Sector_Momentum_Tiles.py
+  title: "Sector Momentum Tiles"
+
+- path: src/pages/43_Defensive_Overlay_Status.py
+  title: "Defensive Overlay Status"
+
+- path: src/pages/44_Aplus_Digest_Builder.py
+  title: "A+ Digest Builder"
+
+- path: src/pages/System_Status.py
+  title: "System Status"
