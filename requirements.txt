@@ -1,32 +1,33 @@
 # Vega Cockpit — Unified requirements (Render + Actions)
-# Python 3.10 (pinned via runtime.txt)
+# Python 3.10 runtime pinned via runtime.txt
 
-# UI core
+# --- UI Core ---
 streamlit>=1.36
 pandas==2.2.2
 numpy==2.0.2
 PyYAML==6.0.2
 streamlit-lightweight-charts==0.7.20
 flask==3.0.3
+gunicorn==23.0.0  # For production server on Render
 
-# HTTP / async utils
+# --- HTTP / Async Utils ---
 requests>=2.32.0,<3
 httpx==0.27.2
 nest-asyncio==1.6.0
 python-dateutil==2.9.0.post0
 
-# Email (A+ digest, alerts)
+# --- Email (A+ Digest, Alerts) ---
 sendgrid==6.11.0
 
-# Charts / exports (PNG + PDF snapshots)
+# --- Charts / Exports (PNG + PDF Snapshots) ---
 matplotlib>=3.8,<3.10
 reportlab>=4.1,<5
 
-# Data providers used by workers
+# --- Data Providers / Market Feeds ---
 yfinance==0.2.40
 polygon-api-client==1.13.6
 
-# IBKR Bridge (FastAPI + trading gateway)
+# --- IBKR Bridge / Gateway (FastAPI + Pydantic) ---
 fastapi>=0.110,<0.112
 uvicorn[standard]>=0.27,<0.29
 pydantic>=2.7,<2.10
