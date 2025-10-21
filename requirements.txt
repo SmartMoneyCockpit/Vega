@@ -26,8 +26,3 @@ reportlab>=4.1,<5
 # --- Data Providers / Market Feeds ---
 yfinance==0.2.40
 polygon-api-client==1.13.6
-
-# --- IBKR Bridge / Gateway (FastAPI + Pydantic) ---
-fastapi>=0.110,<0.112
-uvicorn[standard]>=0.27,<0.29
-pydantic>=2.7,<2.10
