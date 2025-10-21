@@ -1,4 +1,4 @@
-# --- Vega Cockpit Menu (IBKR pages removed) ---
+# --- Vega Cockpit Menu (EODHD scanners enabled) ---
 - path: src/pages/00_Home.py
   title: "Home"
 
@@ -11,11 +11,11 @@
 - path: src/pages/03_APAC_Text_Dashboard.py
   title: "APAC Text Dashboard"
 
-- path: src/pages/RealTime_Scanner.py
-  title: "Real-Time Scanner"
+- path: src/pages/30_EODHD_Scanner.py
+  title: "EODHD Scanner"
 
-- path: src/pages/Scanner_OnDemand.py
-  title: "Scanner OnDemand"
+- path: src/pages/50_Scanner_Unified.py
+  title: "Unified Scanner"
 
 - path: src/pages/TradingView_Charts.py
   title: "TradingView Charts"
