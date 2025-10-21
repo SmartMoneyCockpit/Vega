@@ -1,13 +1,19 @@
 import os, sys, pathlib
 # Ensure 'src' imports resolve when running from repo root
 _here = pathlib.Path(__file__).resolve()
-sys.path.append(str(_here.parents[1]))  # adds .../src to sys.path
+src_root = _here.parents[1]
+if str(src_root) not in sys.path:
+    sys.path.insert(0, str(src_root))
 
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from modules.risk.risk_scoring import full_report
+try:
+    from modules.risk.risk_scoring import full_report
+except Exception as _ex:
+    import importlib
+    full_report = importlib.import_module('modules.risk.risk_scoring').full_report
 from data.eodhd_adapter import get_eod_prices_csv
 
 st.set_page_config(page_title="Risk & Return Scoring", page_icon="📊", layout="wide")
