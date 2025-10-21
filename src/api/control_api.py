@@ -1,33 +1,31 @@
-# app.py
-from flask import Flask, request, jsonify, Response
+# src/api/control_api.py  — Vega API (FastAPI for Render/uvicorn)
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import JSONResponse
 import os
 import pandas as pd
+
+# --- domain logic imports (your existing modules) ---
 from modules.scanner.patterns import rising_wedge, falling_wedge, bearish_setup_score
 from data.regions import REGIONS
 from data.eodhd_adapter import get_eod_prices_csv
 
 CHATGPT_CONTROL_TOKEN = os.getenv("CHATGPT_CONTROL_TOKEN", "").strip()
-PORT = int(os.getenv("PORT", "8080"))
 
-app = Flask(__name__)
+app = FastAPI(title="Vega API", version="1.0.0")
 
-def _auth(req) -> bool:
-    # Block if token not set OR header doesn't match
-    token = req.headers.get("X-Control-Token", "")
-    return bool(CHATGPT_CONTROL_TOKEN) and token == CHATGPT_CONTROL_TOKEN
+def _check_auth(request: Request):
+    tok = request.headers.get("X-Control-Token", "")
+    if not CHATGPT_CONTROL_TOKEN or tok != CHATGPT_CONTROL_TOKEN:
+        raise HTTPException(status_code=401, detail="unauthorized")
 
 @app.get("/health")
 def health():
-    return {"ok": True, "port": PORT}
-
-def _df_json(df: pd.DataFrame) -> Response:
-    return Response(df.to_json(orient="records"), mimetype="application/json")
+    # Fast health for Render
+    return {"ok": True}
 
 @app.get("/report/rising_wedge")
-def report_rising():
-    if not _auth(request):
-        return jsonify({"error": "unauthorized"}), 401
-    region = request.args.get("region", "USA")
+def report_rising(request: Request, region: str = "USA"):
+    _check_auth(request)
     syms = REGIONS.get(region, [])
     rows = []
     for sym in syms:
@@ -41,13 +39,11 @@ def report_rising():
     out = pd.DataFrame(rows)
     if "Match" in out.columns:
         out = out[out["Match"] == True]
-    return _df_json(out)
+    return JSONResponse(out.to_dict(orient="records"))
 
 @app.get("/report/falling_wedge")
-def report_falling():
-    if not _auth(request):
-        return jsonify({"error": "unauthorized"}), 401
-    region = request.args.get("region", "USA")
+def report_falling(request: Request, region: str = "USA"):
+    _check_auth(request)
     syms = REGIONS.get(region, [])
     rows = []
     for sym in syms:
@@ -61,13 +57,11 @@ def report_falling():
     out = pd.DataFrame(rows)
     if "Match" in out.columns:
         out = out[out["Match"] == True]
-    return _df_json(out)
+    return JSONResponse(out.to_dict(orient="records"))
 
 @app.get("/report/downside_setups")
-def report_downside():
-    if not _auth(request):
-        return jsonify({"error": "unauthorized"}), 401
-    region = request.args.get("region", "USA")
+def report_downside(request: Request, region: str = "USA"):
+    _check_auth(request)
     syms = REGIONS.get(region, [])
     rows = []
     for sym in syms:
@@ -81,7 +75,4 @@ def report_downside():
     out = pd.DataFrame(rows)
     if "BearishScore" in out.columns:
         out = out.sort_values("BearishScore", ascending=False)
-    return _df_json(out)
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=PORT)
+    return JSONResponse(out.to_dict(orient="records"))
