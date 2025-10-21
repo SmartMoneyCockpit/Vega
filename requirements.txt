@@ -28,5 +28,4 @@ polygon-api-client==1.13.6
 # IBKR Bridge (FastAPI + trading gateway)
 fastapi>=0.110,<0.112
 uvicorn[standard]>=0.27,<0.29
-ib-insync>=0.9.86
 pydantic>=2.7,<2.10
