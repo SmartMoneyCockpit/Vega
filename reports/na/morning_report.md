@@ -1,5 +1,5 @@
 # Morning Report — NA
-_Timezone: America/Los_Angeles • Generated: 2025-10-31 15:13 UTC_
+_Timezone: America/Los_Angeles • Generated: 2025-10-31 15:57 UTC_
 
 ## Today’s Focus
 - Replace these bullets with your real catalysts list.
