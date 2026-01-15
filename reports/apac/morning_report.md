@@ -1,5 +1,5 @@
 # Afternoon Report — APAC
-_Timezone: America/Los_Angeles • Generated: 2026-01-14 15:58 UTC_
+_Timezone: America/Los_Angeles • Generated: 2026-01-15 15:01 UTC_
 
 ## Today’s Focus
 - Replace these bullets with your real catalysts list.
@@ -7,11 +7,11 @@ _Timezone: America/Los_Angeles • Generated: 2026-01-14 15:58 UTC_
 ## Market Snapshot
 | Ticker | Last | 1D % |
 |---|---:|---:|
-| EWJ | 84.45 | -0.98% |
-| EWA | 26.41 | -0.15% |
-| EWH | 22.40 | -0.58% |
-| EWY | 107.54 | -1.28% |
-| ^HSI | 26848.47 | +0.90% |
+| EWJ | 85.04 | +0.70% |
+| EWA | 26.54 | +0.49% |
+| EWH | 22.47 | +0.31% |
+| EWY | 109.64 | +1.95% |
+| ^HSI | 26999.81 | +0.56% |
 
 ## Watchlist
 - (add tickers)
