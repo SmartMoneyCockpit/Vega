@@ -1,17 +1,11 @@
 # Morning Report — Europe
-_Timezone: Europe/London • Generated: 2026-01-21 15:03 UTC_
+_Timezone: Europe/London • Generated: 2026-01-21 16:01 UTC_
 
 ## Today’s Focus
 - Replace these bullets with your real catalysts list.
 
 ## Market Snapshot
-| Ticker | Last | 1D % |
-|---|---:|---:|
-| VGK | n/a | n/a |
-| EZU | n/a | n/a |
-| EWU | n/a | n/a |
-| ^STOXX50E | n/a | n/a |
-| ^FTSE | n/a | n/a |
+(Data fetch unavailable: float() argument must be a string or a real number, not 'Series')
 
 ## Watchlist
 - (add tickers)
