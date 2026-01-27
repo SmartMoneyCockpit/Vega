@@ -1,5 +1,5 @@
 # Morning Report — Europe
-_Timezone: Europe/London • Generated: 2026-01-26 15:59 UTC_
+_Timezone: Europe/London • Generated: 2026-01-27 15:03 UTC_
 
 ## Today’s Focus
 - Replace these bullets with your real catalysts list.
