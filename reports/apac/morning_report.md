@@ -1,5 +1,5 @@
 # Afternoon Report — APAC
-_Timezone: America/Los_Angeles • Generated: 2026-04-09 15:25 UTC_
+_Timezone: America/Los_Angeles • Generated: 2026-04-09 16:21 UTC_
 
 ## Today’s Focus
 - Replace these bullets with your real catalysts list.
